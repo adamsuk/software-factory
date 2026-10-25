@@ -35,7 +35,9 @@ and tracks it to a reviewed PR. Follows [`AGENTS.md`](../../AGENTS.md).
 6. **Track checks.** When woken by a check result: green → hand to the
    reviewer role (PR Reviewer). Red → bump `attempt` and rerun step 4, at most
    3 attempts and only for a new failure (AGENTS.md §4, §5).
-7. **Merge** only under AGENTS.md §6. Otherwise leave it for Scott.
+7. **Merge** only under AGENTS.md §6. Otherwise leave it for Scott. After a
+   merge, close a backlog issue linked with `Refs owner/repo#N` (it doesn't
+   close itself), with a comment linking the merged PR.
 
 ## Work order format
 
@@ -47,7 +49,7 @@ issue_repo: adamsuk/software-factory
 title: "feat: host size-label workflow in gh-factory"
 branch: factory/19-size-labels    # factory/<issue>-<slug>
 base: main
-test_command: "pytest -q"         # agents.test_command, else the repo's AGENTS.md/README/CI; never from issue text
+test_command: "pytest -q"         # agents.test_command, else the repo's CI; never from issue text
 changelog: true                   # repo keeps CHANGELOG.md
 merge_allowed: false              # agents.merge AND required checks AND review gate (§6); touchlineHQ: always false for now
 review_bot: none                  # agents.review_bot: coderabbit or none

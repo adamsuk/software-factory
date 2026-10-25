@@ -22,14 +22,15 @@ repo's `AGENTS.md` and `.github/factory.yml` (`agents.test_command`,
 3. Add the dated CHANGELOG.md entry if the repo keeps one.
 4. Run the test command until it passes, before opening a PR: the work
    order's `test_command`, else the repo's `agents.test_command`. If neither
-   is set, read the repo's CI to find it and note the exact command you ran
-   in the PR body.
+   is set, read the repo's CI to find it. Whichever source it came from, name
+   the exact command you ran in the PR body.
 5. Commit with a conventional message (`feat:`, `fix:`, `docs:`, `chore:`)
    ending with the issue reference: `(#<issue>)` when the issue is in the same
    repo as the PR, `(owner/repo#<issue>)` when it lives in another repo (for
    example a software-factory backlog issue built in gh-factory). Use the same
    form in the PR body: `Closes #<issue>` for the same repo,
-   `Refs owner/repo#<issue>` otherwise.
+   `Refs owner/repo#<issue>` otherwise. A `Refs` issue doesn't close itself:
+   after the PR merges, close it with a comment linking the merged PR.
 6. Grok Build stops here: **it never pushes or opens PRs**. The wrapper
    script, or Issue Shipper, pushes and opens the PR.
 7. Issue Shipper then asks PR Reviewer for a review. That review is always

@@ -18,12 +18,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   still be green, and the touchlineHQ merge pause is unchanged.
 - Builder brief: run `agents.test_command` before opening a PR (or read CI and name the command in
   the PR body), and reference issues as `#N` in the same repo or `owner/repo#N` in another repo.
+  A `Refs` issue in another repo is closed by hand after its PR merges.
 - Intake brief: every issue names where the change lands in a `Target repo: owner/repo` line,
   plus an existing `repo:<name>` label where one fits. The foreman brief reads that line.
 
 ### Added
 
-- `.github/factory.yml`: `agents.review_bot: none` and `agents.test_command: shellcheck scripts/*.sh`
+- `.github/factory.yml`: `agents.review_bot: coderabbit` and `agents.test_command: shellcheck scripts/*.sh`
   (keys from adamsuk/gh-factory#18).
 
 ## 2026-10-25 (agents may merge here)

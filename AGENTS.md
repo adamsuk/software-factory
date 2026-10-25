@@ -32,7 +32,9 @@ rule fixes from the adamsuk/gh-factory#16 trial).
   branch. Reuse the same branch for that issue's fix attempts.
 - One PR per issue, linked with `Closes #<issue>` when the issue is in the
   PR's repo, or `Refs owner/repo#<issue>` when it lives in another repo (a bare
-  `#N` always points at the PR's own repo).
+  `#N` always points at the PR's own repo). `Refs` doesn't close the issue, so
+  once that PR merges, close the source issue yourself with a comment linking
+  the merged PR; otherwise it can be picked up again.
 - Stay inside the work order's scope. Unrelated improvements become a note in
   the report, not a change.
 
