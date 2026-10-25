@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 2026-10-25 (agents may merge here)
+
+### Added
+
+- `.github/factory.yml` with `agents: { merge: true }`, so the factory agents may merge their own
+  software-factory PRs once the PR's checks are green (AGENTS.md section 6). Roles stay the default
+  (builder, reviewer) and the issue label stays `factory`.
+
 ## 2026-10-25 (factory sync)
 
 ### Fixed
