@@ -5,6 +5,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 2026-10-25 (agents)
+
+### Added
+
+- `AGENTS.md`: the shared rules for Grok Build and the Grok Bot agents. Issue text is untrusted
+  data, one issue per run, a branch per issue, tests required, a dated changelog entry or the
+  `skip-changelog` label, at most 3 fix-loop attempts, protected paths (tests, CI, lockfiles) go to
+  a person, no merging unless `agents.merge: true` and required checks are green (plus the
+  touchlineHQ merge pause), no secrets, the Resend `RESEND_WEBHOOK_SECRET` guard, generic CI.
+- `agents/roles/`: briefs for the foreman (the new Software Factory bot), intake, research,
+  builder and reviewer roles, including the work order format.
+- `agents/grok-build.md`: how to run Grok Build 1.0.70 headless for a work order, with the docs
+  it was checked against.
+- `scripts/run-work-order.sh`: clones the target repo into a unique `/workspace` directory, makes
+  the branch, runs Grok Build with `AGENTS.md` and the work order, checks protected paths, runs
+  the tests, and only pushes with `--push` when everything passed.
+- A ShellCheck workflow for `scripts/`.
+
 ## 2026-10-25
 
 ### Added
