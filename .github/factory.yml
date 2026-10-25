@@ -1,0 +1,7 @@
+# software-factory's own gh-factory overrides (see adamsuk/gh-factory README, "Per-repo overrides").
+
+# Factory agents (see the gh-factory README, "Agents"). Scott approved agent merges here on
+# 2026-10-25. Agents merge only when the PR's checks are green (AGENTS.md section 6). Roles stay
+# the default (builder, reviewer) and the issue label stays `factory`.
+agents:
+  merge: true
