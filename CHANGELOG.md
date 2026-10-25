@@ -5,6 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 2026-10-25 (factory sync)
+
+### Fixed
+
+- `.github/ISSUE_TEMPLATE/task.yml`: Acceptance criteria uses a placeholder instead of a prefilled
+  `- [ ] `, so `required: true` actually requires an answer (adamsuk/gh-factory#10).
+
 ## 2026-10-25 (agents)
 
 ### Added
