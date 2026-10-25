@@ -5,3 +5,8 @@
 # the default (builder, reviewer) and the issue label stays `factory`.
 agents:
   merge: true
+  # CodeRabbit does not review PRs here (checked on #29 to #31), so PR Reviewer's review is the
+  # review gate (AGENTS.md section 6).
+  review_bot: none
+  # The CI lint job (ShellCheck on the work-order runner).
+  test_command: shellcheck scripts/*.sh

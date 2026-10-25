@@ -5,6 +5,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 2026-10-25 (rule fixes from the gh-factory#16 trial)
+
+### Changed
+
+- AGENTS.md section 5: a builder may add fixture or test data to an existing test without Scott's
+  review if no existing assertion is changed, removed or weakened and the PR body says so.
+  Changing assertions or deleting tests still needs Scott. The reviewer brief checks this.
+- AGENTS.md section 6: merging also needs the review gate for the repo's `agents.review_bot`.
+  `coderabbit` needs no blocking CodeRabbit findings plus PR Reviewer's review; `none` (the
+  default) needs PR Reviewer's review with no unresolved should-fix items. Required checks must
+  still be green, and the touchlineHQ merge pause is unchanged.
+- Builder brief: run `agents.test_command` before opening a PR (or read CI and name the command in
+  the PR body), and reference issues as `#N` in the same repo or `owner/repo#N` in another repo.
+- Intake brief: every issue names where the change lands in a `Target repo: owner/repo` line,
+  plus an existing `repo:<name>` label where one fits. The foreman brief reads that line.
+
+### Added
+
+- `.github/factory.yml`: `agents.review_bot: none` and `agents.test_command: shellcheck scripts/*.sh`
+  (keys from adamsuk/gh-factory#18).
+
 ## 2026-10-25 (agents may merge here)
 
 ### Added
