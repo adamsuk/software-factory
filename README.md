@@ -34,6 +34,22 @@ Backlog issues live here, **not** in touchlineHQ repos, because Issue Shipper
 auto-picks issues there. When an item is ready to build, a scoped issue is
 opened in the target repo.
 
+## Agents
+
+The factory's agents share one set of rules and one brief per role, kept here
+so changes to them are reviewed like code (#17):
+
+- [`AGENTS.md`](AGENTS.md): rules every agent follows, Grok Build included.
+- [`agents/roles/`](agents/roles): `foreman` (the Software Factory bot),
+  `intake` (Signal Issues), `research` (Research Scout), `builder` (Issue
+  Shipper, and Grok Build under the foreman) and `reviewer` (PR Reviewer).
+- [`agents/grok-build.md`](agents/grok-build.md) and
+  [`scripts/run-work-order.sh`](scripts/run-work-order.sh): how the foreman
+  runs Grok Build headless on one work order.
+
+Which roles run in a repo, and whether agents may merge there, is set per repo
+in `.github/factory.yml` under `agents:` (merging is off by default).
+
 ## Audits
 
 - [`audits/2026-10-24.md`](audits/2026-10-24.md): the first Line audit.
