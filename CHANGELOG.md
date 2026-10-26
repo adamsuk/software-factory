@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - `.coderabbit.yaml` turns on CodeRabbit's approve/request-changes workflow
   (`reviews.auto_approvals.enabled: true`), so CodeRabbit posts APPROVED or CHANGES_REQUESTED
-  reviews instead of only COMMENTED ones and its approval can be the sign-off gate.
+  reviews instead of only COMMENTED ones and its approval can be one part of the sign-off gate.
 
 ## 2026-10-25 (rule fixes from the gh-factory#16 trial)
 
