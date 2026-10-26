@@ -15,6 +15,7 @@
 # It never opens PRs or merges.
 set -euo pipefail
 
+# Exit 7: gh issue view or the factory:gate label edit failed.
 setup_env=()
 die() { echo "run-work-order: $2" >&2; exit "$1"; }
 
@@ -309,6 +310,35 @@ write_bench_handoff() {
     "num_turns: ${turns}" > "$dir.bench.txt"
 }
 
+# Move factory:building to factory:gate after a successful --push.
+# issue_repo names the issue's repository; an empty issue_repo means repo.
+# factory:blocked, or a missing factory:building, leaves every label unchanged.
+# A non-zero gh issue view or label edit exits 7. This does not open a PR.
+set_gate_label() {
+  local target number labels name blocked=0 building=0
+  target=$(field issue_repo)
+  if [[ -z "$target" ]]; then
+    target=$(field repo)
+  fi
+  number=$(field issue)
+  labels=$(gh issue view "$number" --repo "$target" --json labels --jq '.labels[].name') \
+    || die 7 "could not read labels"
+  while IFS= read -r name; do
+    if [[ "$name" == "factory:blocked" ]]; then
+      blocked=1
+    fi
+    if [[ "$name" == "factory:building" ]]; then
+      building=1
+    fi
+  done <<< "$labels"
+  if [[ "$blocked" -eq 1 || "$building" -eq 0 ]]; then
+    return 0
+  fi
+  gh issue edit "$number" --repo "$target" \
+    --remove-label "factory:building" \
+    --add-label "factory:gate" || die 7 "could not set factory:gate"
+}
+
 # One new commit on $start, titled "<title> (#<issue>)". Soft reset does not
 # rewrite commits that $start already reaches (the remote tip on a reused branch).
 finish_commit() {
@@ -336,8 +366,12 @@ main() {
 
   repo=$(field repo); issue=$(field issue); branch=$(field branch)
   base=$(field base); tests=$(field test_command); title=$(field title)
+  issue_repo=$(field issue_repo)
   base=${base:-main}
   [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || die 2 "bad repo: '$repo'"
+  if [[ -n "$issue_repo" ]] && [[ ! "$issue_repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+    die 2 "bad issue_repo: '$issue_repo'"
+  fi
   [[ "$issue" =~ ^[0-9]+$ ]] || die 2 "bad issue: '$issue'"
   [[ "$branch" =~ ^factory/[0-9]+-[A-Za-z0-9._-]+$ ]] || die 2 "branch must be factory/<issue>-<slug>"
   [[ "$base" =~ ^[A-Za-z0-9._/-]+$ ]] || die 2 "bad base: '$base'"
@@ -393,6 +427,7 @@ main() {
 
   if $push; then
     git push --quiet -u origin "$branch"
+    set_gate_label
     echo "run-work-order: pushed $branch; open the PR with gh pr create"
   else
     echo "run-work-order: ready in $dir on $branch; rerun with --push or push it yourself"
