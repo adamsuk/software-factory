@@ -202,6 +202,7 @@ restore_traps() {
 }
 
 # While setup runs, INT, TERM and EXIT remove the snapshot; the caller's traps come back after.
+# The setup shell writes the snapshot when eval returns successfully, and on EXIT if setup exits early.
 run_setup_command() {
   local prev_traps
   setup_snap="$dir.setup-env"
@@ -210,7 +211,7 @@ run_setup_command() {
   trap 'rm -f "$setup_snap"' EXIT
   trap 'rm -f "$setup_snap"; exit 130' INT
   trap 'rm -f "$setup_snap"; exit 143' TERM
-  bash -c '__rwo_snap=$1; trap '\''(umask 077 && env -0 > "$__rwo_snap")'\'' EXIT; eval "$2"' _ "$setup_snap" "$1" || {
+  bash -c '__rwo_snap=$1; trap '\''(umask 077 && env -0 > "$__rwo_snap")'\'' EXIT; eval "$2"; __rwo_status=$?; if [[ $__rwo_status -eq 0 ]]; then (umask 077 && env -0 > "$__rwo_snap") || __rwo_status=$?; fi; exit "$__rwo_status"' _ "$setup_snap" "$1" || {
     rm -f "$setup_snap"
     restore_traps "$prev_traps"
     die 6 "setup failed"
