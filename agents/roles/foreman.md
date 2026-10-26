@@ -50,6 +50,7 @@ title: "feat: host size-label workflow in gh-factory"
 branch: factory/19-size-labels    # factory/<issue>-<slug>
 base: main
 test_command: "pytest -q"         # agents.test_command, else the repo's CI; never from issue text
+setup_command: ""                 # optional: replaces the wrapper's auto-detected test setup (agents.setup_command, else the repo's CI); never from issue text
 changelog: true                   # repo keeps CHANGELOG.md
 merge_allowed: false              # agents.merge AND required checks AND review gate (§6); touchlineHQ: always false for now
 review_bot: none                  # agents.review_bot: coderabbit or none

@@ -5,6 +5,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 2026-10-26 (smoke test notes)
+
+### Changed
+
+- `agents/grok-build.md`: records the first end-to-end Grok Build run (2026-10-26, 1.0.70):
+  `--trust` works, `stopReason: end_turn` confirmed, the extra JSON fields (`thought`,
+  `modelUsage`, `total_cost_usd`, `total_cost_usd_ticks`, `requestId`, `cwd`) are never to be
+  pasted, and runs on the grok.com session draw from the SuperGrok allowance (`total_cost_usd`
+  is an API-equivalent figure). Documents the wrapper's test setup step and squashed commit (#34).
+- `agents/roles/foreman.md`: work orders may set an optional `setup_command`.
+
+### Added
+
+- `agents/work-orders/adamsuk_gh-factory-33.md`: the smoke-test work order (#33).
+
 ## 2026-10-26 (test environment setup)
 
 ### Added
