@@ -7,6 +7,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 2026-10-26
 
+### Changed
+
+- Foreman step 5 copies the bench lines `attempt`, `test_command`, `tests`,
+  `api_equiv_usd`, and `num_turns` unchanged into the pull request body. Before
+  the PR is opened, `factory:blocked` stops the run. Otherwise Foreman removes
+  `factory:building` when present, adds `factory:gate` when absent, and opens
+  the PR only once that issue shows `factory:gate` without `factory:building`
+  (#79)
+
+## 2026-10-26
+
+### Added
+
+- `scripts/factory-pr-metrics.sh` reports read-only pull request metrics for a
+  UTC window: `api_equiv_usd` cost, first-time-green, fix attempts, review
+  rounds, and open pull requests whose branch starts with `factory/` (#85)
+
+## 2026-10-26
+
 ### Added
 
 - `agents/roles/monitor.md`: the Factory Monitor weekly brief. It runs the two
