@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 2026-10-26
+
+### Added
+
+- `scripts/run-work-order.sh` calls `set_gate_label` after a successful `--push`,
+  replacing `factory:building` with `factory:gate` when that label is present and
+  `factory:blocked` is not (#78)
+
 ## 2026-10-26 (bench handoff)
 
 ### Added

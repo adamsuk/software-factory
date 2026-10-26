@@ -747,6 +747,258 @@ run_bench_case bench-handoff-turns-string 'attempt: 2' '{
   'api_equiv_usd: 1.05' \
   'num_turns: '
 
+# --- gate label -------------------------------------------------------------
+# A fake gh is first on PATH. These cases call set_gate_label only.
+# They do not call main, and they do not call the real gh.
+
+tname="gate-label-setup"
+GH_BIN=$ROOT/gate-gh
+GH_LOG=$ROOT/gh.log
+mkdir -p "$GH_BIN"
+cat > "$GH_BIN/gh" << 'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+{
+  printf '%s\n' "$@"
+  printf '%s\n' '---'
+} >> "${GH_LOG:?}"
+
+if [[ "${1:-}" == "issue" && "${2:-}" == "view" ]]; then
+  if [[ "${GH_VIEW_STATUS:-0}" != 0 ]]; then
+    exit "${GH_VIEW_STATUS}"
+  fi
+  jq_out=0
+  for arg in "$@"; do
+    if [[ "$arg" == "--jq" || "$arg" == --jq=* ]]; then
+      jq_out=1
+    fi
+  done
+  if [[ "$jq_out" -eq 1 ]]; then
+    printf '%s\n' "${GH_LABELS-}"
+  else
+    printf '%s' '{"labels":['
+    sep=""
+    while IFS= read -r lab || [[ -n "${lab:-}" ]]; do
+      [[ -z "$lab" ]] && continue
+      printf '%s{"name":"%s"}' "$sep" "$lab"
+      sep=","
+    done <<< "${GH_LABELS-}"
+    printf '%s\n' ']}'
+  fi
+  exit 0
+fi
+
+if [[ "${1:-}" == "issue" && "${2:-}" == "edit" ]]; then
+  if [[ "${GH_EDIT_STATUS:-0}" != 0 ]]; then
+    exit "${GH_EDIT_STATUS}"
+  fi
+  exit 0
+fi
+
+printf 'unexpected gh args\n' >&2
+exit 99
+EOF
+chmod +x "$GH_BIN/gh"
+PATH="$GH_BIN:$ORIG_PATH"
+hash -r
+export GH_LOG
+assert_eq "$(command -v gh)" "$GH_BIN/gh"
+
+reset_gh() {
+  : > "$GH_LOG"
+  GH_LABELS=""
+  GH_VIEW_STATUS=0
+  GH_EDIT_STATUS=0
+  export GH_LABELS GH_VIEW_STATUS GH_EDIT_STATUS
+}
+
+write_gate_order() {
+  local repo_name="$1" issue_repo_value="$2" issue_num="$3"
+  order=$ROOT/gate-order.md
+  {
+    printf '%s\n' "---"
+    printf '%s\n' "repo: ${repo_name}"
+    printf '%s\n' "issue: ${issue_num}"
+    if [[ -n "$issue_repo_value" ]]; then
+      printf '%s\n' "issue_repo: ${issue_repo_value}"
+    else
+      printf '%s\n' "issue_repo:"
+    fi
+    printf '%s\n' "---"
+  } > "$order"
+}
+
+assert_no_pr() {
+  if grep -Fxq -- "pr" "$GH_LOG"; then
+    fail "gh received a pr argument"
+  fi
+}
+
+assert_gate_view() {
+  local repo_name="$1" issue_num="$2"
+  awk -v repo="$repo_name" -v issue="$issue_num" '
+    function flush(   i, has_repo, has_issue) {
+      if (!(n >= 2 && a[1] == "issue" && a[2] == "view")) { n = 0; return }
+      views++
+      has_repo = 0
+      has_issue = 0
+      for (i = 1; i <= n; i++) {
+        if (a[i] == issue) has_issue = 1
+        if (a[i] == "--repo" && (i + 1) <= n && a[i + 1] == repo) has_repo = 1
+      }
+      if (!has_repo || !has_issue) bad = 1
+      n = 0
+    }
+    BEGIN { views = 0; bad = 0; n = 0 }
+    $0 == "---" { flush(); next }
+    { a[++n] = $0 }
+    END { flush(); if (views != 1 || bad) exit 1 }
+  ' "$GH_LOG" || fail "issue view for ${repo_name} #${issue_num} did not match: $(cat "$GH_LOG")"
+}
+
+assert_gate_edit() {
+  local repo_name="$1" issue_num="$2"
+  awk -v repo="$repo_name" -v issue="$issue_num" '
+    function flush(   i, has_repo, has_issue, removes, adds, remove_ok, add_ok) {
+      if (!(n >= 2 && a[1] == "issue" && a[2] == "edit")) { n = 0; return }
+      edits++
+      has_repo = 0
+      has_issue = 0
+      removes = 0
+      adds = 0
+      remove_ok = 0
+      add_ok = 0
+      for (i = 1; i <= n; i++) {
+        if (a[i] == issue) has_issue = 1
+        if (a[i] == "--repo" && (i + 1) <= n && a[i + 1] == repo) has_repo = 1
+        if (a[i] == "--remove-label") {
+          removes++
+          if ((i + 1) <= n && a[i + 1] == "factory:building") remove_ok = 1
+        }
+        if (a[i] == "--add-label") {
+          adds++
+          if ((i + 1) <= n && a[i + 1] == "factory:gate") add_ok = 1
+        }
+      }
+      if (!has_repo || !has_issue || removes != 1 || adds != 1 || !remove_ok || !add_ok) bad = 1
+      n = 0
+    }
+    BEGIN { edits = 0; bad = 0; n = 0 }
+    $0 == "---" { flush(); next }
+    { a[++n] = $0 }
+    END { flush(); if (edits != 1 || bad) exit 1 }
+  ' "$GH_LOG" || fail "issue edit for ${repo_name} #${issue_num} did not match: $(cat "$GH_LOG")"
+}
+
+assert_no_issue_edit() {
+  awk '
+    function flush() {
+      if (n >= 2 && a[1] == "issue" && a[2] == "edit") edits++
+      if (n >= 2 && a[1] == "issue" && a[2] == "view") views++
+      n = 0
+    }
+    BEGIN { edits = 0; views = 0; n = 0 }
+    $0 == "---" { flush(); next }
+    { a[++n] = $0 }
+    END { flush(); if (edits != 0 || views != 1) exit 1 }
+  ' "$GH_LOG" || fail "expected one issue view and no issue edit: $(cat "$GH_LOG")"
+}
+
+tname="gate-label-building"
+reset_gh
+write_gate_order "adamsuk/gh-factory" "adamsuk/software-factory" "78"
+GH_LABELS=$(printf '%s\n' "factory:building" "enhancement")
+export GH_LABELS
+run_fail 0 set_gate_label
+assert_gate_view "adamsuk/software-factory" "78"
+assert_gate_edit "adamsuk/software-factory" "78"
+assert_no_pr
+
+tname="gate-label-ready"
+reset_gh
+write_gate_order "adamsuk/gh-factory" "adamsuk/software-factory" "78"
+GH_LABELS=$(printf '%s\n' "factory:ready")
+export GH_LABELS
+run_fail 0 set_gate_label
+assert_gate_view "adamsuk/software-factory" "78"
+assert_no_issue_edit
+assert_no_pr
+
+tname="gate-label-blocked"
+reset_gh
+write_gate_order "adamsuk/gh-factory" "adamsuk/software-factory" "78"
+GH_LABELS=$(printf '%s\n' "factory:blocked" "factory:building")
+export GH_LABELS
+run_fail 0 set_gate_label
+assert_gate_view "adamsuk/software-factory" "78"
+assert_no_issue_edit
+assert_no_pr
+
+tname="gate-label-empty-issue-repo"
+reset_gh
+write_gate_order "adamsuk/gh-factory" "" "78"
+GH_LABELS=$(printf '%s\n' "factory:building" "enhancement")
+export GH_LABELS
+run_fail 0 set_gate_label
+assert_gate_view "adamsuk/gh-factory" "78"
+assert_gate_edit "adamsuk/gh-factory" "78"
+assert_no_pr
+
+tname="gate-label-gh-fails"
+reset_gh
+write_gate_order "adamsuk/gh-factory" "adamsuk/software-factory" "78"
+GH_LABELS=$(printf '%s\n' "factory:building")
+GH_VIEW_STATUS=1
+export GH_LABELS GH_VIEW_STATUS
+run_fail 7 set_gate_label
+assert_no_issue_edit
+assert_no_pr
+reset_gh
+write_gate_order "adamsuk/gh-factory" "adamsuk/software-factory" "78"
+GH_LABELS=$(printf '%s\n' "factory:building" "enhancement")
+GH_VIEW_STATUS=0
+GH_EDIT_STATUS=1
+export GH_LABELS GH_VIEW_STATUS GH_EDIT_STATUS
+run_fail 7 set_gate_label
+assert_gate_view "adamsuk/software-factory" "78"
+assert_gate_edit "adamsuk/software-factory" "78"
+assert_no_pr
+
+tname="gate-label-main-placement"
+# Confirm placement from declare -f main. Do not call main.
+main_src=$(declare -f main)
+push_if=$(printf '%s\n' "$main_src" | awk '/^[[:space:]]*if \$push; then[[:space:]]*$/ { print NR; exit }')
+push_cmd=$(printf '%s\n' "$main_src" | awk '/^[[:space:]]*git push([[:space:]]|$)/ { print NR; exit }')
+gate_call=$(printf '%s\n' "$main_src" | awk '/^[[:space:]]*set_gate_label[[:space:]]*;?[[:space:]]*$/ { print NR; exit }')
+else_line=$(printf '%s\n' "$main_src" | awk -v start="$push_if" 'NR > start && /^[[:space:]]*else[[:space:]]*$/ { print NR; exit }')
+fi_line=$(printf '%s\n' "$main_src" | awk -v start="$else_line" 'NR > start && /^[[:space:]]*fi;?[[:space:]]*$/ { print NR; exit }')
+[[ -n "$push_if" && -n "$push_cmd" && -n "$gate_call" && -n "$else_line" && -n "$fi_line" ]] \
+  || fail "could not see the --push branch in main (if=$push_if push=$push_cmd gate=$gate_call else=$else_line fi=$fi_line)"
+[[ "$gate_call" -gt "$push_cmd" ]] || fail "set_gate_label is not after git push"
+[[ "$gate_call" -gt "$push_if" && "$gate_call" -lt "$else_line" ]] || fail "set_gate_label is not inside the --push branch"
+else_body=$(printf '%s\n' "$main_src" | awk -v a="$else_line" -v b="$fi_line" 'NR > a && NR < b { print }')
+if [[ "$else_body" == *set_gate_label* || "$else_body" == *"--add-label"* || "$else_body" == *"issue edit"* ]]; then
+  fail "a run without --push edits labels"
+fi
+gate_hits=$(printf '%s\n' "$main_src" | grep -c "set_gate_label" || true)
+assert_eq "$gate_hits" "1"
+if printf '%s\n' "$main_src" | grep -Eq '^[[:space:]]*gh[[:space:]]+pr([[:space:]]|$)'; then
+  fail "main calls gh pr"
+fi
+clone_line=$(printf '%s\n' "$main_src" | awk '/gh repo clone/ { print NR; exit }')
+issue_die_line=$(printf '%s\n' "$main_src" | awk '/die 2/ && /issue_repo/ { print NR; exit }')
+pat='^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
+pat_line=$(printf '%s\n' "$main_src" | awk -v pat="$pat" 'index($0, "issue_repo") && index($0, pat) { print NR; exit }')
+guard_line=$(printf '%s\n' "$main_src" | awk '/-n "\$issue_repo"|-z "\$issue_repo"/ { print NR; exit }')
+[[ -n "$clone_line" && -n "$issue_die_line" && "$issue_die_line" -lt "$clone_line" ]] \
+  || fail "issue_repo pattern check does not exit 2 before gh repo clone"
+[[ -n "$pat_line" && "$pat_line" -lt "$clone_line" ]] \
+  || fail "issue_repo owner/name pattern is not before gh repo clone"
+[[ -n "$guard_line" && "$guard_line" -lt "$clone_line" ]] \
+  || fail "empty issue_repo is not allowed through before gh repo clone"
+repo_line=$(printf '%s\n' "$main_src" | grep -F "\"\$repo\" =~" || true)
+[[ "$repo_line" == *"$pat"* ]] || fail "repo owner/name pattern changed"
+
 PATH=$ORIG_PATH
 # Read by finish_commit / prepare_env in the sourced runner.
 : "$title" "$issue" "$base" "$tests"
