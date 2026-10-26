@@ -9,8 +9,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- `audits/2026-10-26.md`: Line audit against guide v2026-10-25 (26 recommendations: 3 met, 14 partial,
-  9 missing), with what changed since 25 Oct and the station tickets (#43 to #51) its gaps are grouped into.
+- `audits/2026-10-26.md`: Line audit against guide v2026-10-25 (26 recommendations: 3 met, 15 partial,
+  8 missing), with what changed since 25 Oct and the station tickets (#43 to #51) its gaps are grouped into.
 - README: the new audit in the Audits list.
 
 ## 2026-10-25 (rule fixes from the gh-factory#16 trial)
