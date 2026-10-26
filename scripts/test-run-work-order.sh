@@ -149,6 +149,14 @@ assert_eq "$(field setup_command)" "pip install -e '.[dev]'"
 cat > "$order" << 'EOF'
 ---
 repo: acme/widgets
+setup_command: 'python -m venv "/tmp/test venv"' # comment
+---
+EOF
+assert_eq "$(field setup_command)" 'python -m venv "/tmp/test venv"'
+
+cat > "$order" << 'EOF'
+---
+repo: acme/widgets
 setup_command:
 ---
 EOF

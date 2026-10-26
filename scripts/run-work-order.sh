@@ -18,14 +18,20 @@ set -euo pipefail
 setup_env=()
 die() { echo "run-work-order: $2" >&2; exit "$1"; }
 
-# Front matter value: the text after `key:` up to a `#` comment, quotes stripped.
+# Front matter value: the text after `key:` up to a `#` comment, with one matching
+# pair of surrounding quotes (' or ") stripped. Inner or unmatched quotes stay.
 field() {
   awk -v k="$1" '
     NR == 1 && $0 != "---" { exit }
     NR > 1 && $0 == "---" { exit }
     NR > 1 && index($0, k ":") == 1 {
       v = substr($0, length(k) + 2); sub(/[ \t]+#.*$/, "", v)
-      gsub(/^[ \t"]+|[ \t"]+$/, "", v); print v; exit
+      gsub(/^[ \t]+|[ \t]+$/, "", v)
+      q = substr(v, 1, 1)
+      if (length(v) >= 2 && (q == "\"" || q == "'\''") && substr(v, length(v), 1) == q) {
+        v = substr(v, 2, length(v) - 2)
+      }
+      print v; exit
     }' "$order"
 }
 
