@@ -13,6 +13,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   8 missing), with what changed since 25 Oct and the station tickets (#43 to #51) its gaps are grouped into.
 - README: the new audit in the Audits list.
 
+## 2026-10-26 (agent merges off)
+
+### Changed
+
+- `.github/factory.yml`: `agents.merge: false`. Required checks and branch protection can't be
+  enforced on the Free plan while the repo is private, so agent merges stay off until a ruleset
+  enforces required checks and branch protection on main.
+
 ## 2026-10-26 (CodeRabbit approvals)
 
 ### Added
