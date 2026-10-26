@@ -5,6 +5,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+<<<<<<< ours
 ## 2026-10-26 (station 01: status labels and triage/pickup briefs)
 
 ### Added
@@ -26,6 +27,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   dedupes by target repo plus fingerprint or title. Behaviour changes need a test acceptance
   criterion, otherwise the issue is `factory:blocked`. The foreman checks `builder` in the target
   repo, and `factory:ready` is checked at pickup.
+## 2026-10-26
+
+### Added
+
+- `audits/2026-10-26.md`: Line audit against guide v2026-10-25 (26 recommendations: 3 met, 15 partial,
+  8 missing), with what changed since 25 Oct and the station tickets (#43 to #51) its gaps are grouped into.
+- README: the new audit in the Audits list.
+>>>>>>> theirs
 
 ## 2026-10-26 (test environment setup)
 
