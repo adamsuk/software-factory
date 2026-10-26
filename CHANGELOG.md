@@ -13,6 +13,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   8 missing), with what changed since 25 Oct and the station tickets (#43 to #51) its gaps are grouped into.
 - README: the new audit in the Audits list.
 
+## 2026-10-26 (CodeRabbit approvals)
+
+### Added
+
+- `.coderabbit.yaml` turns on CodeRabbit's approve/request-changes workflow
+  (`reviews.auto_approvals.enabled: true`), so CodeRabbit posts APPROVED or CHANGES_REQUESTED
+  reviews instead of only COMMENTED ones and its approval can be one part of the sign-off gate.
+
+### Changed
+
+- AGENTS.md section 5: `.coderabbit.yaml` is a protected path, so changes to CodeRabbit's
+  config go to Scott.
+
 ## 2026-10-25 (rule fixes from the gh-factory#16 trial)
 
 ### Changed
