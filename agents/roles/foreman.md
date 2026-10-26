@@ -43,7 +43,19 @@ and tracks it to a reviewed PR. Follows [`AGENTS.md`](../../AGENTS.md).
 5. **Open the PR** with `gh pr create` from the pushed branch: title from the
    work order, body with the goal, `Closes #N` (same repo) or
    `Refs owner/repo#N` (issue in another repo), test command and result.
-   Add `skip-changelog` only if the repo keeps no CHANGELOG.md.
+   Add `skip-changelog` only if the repo keeps no CHANGELOG.md. The body also
+   includes the five lines from the bench file, copied unchanged and in the
+   file's order. The wrapper prints the clone directory as
+   `run-work-order: <repo>#<issue> in <dir>`. The file is `<dir>.bench.txt`.
+   The lines are `attempt`, `test_command`, `tests`, `api_equiv_usd`, and
+   `num_turns`. Copy no other field from the Grok JSON, and do not paste the
+   JSON. Before opening the pull request, inspect the issue named by the
+   work order's `issue` field, in `issue_repo` (or in `repo` when
+   `issue_repo` is empty). If it shows `factory:blocked`, stop and report
+   instead of opening the PR. Otherwise, remove `factory:building` if present
+   and add `factory:gate` if absent. Do not add another `factory:gate` label.
+   Open the PR only after the issue shows `factory:gate` and does not show
+   `factory:building`.
 6. **Gate.** When woken by a check result, run `scripts/gate-issue.sh` on the
    work order once, and only if that issue shows `factory:gate`. Do not pass
    `--watch`. The script prints one line. Act on that line:
