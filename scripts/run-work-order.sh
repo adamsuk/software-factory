@@ -4,86 +4,382 @@
 # Usage: scripts/run-work-order.sh [--push] agents/work-orders/<owner>_<repo>-<issue>.md
 #
 # Exit codes: 0 ready (pushed with --push), 2 usage or bad work order,
-# 3 Grok Build failed or made no change, 4 protected path touched, 5 tests failed.
+# 3 Grok Build failed or made no change, 4 protected path touched or setup
+# changed a tracked file or moved HEAD, 5 tests failed, 6 setup failed.
+# Before test_command, prepare the target environment: the work order's
+# setup_command, else agents.setup_command from origin/$base:.github/factory.yml
+# (never the working tree), else a Python venv (declared dev/test extras) or a
+# Node install. A custom setup's exported environment carries into test_command.
+# Grok's commits and leftover changes become one commit on top of the start
+# revision, "<title> (#<issue>)". Commits already on the remote stay put.
 # It never opens PRs or merges.
 set -euo pipefail
 
+setup_env=()
 die() { echo "run-work-order: $2" >&2; exit "$1"; }
 
-push=false
-if [[ "${1:-}" == "--push" ]]; then push=true; shift; fi
-[[ $# -eq 1 && -f "$1" ]] || die 2 "usage: $0 [--push] <work-order.md>"
-order="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
-here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-rules="$here/AGENTS.md"
-[[ -f "$rules" ]] || die 2 "missing $rules"
-for tool in git gh grok jq; do command -v "$tool" > /dev/null || die 2 "$tool not found"; done
-git var GIT_COMMITTER_IDENT > /dev/null 2>&1 || die 2 "set git user.name and user.email (the identity agent commits use)"
-
-# Front matter value: the text after `key:` up to a `#` comment, quotes stripped.
+# Front matter value: the text after `key:` up to a `#` comment, with one matching
+# pair of surrounding quotes (' or ") stripped. Inner or unmatched quotes stay.
 field() {
   awk -v k="$1" '
     NR == 1 && $0 != "---" { exit }
     NR > 1 && $0 == "---" { exit }
     NR > 1 && index($0, k ":") == 1 {
       v = substr($0, length(k) + 2); sub(/[ \t]+#.*$/, "", v)
-      gsub(/^[ \t"]+|[ \t"]+$/, "", v); print v; exit
+      gsub(/^[ \t]+|[ \t]+$/, "", v)
+      q = substr(v, 1, 1)
+      if (length(v) >= 2 && (q == "\"" || q == "'\''") && substr(v, length(v), 1) == q) {
+        v = substr(v, 2, length(v) - 2)
+      }
+      print v; exit
     }' "$order"
 }
 
-repo=$(field repo); issue=$(field issue); branch=$(field branch)
-base=$(field base); tests=$(field test_command); title=$(field title)
-base=${base:-main}
-[[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || die 2 "bad repo: '$repo'"
-[[ "$issue" =~ ^[0-9]+$ ]] || die 2 "bad issue: '$issue'"
-[[ "$branch" =~ ^factory/[0-9]+-[A-Za-z0-9._-]+$ ]] || die 2 "branch must be factory/<issue>-<slug>"
-[[ "$base" =~ ^[A-Za-z0-9._/-]+$ ]] || die 2 "bad base: '$base'"
-[[ -n "$tests" ]] || die 2 "test_command is required"
-[[ -n "$title" ]] || die 2 "title is required"
+# agents.setup_command from a factory.yml document on stdin. Empty if unset.
+agents_setup_from_yaml() {
+  awk -v sq="'" '
+    function yaml_val(v, q, i, c, out) {
+      gsub(/^[ \t]+|[ \t]+$/, "", v)
+      q = substr(v, 1, 1)
+      if (q == "\"" || q == sq) {
+        out = ""
+        for (i = 2; i <= length(v); i++) {
+          c = substr(v, i, 1)
+          if (c == q) return out
+          out = out c
+        }
+        return v
+      }
+      sub(/[ \t]+#.*$/, "", v)
+      gsub(/[ \t]+$/, "", v)
+      return v
+    }
+    /^[[:space:]]*#/ { next }
+    /^[[:space:]]*$/ { next }
+    /^agents:[[:space:]]*(#.*)?$/ { in_agents = 1; child = 0; next }
+    !in_agents { next }
+    /^[^[:space:]#]/ { exit }
+    {
+      indent = $0
+      sub(/[^[:space:]].*$/, "", indent)
+      n = length(indent)
+      if (child == 0) child = n
+      if (n != child) next
+      line = $0
+      sub(/^[[:space:]]+/, "", line)
+      if (index(line, "setup_command:") != 1) next
+      print yaml_val(substr(line, length("setup_command:") + 1))
+      exit
+    }
+  '
+}
 
-dir=$(mktemp -d "/workspace/wo-${repo/\//_}-$issue-XXXXXX")
-echo "run-work-order: $repo#$issue in $dir"
-gh repo clone "$repo" "$dir" -- --quiet
-cd "$dir"
-if git ls-remote --exit-code --heads origin "$branch" > /dev/null; then
-  git fetch --quiet origin "$branch"
-  git switch --quiet "$branch"
-else
-  git switch --quiet -c "$branch" "origin/$base"
-fi
-start=$(git rev-parse HEAD)
+# Read agents.setup_command from origin/$base, not the working tree Grok edited.
+agents_setup() {
+  local yml
+  if ! yml=$(git show "origin/${base}:.github/factory.yml" 2>/dev/null); then
+    yml=""
+  fi
+  printf '%s\n' "$yml" | agents_setup_from_yaml
+}
 
-status=0
-env -u GH_TOKEN -u GITHUB_TOKEN grok --no-auto-update \
-  --cwd "$dir" --trust \
-  --prompt-file "$order" --rules "$(cat "$rules")" \
-  --output-format json --max-turns "${GROK_MAX_TURNS:-60}" \
-  --always-approve --sandbox workspace \
-  --deny 'Bash(git push*)' --deny 'Bash(gh *)' \
-  --disable-web-search > "$dir.grok.json" || status=$?
-stop=$(jq -r '.stopReason // "none"' "$dir.grok.json" 2> /dev/null || echo none)
-[[ $status -eq 0 && "$stop" == "end_turn" ]] || die 3 "grok exit $status, stopReason $stop; see $dir.grok.json"
+# True when $2 is a whole word in command string $1.
+tool_named() {
+  local pad
+  pad=" $(printf '%s' "$1" | LC_ALL=C tr -c 'A-Za-z0-9_' ' ') "
+  [[ "$pad" == *" $2 "* ]]
+}
 
-if [[ -n "$(git status --porcelain)" ]]; then
-  git add -A
-  git commit --quiet -m "$title (#$issue)"
-fi
-[[ "$(git rev-parse HEAD)" != "$start" ]] || die 3 "grok made no change"
+python_project() {
+  local req
+  if [[ -f pyproject.toml || -f setup.py ]]; then
+    return 0
+  fi
+  for req in requirements*.txt; do
+    if [[ -f "$req" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
 
-# AGENTS.md section 5: CI config, lockfiles, agent instructions, and edits to existing tests.
-protected='^(\.github/(workflows|actions)/|\.github/factory\.yml$|\.github/CODEOWNERS$|CODEOWNERS$|AGENTS\.md$|agents/)|(^|/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|go\.sum|[^/]*\.lock)$'
-tests_re='(^|/)(tests?|__tests__|spec)/|[._-](test|spec)\.[a-z]+$|(^|/)test_[^/]*$'
-hits=$({
-  git diff --name-only "$start" HEAD | grep -E "$protected"
-  git diff --name-only --diff-filter=MDR "$start" HEAD | grep -Ei "$tests_re"
-} || true)
-[[ -z "$hits" ]] || die 4 "needs a person, protected paths changed: $(echo "$hits" | tr '\n' ' ')"
+# Comma-separated dev/test extras from [project.optional-dependencies].
+# Empty when neither is declared, no TOML parser is available, or the file does not parse.
+# Python 3.10 has no tomllib: try tomli, then the copy pip vendors, else warn and skip.
+# Poetry [tool.poetry.group.<name>] groups are not pip extras; the named-tool install covers pytest/ruff.
+python_extras() {
+  python3 -c '
+import sys
+try:
+    import tomllib
+except ImportError:
+    try:
+        import tomli as tomllib
+    except ImportError:
+        try:
+            from pip._vendor import tomli as tomllib
+        except ImportError:
+            print("run-work-order: setup: no TOML parser (tomllib, tomli); dev/test extras not read", file=sys.stderr)
+            raise SystemExit(0)
+try:
+    # Text read: tomli 1.x (vendored by pip <= 22.0) rejects a binary handle in load().
+    with open("pyproject.toml", encoding="utf-8") as fh:
+        data = tomllib.loads(fh.read())
+except (OSError, ValueError):
+    raise SystemExit(0)
+project = data.get("project") if isinstance(data, dict) else None
+found = project.get("optional-dependencies") if isinstance(project, dict) else None
+opt = found if isinstance(found, dict) else {}
+names = [name for name in ("dev", "test") if name in opt]
+print(",".join(names))
+' || true
+}
 
-bash -c "$tests" || die 5 "tests failed: $tests"
+# False only when pyproject.toml parses and has neither [project] nor [build-system]
+# (tool settings only). True when no TOML parser is available or the file does not parse.
+pyproject_installable() {
+  python3 -c '
+try:
+    import tomllib
+except ImportError:
+    try:
+        import tomli as tomllib
+    except ImportError:
+        try:
+            from pip._vendor import tomli as tomllib
+        except ImportError:
+            raise SystemExit(0)
+try:
+    with open("pyproject.toml", encoding="utf-8") as fh:
+        data = tomllib.loads(fh.read())
+except (OSError, ValueError):
+    raise SystemExit(0)
+raise SystemExit(0 if "project" in data or "build-system" in data else 1)
+'
+}
 
-if $push; then
-  git push --quiet -u origin "$branch"
-  echo "run-work-order: pushed $branch; open the PR with gh pr create"
-else
-  echo "run-work-order: ready in $dir on $branch; rerun with --push or push it yourself"
+# Venv lives at "$dir.venv", outside the clone, so it is not a work-tree file.
+setup_python() {
+  local pip req tool extras spec
+  python3 -m venv "$dir.venv" || die 6 "setup failed"
+  pip="$dir.venv/bin/pip"
+  if [[ -f pyproject.toml || -f setup.py ]]; then
+    # setup.py without pyproject.toml has no extras table.
+    spec="."
+    if [[ -f pyproject.toml ]]; then
+      extras=$(python_extras)
+      if [[ -n "$extras" ]]; then
+        spec=".[$extras]"
+      fi
+    fi
+    if [[ -f setup.py ]] || pyproject_installable; then
+      "$pip" install -e "$spec" || die 6 "setup failed"
+    else
+      echo "run-work-order: setup: pyproject.toml has no [project] or [build-system]; not installing it"
+    fi
+  fi
+  for req in requirements*.txt; do
+    [[ -f "$req" ]] || continue
+    "$pip" install -r "$req" || die 6 "setup failed"
+  done
+  for tool in pytest ruff mypy black flake8; do
+    if tool_named "$tests" "$tool" && [[ ! -x "$dir.venv/bin/$tool" ]]; then
+      "$pip" install "$tool" || die 6 "setup failed"
+    fi
+  done
+  PATH="$dir.venv/bin:$PATH"
+  export PATH
+}
+
+setup_node() {
+  local tool
+  if [[ -f pnpm-lock.yaml ]]; then
+    tool=pnpm
+  elif [[ -f yarn.lock ]]; then
+    tool=yarn
+  else
+    tool=npm
+  fi
+  echo "run-work-order: setup: node $tool"
+  case "$tool" in
+    pnpm) pnpm install --frozen-lockfile || die 6 "setup failed" ;;
+    yarn) yarn install --frozen-lockfile || die 6 "setup failed" ;;
+    npm)
+      if [[ -f package-lock.json || -f npm-shrinkwrap.json ]]; then
+        npm ci || die 6 "setup failed"
+      else
+        npm install --no-package-lock || die 6 "setup failed"
+      fi
+      ;;
+  esac
+  PATH="$dir/node_modules/.bin:$PATH"
+  export PATH
+}
+
+# Run a custom setup command and keep the environment it exports (for example an
+# activated venv or a PATH change) in setup_env, so test_command runs with it.
+# The snapshot file sits outside the clone, is private, and is removed at once.
+# Put back the INT/TERM/EXIT traps saved with trap -p. A subshell lists its parent's
+# traps without running them, so there the defaults come back instead.
+restore_traps() {
+  trap - INT TERM EXIT
+  if [[ "$BASHPID" == "$$" ]]; then
+    eval "$1"
+  fi
+}
+
+# While setup runs, INT, TERM and EXIT remove the snapshot; the caller's traps come back after.
+# The setup shell writes the snapshot when eval returns successfully, and on EXIT if setup exits early.
+run_setup_command() {
+  local prev_traps
+  setup_snap="$dir.setup-env"
+  rm -f "$setup_snap"
+  prev_traps=$(trap -p INT TERM EXIT)
+  trap 'rm -f "$setup_snap"' EXIT
+  trap 'rm -f "$setup_snap"; exit 130' INT
+  trap 'rm -f "$setup_snap"; exit 143' TERM
+  bash -c '__rwo_snap=$1; trap '\''(umask 077 && env -0 > "$__rwo_snap")'\'' EXIT; eval "$2"; __rwo_status=$?; if [[ $__rwo_status -eq 0 ]]; then (umask 077 && env -0 > "$__rwo_snap") || __rwo_status=$?; fi; exit "$__rwo_status"' _ "$setup_snap" "$1" || {
+    rm -f "$setup_snap"
+    restore_traps "$prev_traps"
+    die 6 "setup failed"
+  }
+  if [[ -f "$setup_snap" ]]; then
+    mapfile -d '' -t setup_env < "$setup_snap"
+    rm -f "$setup_snap"
+  fi
+  restore_traps "$prev_traps"
+}
+
+prepare_env() {
+  local setup
+  setup_env=()
+  setup=$(field setup_command)
+  if [[ -n "$setup" ]]; then
+    echo "run-work-order: setup: setup_command"
+    run_setup_command "$setup"
+    return
+  fi
+  setup=$(agents_setup)
+  if [[ -n "$setup" ]]; then
+    echo "run-work-order: setup: agents.setup_command"
+    run_setup_command "$setup"
+    return
+  fi
+  if python_project; then
+    echo "run-work-order: setup: python venv"
+    setup_python
+    return
+  fi
+  if [[ -f package.json ]]; then
+    setup_node
+    return
+  fi
+  echo "run-work-order: setup: none"
+}
+
+# Exit 4 when setup rewrote a tracked file (for example a lockfile), or moved HEAD
+# or changed its tree after finish_commit (setup_head and setup_tree, when set).
+check_setup_tree() {
+  local dirty names
+  if [[ -n "${setup_head:-}" ]] && [[ "$(git rev-parse HEAD)" != "$setup_head" ||
+    "$(git rev-parse 'HEAD^{tree}')" != "${setup_tree:-}" ]]; then
+    die 4 "setup changed repository history or tracked files"
+  fi
+  dirty=$(git status --porcelain --untracked-files=no)
+  if [[ -n "$dirty" ]]; then
+    names=$(printf '%s\n' "$dirty" | cut -c4- | tr '\n' ' ')
+    die 4 "setup changed tracked files: ${names% }"
+  fi
+}
+
+# One new commit on $start, titled "<title> (#<issue>)". Soft reset does not
+# rewrite commits that $start already reaches (the remote tip on a reused branch).
+finish_commit() {
+  if [[ "$(git rev-parse HEAD)" != "$start" || -n "$(git status --porcelain)" ]]; then
+    git reset --quiet --soft "$start"
+    git add -A
+    if git diff --cached --quiet; then
+      die 3 "grok made no change"
+    fi
+    git commit --quiet -m "$title (#$issue)"
+  fi
+  [[ "$(git rev-parse HEAD)" != "$start" ]] || die 3 "grok made no change"
+}
+
+main() {
+  local push=false
+  if [[ "${1:-}" == "--push" ]]; then push=true; shift; fi
+  [[ $# -eq 1 && -f "$1" ]] || die 2 "usage: $0 [--push] <work-order.md>"
+  order="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
+  here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  rules="$here/AGENTS.md"
+  [[ -f "$rules" ]] || die 2 "missing $rules"
+  for tool in git gh grok jq; do command -v "$tool" > /dev/null || die 2 "$tool not found"; done
+  git var GIT_COMMITTER_IDENT > /dev/null 2>&1 || die 2 "set git user.name and user.email (the identity agent commits use)"
+
+  repo=$(field repo); issue=$(field issue); branch=$(field branch)
+  base=$(field base); tests=$(field test_command); title=$(field title)
+  base=${base:-main}
+  [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || die 2 "bad repo: '$repo'"
+  [[ "$issue" =~ ^[0-9]+$ ]] || die 2 "bad issue: '$issue'"
+  [[ "$branch" =~ ^factory/[0-9]+-[A-Za-z0-9._-]+$ ]] || die 2 "branch must be factory/<issue>-<slug>"
+  [[ "$base" =~ ^[A-Za-z0-9._/-]+$ ]] || die 2 "bad base: '$base'"
+  [[ -n "$tests" ]] || die 2 "test_command is required"
+  [[ -n "$title" ]] || die 2 "title is required"
+
+  dir=$(mktemp -d "/workspace/wo-${repo/\//_}-$issue-XXXXXX")
+  echo "run-work-order: $repo#$issue in $dir"
+  gh repo clone "$repo" "$dir" -- --quiet
+  cd "$dir" || die 2 "cannot enter $dir"
+  if git ls-remote --exit-code --heads origin "$branch" > /dev/null; then
+    git fetch --quiet origin "$branch"
+    git switch --quiet "$branch"
+  else
+    git switch --quiet -c "$branch" "origin/$base"
+  fi
+  start=$(git rev-parse HEAD)
+
+  status=0
+  env -u GH_TOKEN -u GITHUB_TOKEN grok --no-auto-update \
+    --cwd "$dir" --trust \
+    --prompt-file "$order" --rules "$(cat "$rules")" \
+    --output-format json --max-turns "${GROK_MAX_TURNS:-60}" \
+    --always-approve --sandbox workspace \
+    --deny 'Bash(git push*)' --deny 'Bash(gh *)' \
+    --disable-web-search > "$dir.grok.json" || status=$?
+  stop=$(jq -r '.stopReason // "none"' "$dir.grok.json" 2> /dev/null || echo none)
+  [[ $status -eq 0 && "$stop" == "end_turn" ]] || die 3 "grok exit $status, stopReason $stop; see $dir.grok.json"
+
+  finish_commit
+  setup_head=$(git rev-parse HEAD)
+  setup_tree=$(git rev-parse 'HEAD^{tree}')
+
+  # AGENTS.md section 5: CI config, lockfiles, agent instructions, and edits to existing tests.
+  protected='^(\.github/(workflows|actions)/|\.github/factory\.yml$|\.github/CODEOWNERS$|CODEOWNERS$|AGENTS\.md$|agents/)|(^|/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|go\.sum|[^/]*\.lock)$'
+  tests_re='(^|/)(tests?|__tests__|spec)/|[._-](test|spec)\.[a-z]+$|(^|/)test_[^/]*$'
+  hits=$({
+    git diff --name-only "$start" HEAD | grep -E "$protected"
+    git diff --name-only --diff-filter=MDR "$start" HEAD | grep -Ei "$tests_re"
+  } || true)
+  [[ -z "$hits" ]] || die 4 "needs a person, protected paths changed: $(echo "$hits" | tr '\n' ' ')"
+
+  prepare_env
+  check_setup_tree
+
+  if [[ ${#setup_env[@]} -gt 0 ]]; then
+    env -i "${setup_env[@]}" bash -c "$tests" || die 5 "tests failed: $tests"
+  else
+    bash -c "$tests" || die 5 "tests failed: $tests"
+  fi
+
+  if $push; then
+    git push --quiet -u origin "$branch"
+    echo "run-work-order: pushed $branch; open the PR with gh pr create"
+  else
+    echo "run-work-order: ready in $dir on $branch; rerun with --push or push it yourself"
+  fi
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
 fi
