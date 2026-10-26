@@ -12,5 +12,5 @@ agents:
   # CodeRabbit reviews PRs here (it reviewed #32; it hadn't on #29 to #31), so a merge also needs no
   # blocking CodeRabbit findings, plus PR Reviewer's review (AGENTS.md section 6).
   review_bot: coderabbit
-  # ShellCheck, work-order runner tests, and workflow contract tests (also run in CI).
-  test_command: bash scripts/test.sh
+  # The CI lint job (ShellCheck on the work-order runner).
+  test_command: shellcheck scripts/*.sh

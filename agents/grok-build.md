@@ -75,11 +75,8 @@ Optional: `-m <model>` (see `grok models`), `--effort <level>`.
 
 `scripts/run-work-order.sh [--push] <work-order.md>`:
 
-1. Reads `repo`, `issue_repo`, `issue`, `branch`, `base`, `test_command`, `title`
-   from the work order's front matter, and validates them. Branches must use
-   `factory/<issue-repo-slug>/<issue>-<short-slug>` (AGENTS.md §2); generate one
-   with `issue_branch` from the runner. Old work orders need their branch
-   updated to this format before running.
+1. Reads `repo`, `issue`, `branch`, `base`, `test_command`, `title` from the
+   work order's front matter, and validates them.
 2. Clones the repo into a new `mktemp -d /workspace/wo-<owner>_<repo>-<issue>-XXXXXX`
    directory, and switches to the branch (reusing it if it already exists on
    the remote).

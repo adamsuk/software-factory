@@ -5,25 +5,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## 2026-10-26 (workflow review fixes)
-
-### Fixed
-
-- Foreman explicitly scans intake-only source repositories and checks target
-  enrollment and the builder role before pickup and again before build.
-- Factory branch names include the lowercase source repository as
-  `factory/<owner>_<repo>/<issue>-<short-slug>`. The work-order runner and
-  foreman share branch generation and matching helpers so equal issue numbers
-  in different source repositories stay separate. Old work orders must update
-  their branch field; legacy branches need source metadata to establish identity.
-- Enabled intake alongside builder and reviewer in this repository.
-
-### Added
-
-- Workflow contract tests for the status labels, triage, pickup, trusted triage
-  comments, and source repository branch identity. `bash scripts/test.sh` runs
-  these, the existing work-order tests and ShellCheck, both locally and in CI.
-
 ## 2026-10-26 (intake enabled)
 
 ### Changed

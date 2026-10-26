@@ -28,17 +28,8 @@ rule fixes from the adamsuk/gh-factory#16 trial).
 
 - **One issue per run.** Never batch issues, never start a second one in the
   same run.
-- **A branch per issue:** `factory/<issue-repo-slug>/<issue>-<short-slug>`, cut
-  from the default branch. To derive `issue-repo-slug`, lowercase `issue_repo`,
-  escape `_` as `__` and `.` as `_dot_`, then replace `/` with `_` (for example
-  `adamsuk_software-factory`). This preserves source identity and avoids Git
-  ref restrictions; GitHub owners cannot contain `_`, so the separator is
-  unambiguous. Produce and
-  match branches with `issue_branch` and `issue_branch_matches` in
-  `scripts/run-work-order.sh`, using both `issue_repo` and the issue number.
-  Reuse the same branch for that source issue's fix attempts. Older branches
-  need matching work-order or PR metadata; never infer the source repo from
-  an issue number alone.
+- **A branch per issue:** `factory/<issue>-<short-slug>`, cut from the default
+  branch. Reuse the same branch for that issue's fix attempts.
 - One PR per issue, linked with `Closes #<issue>` when the issue is in the
   PR's repo, or `Refs owner/repo#<issue>` when it lives in another repo (a bare
   `#N` always points at the PR's own repo). `Refs` doesn't close the issue, so
