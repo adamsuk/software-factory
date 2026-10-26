@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 2026-10-26 (intake enabled)
+
+### Changed
+
+- `.github/factory.yml`: enable intake alongside the existing builder and reviewer roles.
+
 ## 2026-10-26 (station 01: status labels and triage/pickup briefs)
 
 ### Added
