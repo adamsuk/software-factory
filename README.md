@@ -54,7 +54,10 @@ in `.github/factory.yml` under `agents:` (merging is off by default).
 
 - [`audits/2026-10-24.md`](audits/2026-10-24.md): the first Line audit.
 - [`audits/2026-10-25.md`](audits/2026-10-25.md): the re-run after gh-factory
-  existed. The current backlog is based on this one.
+  existed. The per-gap backlog (#2 to #40) is based on this one.
+- [`audits/2026-10-26.md`](audits/2026-10-26.md): the re-run after the agent
+  rules and Grok Build landed. Its gaps are grouped into one ticket per Line
+  station (label `station`, #43 to #51).
 
 Audits are read-only and never print secret values.
 
@@ -71,6 +74,8 @@ Audits are read-only and never print secret values.
 | `area: gh-factory` | Changes to the gh-factory tool or baseline |
 | `quick win` / `big gain` | As the audit lists them under quick wins or biggest gains |
 | `decision` | Needs Scott's call before anyone acts |
+| `station` / `station: NN <name>` | Creates or runs one Line station (01 Backlog to 09 Return) |
+| `priority: next` | The one station ticket to build next |
 
 The [Software Factory](https://github.com/users/adamsuk/projects) GitHub
 Project tracks the same issues with Type, Area, Effort, Target repo and Audit
