@@ -76,6 +76,7 @@ Audits are read-only and never print secret values.
 | `decision` | Needs Scott's call before anyone acts |
 | `station` / `station: NN <name>` | Creates or runs one Line station (01 Backlog to 09 Return) |
 | `priority: next` | The one station ticket to build next |
+| `factory:triage`, `factory:ready`, `factory:building`, `factory:gate`, `factory:review`, `factory:merge`, `factory:release`, `factory:done`, `factory:blocked` | Exactly one status label at a time. Who sets each one is in [AGENTS.md section 9 (Status labels)](AGENTS.md#9-status-labels-43). |
 
 The [Software Factory](https://github.com/users/adamsuk/projects) GitHub
 Project tracks the same issues with Type, Area, Effort, Target repo and Audit
