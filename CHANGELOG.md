@@ -9,6 +9,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `scripts/factory-pr-metrics.sh` reports read-only pull request metrics for a
+  UTC window: `api_equiv_usd` cost, first-time-green, fix attempts, review
+  rounds, and open pull requests whose branch starts with `factory/` (#85)
+
+## 2026-10-26
+
+### Added
+
 - `scripts/run-work-order.sh` calls `set_gate_label` after a successful `--push`,
   replacing `factory:building` with `factory:gate` when that label is present and
   `factory:blocked` is not (#78)
