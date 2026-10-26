@@ -4,7 +4,9 @@
 # 2026-10-25. Agents merge only when the PR's checks are green (AGENTS.md section 6). Roles stay
 # the default (builder, reviewer) and the issue label stays `factory`.
 agents:
-  merge: true
+  # Off since 2026-10-26: on the Free plan a private repo can't enforce required checks or branch
+  # protection, so the 'checks are green' merge rule is always met. Stays off until a ruleset is applied.
+  merge: false
   # CodeRabbit reviews PRs here (it reviewed #32; it hadn't on #29 to #31), so a merge also needs no
   # blocking CodeRabbit findings, plus PR Reviewer's review (AGENTS.md section 6).
   review_bot: coderabbit
