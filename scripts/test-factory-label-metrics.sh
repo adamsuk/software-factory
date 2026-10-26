@@ -97,8 +97,19 @@ exit 99
 EOF
 chmod +x "$FAKE_BIN/gh"
 
-# Drop the directory that holds the real gh. Standard tools stay on /usr/bin.
-PATH="$FAKE_BIN:/usr/bin:/bin"
+# GitHub-hosted Ubuntu installs the real gh with apt, at /usr/bin/gh, and /bin
+# is that same directory. $FAKE_BIN:/usr/bin:/bin would still contain it.
+# Link the tools this test and the metrics script call, and leave gh out.
+TOOL_BIN=$ROOT/tools
+mkdir -p "$TOOL_BIN"
+orig_path=$PATH
+for tool in bash cat cmp date diff grep head jq mkdir mktemp rm sort; do
+  src=$(PATH="$orig_path" command -v "$tool") || fail "$tool is not on PATH"
+  [[ -x "$src" ]] || fail "$tool is not executable: $src"
+  ln -s "$src" "$TOOL_BIN/$tool"
+done
+unset tool src orig_path
+PATH="$FAKE_BIN:$TOOL_BIN"
 export PATH
 
 command -v jq > /dev/null || fail "jq is not on PATH"
