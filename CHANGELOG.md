@@ -5,6 +5,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 2026-10-26 (station 01: status labels and triage/pickup briefs)
+
+### Added
+
+- AGENTS.md section 9, Status labels: the nine `factory:*` labels, who sets each one, one label
+  per issue at a time, and only `factory:ready` issues may be built (#43).
+
+### Changed
+
+- Intake brief rewritten as the station 01 triage brief: dedupe, exactly one `Target repo:` line,
+  a size, checkable acceptance criteria, and a triage comment that builders work from instead of
+  the raw issue text. Each non-duplicate issue ends at `factory:ready` or `factory:blocked` with a
+  reason, and duplicates are closed linking the original.
+- Foreman brief: picks only `factory:ready` issues, sets `factory:building` on pickup, and builds
+  the work order from intake's latest `<!-- factory:triage -->` comment from the factory account.
+  Other issues are left alone when picking; in-flight PRs still finish, and any stop after pickup
+  moves the issue to `factory:blocked`. Labels record state and never grant merge permission.
+- Triage resolves the target repo first, checks it is enrolled with `builder` in its roles, and
+  dedupes by target repo plus fingerprint or title. Behaviour changes need a test acceptance
+  criterion, otherwise the issue is `factory:blocked`. The foreman checks `builder` in the target
+  repo, and `factory:ready` is checked at pickup.
+- `.github/factory.yml`: enable intake alongside the existing builder and reviewer roles.
+
 ## 2026-10-26
 
 ### Added
