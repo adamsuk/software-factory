@@ -135,6 +135,29 @@ print(",".join(names))
 ' || true
 }
 
+# False only when pyproject.toml parses and has neither [project] nor [build-system]
+# (tool settings only). True when no TOML parser is available or the file does not parse.
+pyproject_installable() {
+  python3 -c '
+try:
+    import tomllib
+except ImportError:
+    try:
+        import tomli as tomllib
+    except ImportError:
+        try:
+            from pip._vendor import tomli as tomllib
+        except ImportError:
+            raise SystemExit(0)
+try:
+    with open("pyproject.toml", encoding="utf-8") as fh:
+        data = tomllib.loads(fh.read())
+except (OSError, ValueError):
+    raise SystemExit(0)
+raise SystemExit(0 if "project" in data or "build-system" in data else 1)
+'
+}
+
 # Venv lives at "$dir.venv", outside the clone, so it is not a work-tree file.
 setup_python() {
   local pip req tool extras spec
@@ -149,7 +172,11 @@ setup_python() {
         spec=".[$extras]"
       fi
     fi
-    "$pip" install -e "$spec" || die 6 "setup failed"
+    if [[ -f setup.py ]] || pyproject_installable; then
+      "$pip" install -e "$spec" || die 6 "setup failed"
+    else
+      echo "run-work-order: setup: pyproject.toml has no [project] or [build-system]; not installing it"
+    fi
   fi
   for req in requirements*.txt; do
     [[ -f "$req" ]] || continue
