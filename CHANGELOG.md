@@ -18,7 +18,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   in `[project.optional-dependencies]` (`-e '.[dev,test]'`, `-e '.[dev]'`,
   `-e '.[test]'`, or `-e .`). A `setup.py` without `pyproject.toml` installs
   `-e .`. Setup failure exits 6.
-  A setup that changes tracked files exits 4.
+  A setup that changes tracked files, moves `HEAD` or changes its tree exits 4.
+  The environment a custom setup command exports (for example an activated venv
+  or a `PATH` change) carries into `test_command`. On Python 3.10, extras are read
+  with `tomli` or pip's vendored copy, and skipped with a message if neither exists.
 
 ### Changed
 

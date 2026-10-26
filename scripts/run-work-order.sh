@@ -9,12 +9,13 @@
 # Before test_command, prepare the target environment: the work order's
 # setup_command, else agents.setup_command from origin/$base:.github/factory.yml
 # (never the working tree), else a Python venv (declared dev/test extras) or a
-# Node install.
+# Node install. A custom setup's exported environment carries into test_command.
 # Grok's commits and leftover changes become one commit on top of the start
 # revision, "<title> (#<issue>)". Commits already on the remote stay put.
 # It never opens PRs or merges.
 set -euo pipefail
 
+setup_env=()
 die() { echo "run-work-order: $2" >&2; exit "$1"; }
 
 # Front matter value: the text after `key:` up to a `#` comment, quotes stripped.
@@ -97,14 +98,23 @@ python_project() {
 }
 
 # Comma-separated dev/test extras from [project.optional-dependencies].
-# Empty when neither is declared, tomllib is unavailable, or the file does not parse.
+# Empty when neither is declared, no TOML parser is available, or the file does not parse.
+# Python 3.10 has no tomllib: try tomli, then the copy pip vendors, else warn and skip.
 # Poetry [tool.poetry.group.<name>] groups are not pip extras; the named-tool install covers pytest/ruff.
 python_extras() {
   python3 -c '
+import sys
 try:
     import tomllib
 except ImportError:
-    raise SystemExit(0)
+    try:
+        import tomli as tomllib
+    except ImportError:
+        try:
+            from pip._vendor import tomli as tomllib
+        except ImportError:
+            print("run-work-order: setup: no TOML parser (tomllib, tomli); dev/test extras not read", file=sys.stderr)
+            raise SystemExit(0)
 try:
     with open("pyproject.toml", "rb") as fh:
         data = tomllib.load(fh)
@@ -172,18 +182,35 @@ setup_node() {
   export PATH
 }
 
+# Run a custom setup command and keep the environment it exports (for example an
+# activated venv or a PATH change) in setup_env, so test_command runs with it.
+# The snapshot file sits outside the clone, is private, and is removed at once.
+run_setup_command() {
+  local snap="$dir.setup-env"
+  rm -f "$snap"
+  bash -c '__rwo_snap=$1; trap '\''(umask 077 && env -0 > "$__rwo_snap")'\'' EXIT; eval "$2"' _ "$snap" "$1" || {
+    rm -f "$snap"
+    die 6 "setup failed"
+  }
+  if [[ -f "$snap" ]]; then
+    mapfile -d '' -t setup_env < "$snap"
+    rm -f "$snap"
+  fi
+}
+
 prepare_env() {
   local setup
+  setup_env=()
   setup=$(field setup_command)
   if [[ -n "$setup" ]]; then
     echo "run-work-order: setup: setup_command"
-    bash -c "$setup" || die 6 "setup failed"
+    run_setup_command "$setup"
     return
   fi
   setup=$(agents_setup)
   if [[ -n "$setup" ]]; then
     echo "run-work-order: setup: agents.setup_command"
-    bash -c "$setup" || die 6 "setup failed"
+    run_setup_command "$setup"
     return
   fi
   if python_project; then
@@ -198,9 +225,14 @@ prepare_env() {
   echo "run-work-order: setup: none"
 }
 
-# Exit 4 when setup rewrote a tracked file (for example a lockfile).
+# Exit 4 when setup rewrote a tracked file (for example a lockfile), or moved HEAD
+# or changed its tree after finish_commit (setup_head and setup_tree, when set).
 check_setup_tree() {
   local dirty names
+  if [[ -n "${setup_head:-}" ]] && [[ "$(git rev-parse HEAD)" != "$setup_head" ||
+    "$(git rev-parse 'HEAD^{tree}')" != "${setup_tree:-}" ]]; then
+    die 4 "setup changed repository history or tracked files"
+  fi
   dirty=$(git status --porcelain --untracked-files=no)
   if [[ -n "$dirty" ]]; then
     names=$(printf '%s\n' "$dirty" | cut -c4- | tr '\n' ' ')
@@ -267,6 +299,8 @@ main() {
   [[ $status -eq 0 && "$stop" == "end_turn" ]] || die 3 "grok exit $status, stopReason $stop; see $dir.grok.json"
 
   finish_commit
+  setup_head=$(git rev-parse HEAD)
+  setup_tree=$(git rev-parse 'HEAD^{tree}')
 
   # AGENTS.md section 5: CI config, lockfiles, agent instructions, and edits to existing tests.
   protected='^(\.github/(workflows|actions)/|\.github/factory\.yml$|\.github/CODEOWNERS$|CODEOWNERS$|AGENTS\.md$|agents/)|(^|/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|go\.sum|[^/]*\.lock)$'
@@ -280,7 +314,11 @@ main() {
   prepare_env
   check_setup_tree
 
-  bash -c "$tests" || die 5 "tests failed: $tests"
+  if [[ ${#setup_env[@]} -gt 0 ]]; then
+    env -i "${setup_env[@]}" bash -c "$tests" || die 5 "tests failed: $tests"
+  else
+    bash -c "$tests" || die 5 "tests failed: $tests"
+  fi
 
   if $push; then
     git push --quiet -u origin "$branch"
