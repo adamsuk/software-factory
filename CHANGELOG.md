@@ -27,6 +27,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   criterion, otherwise the issue is `factory:blocked`. The foreman checks `builder` in the target
   repo, and `factory:ready` is checked at pickup.
 
+## 2026-10-26 (test environment setup)
+
+### Added
+
+- `scripts/run-work-order.sh` prepares the target repo's test environment before
+  `test_command`. A work order `setup_command` wins, otherwise `agents.setup_command`
+  from `.github/factory.yml` on `origin/$base` (not the working tree), otherwise a
+  Python venv outside the clone or a Node install (`pnpm` or `yarn` with a frozen
+  lockfile, `npm ci`, or `npm install --no-package-lock`). For a `pyproject.toml`,
+  the venv installs the project editable with the `dev` and `test` extras declared
+  in `[project.optional-dependencies]` (`-e '.[dev,test]'`, `-e '.[dev]'`,
+  `-e '.[test]'`, or `-e .`). A `setup.py` without `pyproject.toml` installs
+  `-e .`. Setup failure exits 6.
+  A setup that changes tracked files, moves `HEAD` or changes its tree exits 4.
+  The environment a custom setup command exports (for example an activated venv
+  or a `PATH` change) carries into `test_command`. On Python 3.10, extras are read
+  with `tomli` or pip's vendored copy, and skipped with a message if neither exists.
+
+### Changed
+
+- `scripts/run-work-order.sh` turns Grok Build's commits and any leftover changes
+  into one commit on top of the starting revision, titled `<title> (#<issue>)`.
+  Commits that were already on the remote branch are left as they are.
+
 ## 2026-10-26 (agent merges off)
 
 ### Changed
