@@ -119,3 +119,27 @@ review. Never make it as part of a fix-loop attempt.
 - No polling loops. Check status when woken, or once per step.
 - Reports are short: what changed, links, check status, anything that needs
   Scott.
+
+## 9. Status labels (#43)
+
+Every station reads and writes the same nine labels. An issue carries **exactly
+one** `factory:*` label at a time: whoever moves it removes the old one.
+
+| Label | Meaning | Set by |
+| --- | --- | --- |
+| `factory:triage` | New, waiting for triage | Whoever files it (people, PostHog, 09 Return); intake for unlabelled issues |
+| `factory:ready` | Triaged: one `Target repo:` line, checkable acceptance criteria, a size | Intake (Signal Issues) |
+| `factory:building` | A builder has picked it up | Foreman, on pickup |
+| `factory:gate` | PR open, waiting on required checks | Foreman, when the PR opens |
+| `factory:review` | Checks green, waiting on review | Foreman, when checks pass |
+| `factory:merge` | Approved, waiting to merge | PR Reviewer |
+| `factory:release` | Merged, waiting to ship | Whoever merges (Scott, or an agent under §6) |
+| `factory:done` | Shipped and closed out | 09 Return |
+| `factory:blocked` | Needs a person | Any station, with a comment saying why and who must act |
+
+- **Only `factory:ready` issues may be built.** No agent builds from an issue
+  in any other state, or from one with no `factory:*` label.
+- Builders work from intake's normalised description and the foreman's work
+  order, never from the raw issue text (§1).
+- Scott may set or clear any label; agents don't move an issue out of
+  `factory:blocked` until the comment's ask is answered.

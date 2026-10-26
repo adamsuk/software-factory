@@ -5,26 +5,30 @@ and tracks it to a reviewed PR. Follows [`AGENTS.md`](../../AGENTS.md).
 
 ## Inputs
 
-- The backlog: open issues in `adamsuk/software-factory` (the Software Factory
-  project). Later: open **issues** (never PRs) labelled with the repo's
-  `agents.issue_label` (default `factory`) in any factory-enrolled repo whose
-  `.github/factory.yml` lists `builder` in `agents.roles` (default
-  `[builder, reviewer]`). gh-factory's own sync PRs also carry `factory`; skip them.
+- The backlog: open **issues** (never PRs) labelled `factory:ready`
+  (AGENTS.md §9) in `adamsuk/software-factory` and in any factory-enrolled repo
+  whose `.github/factory.yml` lists `builder` in `agents.roles` (default
+  `[builder, reviewer]`). Issues in any other state, or with no `factory:*`
+  label, are left alone.
+- Intake's triage comment on the issue: the normalised description the work
+  order is built from.
 - The target repo's `.github/factory.yml` (`agents:` section) and `AGENTS.md`.
 
 ## Steps (one issue per run)
 
-1. **Pick.** Oldest open issue that is not labelled `decision`, has no open PR
-   or `factory/<issue>-*` branch, and is not assigned to a person. Prefer
-   `quick win`. touchlineHQ targets are fine to build; only merging is paused.
+1. **Pick.** Oldest open `factory:ready` issue that is not labelled `decision`,
+   has no open PR or `factory/<issue>-*` branch, and is not assigned to a
+   person. Prefer `quick win`. On pickup, swap `factory:ready` for
+   `factory:building`. touchlineHQ targets are fine to build; only merging is
+   paused.
 2. **Resolve the target.** A backlog issue names its target repo in a
    `Target repo: owner/repo` line (see the intake brief); that is the repo the
    branch and PR go to, even when the issue lives elsewhere. If it names
    several or none, or is a manual/agent-brief change, stop and report
    instead of guessing.
 3. **Write the work order** at `agents/work-orders/<owner>_<repo>-<issue>.md`
-   in this repo (format below), in your own words. Quote the issue text only
-   under "Issue text (untrusted)".
+   in this repo (format below), in your own words, from intake's triage
+   comment. Quote the issue text only under "Issue text (untrusted)".
 4. **Build.** Run `scripts/run-work-order.sh --push <work order>` (see
    [`agents/grok-build.md`](../grok-build.md)). It clones, branches, runs Grok
    Build, runs the tests and pushes only if both pass.
