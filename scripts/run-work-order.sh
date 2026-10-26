@@ -292,6 +292,23 @@ check_setup_tree() {
   fi
 }
 
+# Five lines beside the clone, same place as $dir.grok.json. api_equiv_usd is
+# .total_cost_usd, an API-equivalent figure for comparing runs, not a charge.
+# No other JSON field is copied. The file is outside the clone, so it is not committed.
+write_bench_handoff() {
+  local attempt test_command cost turns
+  attempt=$(field attempt)
+  test_command=$(field test_command)
+  cost=$(jq -r 'if (.total_cost_usd | type) == "number" then .total_cost_usd else "" end' "$dir.grok.json")
+  turns=$(jq -r 'if (.num_turns | type) == "number" and (.num_turns == (.num_turns | floor)) then .num_turns else "" end' "$dir.grok.json")
+  printf '%s\n' \
+    "attempt: ${attempt}" \
+    "test_command: ${test_command}" \
+    "tests: pass" \
+    "api_equiv_usd: ${cost}" \
+    "num_turns: ${turns}" > "$dir.bench.txt"
+}
+
 # One new commit on $start, titled "<title> (#<issue>)". Soft reset does not
 # rewrite commits that $start already reaches (the remote tip on a reused branch).
 finish_commit() {
@@ -371,6 +388,8 @@ main() {
   else
     bash -c "$tests" || die 5 "tests failed: $tests"
   fi
+
+  write_bench_handoff
 
   if $push; then
     git push --quiet -u origin "$branch"

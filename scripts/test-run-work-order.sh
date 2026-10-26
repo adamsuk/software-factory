@@ -611,6 +611,142 @@ header=$(sed -n '1,16p' "$here/run-work-order.sh")
 [[ "$header" == *"6 setup failed"* ]] || fail "header missing exit code 6"
 [[ "$header" == *"setup_command"* ]] || fail "header missing setup step"
 
+# --- bench handoff ----------------------------------------------------------
+
+assert_bench() {
+  local file=$1
+  shift
+  local expected n
+  expected=$(printf '%s\n' "$@")
+  assert_eq "$(cat "$file")" "$expected"
+  n=$(wc -l < "$file")
+  n=${n//[[:space:]]/}
+  assert_eq "$n" "5"
+}
+
+# Writes $dir.bench.txt from a front-matter attempt line ($2, empty to omit it)
+# and a Grok JSON document ($3). Remaining args are the five expected lines.
+run_bench_case() {
+  local name=$1 extra=$2 json=$3
+  shift 3
+  local broot found
+  tname=$name
+  broot=$ROOT/$name
+  mkdir -p "$broot/clone"
+  dir=$broot/clone
+  order=$broot/order.md
+  {
+    printf '%s\n' '---' 'repo: acme/widgets'
+    if [[ -n "$extra" ]]; then
+      printf '%s\n' "$extra"
+    fi
+    printf '%s\n' 'test_command: shellcheck scripts/*.sh' '---'
+  } > "$order"
+  printf '%s\n' "$json" > "$dir.grok.json"
+  write_bench_handoff
+  bench_file=$dir.bench.txt
+  [[ -f "$bench_file" ]] || fail "bench handoff was not written"
+  found=$(find "$broot" -name '*.bench.txt' -print)
+  assert_eq "$found" "$bench_file"
+  assert_bench "$bench_file" "$@"
+}
+
+tname="bench-handoff"
+new_repo "$ROOT/bench-handoff/clone"
+run_bench_case bench-handoff 'attempt: 1' '{
+  "thought": "BENCH_DO_NOT_COPY",
+  "text": "BENCH_DO_NOT_COPY",
+  "requestId": "BENCH_DO_NOT_COPY",
+  "cwd": "BENCH_DO_NOT_COPY",
+  "modelUsage": "BENCH_DO_NOT_COPY",
+  "sessionId": "BENCH_DO_NOT_COPY",
+  "total_cost_usd": 1.05,
+  "num_turns": 12
+}' \
+  'attempt: 1' \
+  'test_command: shellcheck scripts/*.sh' \
+  'tests: pass' \
+  'api_equiv_usd: 1.05' \
+  'num_turns: 12'
+if grep -q 'BENCH_DO_NOT_COPY' "$bench_file"; then
+  fail "bench handoff copied a JSON field"
+fi
+assert_eq "$(git -C "$dir" status --porcelain)" ""
+# The call inside main, not the function definition. declare -f main is only the body.
+main_src=$(declare -f main)
+die_line=$(printf '%s\n' "$main_src" | awk '/die 5 "tests failed/ { n = NR } END { if (n) print n }')
+call_line=$(printf '%s\n' "$main_src" | awk '
+  /write_bench_handoff[[:space:]]*\(/ { next }
+  /function[[:space:]]+write_bench_handoff/ { next }
+  /write_bench_handoff/ { print NR; exit }
+')
+push_line=$(printf '%s\n' "$main_src" | awk '/^[[:space:]]*git push([[:space:]]|$)/ { print NR; exit }')
+[[ -n "$die_line" ]] || fail "main missing die 5 tests failed"
+[[ -n "$call_line" ]] || fail "main does not call write_bench_handoff"
+[[ "$call_line" -gt "$die_line" ]] || fail "write_bench_handoff call appears before die 5 tests failed"
+[[ -n "$push_line" && "$call_line" -lt "$push_line" ]] || fail "write_bench_handoff is not before push"
+
+run_bench_case bench-handoff-empty-attempt '' '{
+  "total_cost_usd": 1.05,
+  "num_turns": 12
+}' \
+  'attempt: ' \
+  'test_command: shellcheck scripts/*.sh' \
+  'tests: pass' \
+  'api_equiv_usd: 1.05' \
+  'num_turns: 12'
+
+run_bench_case bench-handoff-missing-cost 'attempt: 2' '{
+  "num_turns": 12
+}' \
+  'attempt: 2' \
+  'test_command: shellcheck scripts/*.sh' \
+  'tests: pass' \
+  'api_equiv_usd: ' \
+  'num_turns: 12'
+
+run_bench_case bench-handoff-cost-not-number 'attempt: 2' '{
+  "total_cost_usd": "BENCH_DO_NOT_COPY",
+  "num_turns": 12
+}' \
+  'attempt: 2' \
+  'test_command: shellcheck scripts/*.sh' \
+  'tests: pass' \
+  'api_equiv_usd: ' \
+  'num_turns: 12'
+if grep -q 'BENCH_DO_NOT_COPY' "$bench_file"; then
+  fail "non-numeric total_cost_usd was copied"
+fi
+
+run_bench_case bench-handoff-missing-turns 'attempt: 2' '{
+  "total_cost_usd": 1.05
+}' \
+  'attempt: 2' \
+  'test_command: shellcheck scripts/*.sh' \
+  'tests: pass' \
+  'api_equiv_usd: 1.05' \
+  'num_turns: '
+
+run_bench_case bench-handoff-turns-not-integer 'attempt: 2' '{
+  "total_cost_usd": 1.05,
+  "num_turns": 12.5
+}' \
+  'attempt: 2' \
+  'test_command: shellcheck scripts/*.sh' \
+  'tests: pass' \
+  'api_equiv_usd: 1.05' \
+  'num_turns: '
+
+run_bench_case bench-handoff-turns-string 'attempt: 2' '{
+  "total_cost_usd": 1.05,
+  "num_turns": "12"
+}' \
+  'attempt: 2' \
+  'test_command: shellcheck scripts/*.sh' \
+  'tests: pass' \
+  'api_equiv_usd: 1.05' \
+  'num_turns: '
+
 PATH=$ORIG_PATH
 # Read by finish_commit / prepare_env in the sourced runner.
 : "$title" "$issue" "$base" "$tests"
