@@ -15,6 +15,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   list, or an empty `required_checks` list moves it to `factory:blocked` and
   comments that Scott must act (#81)
 
+### Fixed
+
+- `scripts/gate-issue.sh` parses top-level `required_checks` as YAML, including
+  blank lines, comments, quotes, flow sequences, and any legal indent. A value
+  that is not a list of strings exits 7. Every `gh pr checks` row with a
+  required name counts. `gh issue edit` and `gh issue comment` keep their URLs
+  off stdout, including when a blocked label edit fails after the comment (#81)
+
 ## 2026-10-26
 
 ### Added

@@ -99,8 +99,21 @@ print(json.dumps({"name": "factory.yml", "encoding": "base64", "content": wrappe
   exit 0
 fi
 
-if [[ "$cmd" == "issue" && ("$sub" == "edit" || "$sub" == "comment") ]]; then
-  exit 0
+# A real gh prints a URL on success. The script must not pass that through.
+if [[ "$cmd" == "issue" && "$sub" == "edit" ]]; then
+  status=${GH_EDIT_STATUS:-0}
+  if [[ "$status" -eq 0 ]]; then
+    printf '%s\n' "https://github.com/example/issues/1"
+  fi
+  exit "$status"
+fi
+
+if [[ "$cmd" == "issue" && "$sub" == "comment" ]]; then
+  status=${GH_COMMENT_STATUS:-0}
+  if [[ "$status" -eq 0 ]]; then
+    printf '%s\n' "https://github.com/example/issues/1#issuecomment-1"
+  fi
+  exit "$status"
 fi
 
 echo "unexpected gh: $*" >&2
@@ -384,8 +397,11 @@ reset_case() {
   # shellcheck disable=SC2089
   GH_PR_JSON='{"number":481,"baseRefName":"main"}'
   GH_FACTORY_MODE=raw
+  GH_EDIT_STATUS=0
+  GH_COMMENT_STATUS=0
   # shellcheck disable=SC2090
   export GH_LABELS GH_COMMENTS_JSON GH_CHECKS_JSON GH_CHECKS_STATUS GH_PR_JSON GH_FACTORY_MODE
+  export GH_EDIT_STATUS GH_COMMENT_STATUS
   set_factory << 'EOF'
 agents:
   test_command: shellcheck scripts/*.sh
@@ -758,21 +774,222 @@ if gh_has_arg "$(api_url adamsuk/software-factory)"; then
   fail "pull request read used issue_repo"
 fi
 
-tname="inline empty list still reads following items"
+tname="invalid yaml exits 7 with no stdout"
 reset_case
 write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
 set_labels factory:gate
 set_factory << 'EOF'
 required_checks: [] # none inline
-  - ShellCheck # kept
+  - ShellCheck # not a second value
 not_an_item: true
   - Hidden
 EOF
 set_checks '[{"name":"ShellCheck","bucket":"pass"},{"name":"Hidden","bucket":"fail"}]' 0
 run_gate
+assert_eq "$code" "7"
+assert_eq "$stdout" ""
+assert_no_edit
+assert_no_comment
+assert_invocations 0 pr checks
+grep -q 'could not read factory.yml' "$ROOT/err" || fail "stderr missing parser failure"
+
+tname="blank line keeps later required checks"
+reset_case
+write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+set_labels factory:gate
+set_factory << 'EOF'
+required_checks:
+  - Alpha
+
+  - Beta
+EOF
+set_checks '[{"name":"Alpha","bucket":"pass"},{"name":"Beta","bucket":"fail"}]' 0
+run_gate
+expect_word retry
+assert_no_edit
+assert_one_comment "$(cat << 'EOF'
+<!-- factory:gate -->
+red: Beta
+EOF
+)"
+
+tname="comment line keeps later required checks"
+reset_case
+write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+set_labels factory:gate
+set_factory << 'EOF'
+required_checks:
+  - Alpha
+  # still required
+  - Beta
+EOF
+set_checks '[{"name":"Alpha","bucket":"pass"},{"name":"Beta","bucket":"fail"}]' 0
+run_gate
+expect_word retry
+assert_no_edit
+assert_one_comment "$(cat << 'EOF'
+<!-- factory:gate -->
+red: Beta
+EOF
+)"
+
+tname="quoted required check name"
+reset_case
+write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+set_labels factory:gate
+set_factory << 'EOF'
+required_checks:
+  - "Analyze (javascript-typescript)" # codeql
+EOF
+set_checks '[{"name":"Analyze (javascript-typescript)","bucket":"fail"}]' 0
+run_gate
+expect_word retry
+assert_one_comment "$(cat << 'EOF'
+<!-- factory:gate -->
+red: Analyze (javascript-typescript)
+EOF
+)"
+
+tname="double quoted escape in a required check name"
+reset_case
+write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+set_labels factory:gate
+set_factory << 'EOF'
+required_checks:
+  - "A \"quoted\" name"
+EOF
+set_checks '[{"name":"A \"quoted\" name","bucket":"fail"}]' 0
+run_gate
+expect_word retry
+assert_one_comment "$(cat << 'EOF'
+<!-- factory:gate -->
+red: A "quoted" name
+EOF
+)"
+
+tname="required checks indented four spaces"
+reset_case
+write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+set_labels factory:gate
+set_factory << 'EOF'
+required_checks:
+    - ShellCheck
+EOF
+set_checks '[{"name":"ShellCheck","bucket":"pass"}]' 0
+run_gate
 expect_word review
 assert_edit adamsuk/software-factory factory:gate factory:review
 assert_no_comment
+
+tname="flow required checks"
+reset_case
+write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+set_labels factory:gate
+set_factory << 'EOF'
+required_checks: [Beta, "Alpha"]
+EOF
+set_checks '[{"name":"Alpha","bucket":"fail"},{"name":"Beta","bucket":"fail"}]' 0
+run_gate
+expect_word retry
+assert_no_edit
+assert_one_comment "$(cat << 'EOF'
+<!-- factory:gate -->
+red: Alpha, Beta
+EOF
+)"
+
+tname="required_checks must be a list of strings"
+reset_case
+write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+set_labels factory:gate
+set_factory << 'EOF'
+required_checks: ShellCheck
+EOF
+set_checks '[{"name":"ShellCheck","bucket":"pass"}]' 0
+run_gate
+assert_eq "$code" "7"
+assert_eq "$stdout" ""
+assert_no_edit
+assert_no_comment
+assert_invocations 0 pr checks
+
+tname="non-string required check exits 7"
+reset_case
+write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+set_labels factory:gate
+set_factory << 'EOF'
+required_checks:
+  - ShellCheck
+  - 1
+EOF
+run_gate
+assert_eq "$code" "7"
+assert_eq "$stdout" ""
+assert_no_edit
+assert_no_comment
+assert_invocations 0 pr checks
+
+tname="duplicate check name uses every row"
+reset_case
+write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+set_labels factory:gate
+set_checks '[{"name":"ShellCheck","bucket":"pass","workflow":"a"},{"name":"ShellCheck","bucket":"fail","workflow":"b"}]' 0
+run_gate
+expect_word retry
+assert_no_edit
+assert_one_comment "$(cat << 'EOF'
+<!-- factory:gate -->
+red: ShellCheck
+EOF
+)"
+
+tname="duplicate check name pending wins"
+reset_case
+write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+set_labels factory:gate
+set_checks '[{"name":"ShellCheck","bucket":"pass"},{"name":"ShellCheck","bucket":"pending"}]' 0
+run_gate
+expect_word pending
+assert_no_edit
+assert_no_comment
+
+tname="duplicate check name all pass"
+reset_case
+write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+set_labels factory:gate
+set_checks '[{"name":"ShellCheck","bucket":"pass"},{"name":"ShellCheck","bucket":"pass"}]' 0
+run_gate
+expect_word review
+assert_edit adamsuk/software-factory factory:gate factory:review
+assert_no_comment
+
+tname="duplicate check name non-string bucket is red"
+reset_case
+write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+set_labels factory:gate
+set_checks '[{"name":"ShellCheck","bucket":"pass"},{"name":"ShellCheck","bucket":null}]' 0
+run_gate
+expect_word retry
+assert_one_comment "$(cat << 'EOF'
+<!-- factory:gate -->
+red: ShellCheck
+EOF
+)"
+
+tname="blocked edit failure prints no stdout"
+reset_case
+write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+set_labels factory:gate
+set_factory << 'EOF'
+required_checks:
+EOF
+GH_EDIT_STATUS=1
+export GH_EDIT_STATUS
+run_gate
+assert_eq "$code" "7"
+assert_eq "$stdout" ""
+assert_invocations 1 issue comment
+assert_invocations 1 issue edit
 
 tname="dotted repo name"
 reset_case

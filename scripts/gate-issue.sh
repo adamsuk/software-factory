@@ -6,8 +6,9 @@
 # Reads only repo, issue, issue_repo, branch, and attempt from the front
 # matter. An empty issue_repo means repo. The body after the closing ---
 # is ignored. Exit 2 on a bad work order (no gh call, no stdout). Exit 7
-# when gh fails, except gh pr checks exit 8, whose JSON is kept. No stdout
-# on exit 2 or 7. Success prints one word: review, retry, blocked, pending,
+# when gh fails or required_checks cannot be parsed, except gh pr checks
+# exit 8, whose JSON is kept. No stdout on exit 2 or 7. Success prints one
+# word: review, retry, blocked, pending,
 # or skip. Never merges, creates, pushes, or edits the work order.
 set -euo pipefail
 
@@ -32,27 +33,46 @@ field() {
     }' "$order"
 }
 
-# Top-level required_checks: list only (the key at column 0). Items are the
-# following lines of exactly two spaces, a dash, and a space. The list stops
-# at the first other line. A trailing whitespace-and-# comment is removed.
-# A name may contain spaces and parentheses.
+# Top-level required_checks from a factory.yml document on stdin.
+# Missing, null, and [] print nothing. Any other value must be a list of
+# single-line strings (quotes and escapes already decoded). Blank lines,
+# comments, flow sequences, and any legal indent are part of the document.
+# Exit non-zero if python or the YAML parser cannot start, or the document
+# is not that shape, so the caller can exit 7 without using a partial list.
 required_check_names() {
-  awk '
-    function trim_item(s) {
-      sub(/[ \t]+#.*$/, "", s)
-      sub(/[ \t]+$/, "", s)
-      return s
-    }
-    found {
-      if ($0 ~ /^  - /) {
-        name = trim_item(substr($0, 5))
-        if (name != "") print name
-        next
-      }
-      exit
-    }
-    /^required_checks:([ \t]|$)/ { found = 1; next }
-  '
+  python3 -c 'import sys
+try:
+    import yaml
+except Exception:
+    sys.exit(1)
+
+def fail():
+    sys.exit(1)
+
+try:
+    text = sys.stdin.buffer.read().decode("utf-8")
+    data = yaml.safe_load(text)
+except Exception:
+    fail()
+if data is None:
+    sys.exit(0)
+if not isinstance(data, dict):
+    fail()
+if "required_checks" not in data:
+    sys.exit(0)
+checks = data["required_checks"]
+if checks is None:
+    sys.exit(0)
+if not isinstance(checks, list):
+    fail()
+names = []
+for item in checks:
+    if not isinstance(item, str) or "\n" in item or "\r" in item:
+        fail()
+    names.append(item)
+for item in names:
+    sys.stdout.write(item + "\n")
+'
 }
 
 # Red names in LC_ALL=C byte order, joined with ", " (comma, space).
@@ -115,17 +135,23 @@ load_factory() {
 }
 
 load_required() {
-  local name
+  local parsed name
+  # Command substitution, not a process substitution: a parser or startup
+  # failure has to fail this assignment. A partial list is discarded.
+  parsed=$(printf '%s\n' "$factory_yml" | required_check_names) \
+    || die 7 "could not read factory.yml"
   required=()
   while IFS= read -r name || [[ -n "$name" ]]; do
     [[ -n "$name" ]] || continue
     required+=("$name")
-  done < <(printf '%s\n' "$factory_yml" | required_check_names)
+  done <<< "$parsed"
 }
 
 # Sets outcome to pending, red, or green, and red_names for the red ones.
-# Pending wins over red. An absent required name is pending. Only bucket
-# pass is green. fail, cancel, skipping, and every other bucket are red.
+# Pending wins over red. An absent required name is pending. Every row with
+# the required name counts: any pending is pending, every row pass is green,
+# and anything else is red. Only bucket pass is green. fail, cancel,
+# skipping, and every other bucket are red.
 classify_checks() {
   local name bucket
   outcome=green
@@ -133,10 +159,12 @@ classify_checks() {
   for name in "${required[@]}"; do
     # shellcheck disable=SC2016 # $n is a jq variable, bound by --arg
     bucket=$(printf '%s\n' "$checks_json" | jq -r --arg n "$name" '
-      [.[] | select(.name == $n)]
+      [.[] | select(.name == $n) | .bucket
+        | if type == "string" then . else "other" end]
       | if length == 0 then "absent"
-        elif (.[0].bucket | type) != "string" then "other"
-        else .[0].bucket end
+        elif any(. == "pending") then "pending"
+        elif all(. == "pass") then "pass"
+        else "other" end
     ') || die 7 "could not read checks"
     case "$bucket" in
       pass) ;;
@@ -188,14 +216,14 @@ red_repeated() {
 apply_review() {
   gh issue edit "$issue" --repo "$issue_repo" \
     --remove-label "factory:gate" \
-    --add-label "factory:review" || die 7 "could not edit labels"
+    --add-label "factory:review" > /dev/null || die 7 "could not edit labels"
   finish review
 }
 
 apply_retry() {
   local body
   body=$(printf '%s\n' "<!-- factory:gate -->" "red: ${red_list}")
-  gh issue comment "$issue" --repo "$issue_repo" --body "$body" \
+  gh issue comment "$issue" --repo "$issue_repo" --body "$body" > /dev/null \
     || die 7 "could not comment"
   finish retry
 }
@@ -214,11 +242,11 @@ apply_blocked() {
     "blocked: ${reason}" \
     "red: ${red_field}" \
     "Scott must act.")
-  gh issue comment "$issue" --repo "$issue_repo" --body "$body" \
+  gh issue comment "$issue" --repo "$issue_repo" --body "$body" > /dev/null \
     || die 7 "could not comment"
   gh issue edit "$issue" --repo "$issue_repo" \
     --remove-label "factory:gate" \
-    --add-label "factory:blocked" || die 7 "could not edit labels"
+    --add-label "factory:blocked" > /dev/null || die 7 "could not edit labels"
   finish blocked
 }
 
