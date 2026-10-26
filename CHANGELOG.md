@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - `.github/factory.yml`: `agents.merge: false`. Required checks and branch protection can't be
   enforced on the Free plan while the repo is private, so agent merges stay off until a ruleset
-  is applied.
+  enforces required checks and branch protection on main.
 
 ## 2026-10-25 (rule fixes from the gh-factory#16 trial)
 
