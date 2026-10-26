@@ -306,6 +306,36 @@ finish_commit() {
   [[ "$(git rev-parse HEAD)" != "$start" ]] || die 3 "grok made no change"
 }
 
+# GitHub owners cannot contain underscores, so the first underscore separates
+# owner from repo. Escape punctuation without collisions or invalid Git refs.
+issue_branch_prefix() {
+  local source_repo=$1 source_issue=$2
+  [[ "$source_repo" =~ ^[A-Za-z0-9-]+/[A-Za-z0-9_.-]+$ &&
+    "$source_issue" =~ ^[1-9][0-9]*$ ]] || return 1
+  source_repo=$(printf '%s' "$source_repo" | LC_ALL=C tr '[:upper:]' '[:lower:]')
+  source_repo=${source_repo//_/__}
+  source_repo=${source_repo//./_dot_}
+  printf 'factory/%s/%s-' "${source_repo/\//_}" "$source_issue"
+}
+
+# Match the complete source identity, with a nonempty, valid Git branch suffix.
+issue_branch_matches() {
+  local prefix short_slug
+  prefix=$(issue_branch_prefix "$2" "$3") || return 1
+  [[ "$1" == "$prefix"* ]] || return 1
+  short_slug=${1#"$prefix"}
+  [[ "$short_slug" =~ ^[A-Za-z0-9._-]+$ ]] || return 1
+  git check-ref-format --branch "$1" > /dev/null 2>&1
+}
+
+# Shared producer for foreman work orders; safe to call when this file is sourced.
+issue_branch() {
+  local candidate
+  candidate="$(issue_branch_prefix "$1" "$2")$3" || return 1
+  issue_branch_matches "$candidate" "$1" "$2" || return 1
+  printf '%s\n' "$candidate"
+}
+
 main() {
   local push=false
   if [[ "${1:-}" == "--push" ]]; then push=true; shift; fi
@@ -317,12 +347,14 @@ main() {
   for tool in git gh grok jq; do command -v "$tool" > /dev/null || die 2 "$tool not found"; done
   git var GIT_COMMITTER_IDENT > /dev/null 2>&1 || die 2 "set git user.name and user.email (the identity agent commits use)"
 
-  repo=$(field repo); issue=$(field issue); branch=$(field branch)
+  repo=$(field repo); issue_repo=$(field issue_repo)
+  issue=$(field issue); branch=$(field branch)
   base=$(field base); tests=$(field test_command); title=$(field title)
   base=${base:-main}
   [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || die 2 "bad repo: '$repo'"
   [[ "$issue" =~ ^[0-9]+$ ]] || die 2 "bad issue: '$issue'"
-  [[ "$branch" =~ ^factory/[0-9]+-[A-Za-z0-9._-]+$ ]] || die 2 "branch must be factory/<issue>-<slug>"
+  issue_branch_matches "$branch" "$issue_repo" "$issue" ||
+    die 2 "branch must be factory/<issue-repo-slug>/<issue>-<short-slug> matching issue_repo and issue"
   [[ "$base" =~ ^[A-Za-z0-9._/-]+$ ]] || die 2 "bad base: '$base'"
   [[ -n "$tests" ]] || die 2 "test_command is required"
   [[ -n "$title" ]] || die 2 "title is required"
