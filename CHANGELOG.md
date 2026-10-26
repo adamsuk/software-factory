@@ -5,6 +5,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 2026-10-26 (bench handoff)
+
+### Added
+
+- `scripts/run-work-order.sh` writes `$dir.bench.txt` beside the clone after tests
+  pass and before any push: attempt, test command, `tests: pass`, API-equivalent
+  `.total_cost_usd` as `api_equiv_usd`, and integer `.num_turns`. No other Grok
+  JSON field is copied (#69).
+
 ## 2026-10-26
 
 ### Added
