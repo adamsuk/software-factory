@@ -1,7 +1,8 @@
 # software-factory's own gh-factory overrides (see adamsuk/gh-factory README, "Per-repo overrides").
 
 # Factory agents (see the gh-factory README, "Agents"). Scott approved agent merges here on
-# 2026-10-25 and turned them off on 2026-10-26 (see `merge` below).
+# 2026-10-25 and turned them off on 2026-10-26 (see `merge` below). Intake is enabled alongside
+# builder and reviewer, and the issue label stays `factory`.
 agents:
   roles: [intake, builder, reviewer]
   # Off since 2026-10-26: on the Free plan a private repo can't enforce required checks or branch

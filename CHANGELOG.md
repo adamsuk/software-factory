@@ -24,6 +24,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   comments, and source repository branch identity. `bash scripts/test.sh` runs
   these, the existing work-order tests and ShellCheck, both locally and in CI.
 
+## 2026-10-26 (intake enabled)
+
+### Changed
+
+- `.github/factory.yml`: enable intake alongside the existing builder and reviewer roles.
+
 ## 2026-10-26 (station 01: status labels and triage/pickup briefs)
 
 ### Added
