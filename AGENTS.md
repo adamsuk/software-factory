@@ -72,6 +72,7 @@ A change that alters any of these needs a person, not an agent fix:
   says so (for example "Existing tests: added fixture data only, no assertion
   changed"),
 - CI config: `.github/workflows/**`, `.github/actions/**`, `.github/factory.yml`,
+  `.coderabbit.yaml`,
 - lockfiles: `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `poetry.lock`,
   `uv.lock`, `Cargo.lock`, `go.sum`, `Gemfile.lock`, `composer.lock`, `*.lock`,
 - agent instructions: `AGENTS.md`, `agents/**`, `CODEOWNERS`.
