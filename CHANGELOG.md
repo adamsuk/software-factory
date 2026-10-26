@@ -7,6 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 2026-10-26
 
+### Changed
+
+- Builder brief: takes only the foreman's work order for an issue already
+  labelled `factory:building`, and stops after the tested commit (#80).
+
+## 2026-10-26
+
 ### Added
 
 - `scripts/run-work-order.sh` calls `set_gate_label` after a successful `--push`,

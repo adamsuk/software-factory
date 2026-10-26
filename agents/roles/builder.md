@@ -4,8 +4,8 @@ Turns one work order into one tested branch. Follows [`AGENTS.md`](../../AGENTS.
 
 ## Inputs
 
-One work order (`agents/work-orders/<owner>_<repo>-<issue>.md`) or, for Issue
-Shipper, one issue in a repo with `builder` in `agents.roles`. The target
+One work order (`agents/work-orders/<owner>_<repo>-<issue>.md`) for an issue
+the foreman has already labelled `factory:building`. The target
 repo's `AGENTS.md` and `.github/factory.yml` (`agents.test_command`,
 `agents.review_bot`, `agents.merge`). Build in the repo the issue's
 `Target repo:` line names, which may differ from the repo the issue lives in.
@@ -31,13 +31,11 @@ repo's `AGENTS.md` and `.github/factory.yml` (`agents.test_command`,
    form in the PR body: `Closes #<issue>` for the same repo,
    `Refs owner/repo#<issue>` otherwise. A `Refs` issue doesn't close itself:
    after the PR merges, close it with a comment linking the merged PR.
-6. Grok Build stops here: **it never pushes or opens PRs**. The wrapper
-   script, or Issue Shipper, pushes and opens the PR.
-7. Issue Shipper then asks PR Reviewer for a review. That review is always
-   required before merging. If the repo's `agents.review_bot` is
-   `coderabbit`, also wait for CodeRabbit and clear its blocking findings; if
-   it is `none` or unset, don't wait for CodeRabbit. Merge only under
-   AGENTS.md §6.
+6. Grok Build never pushes or opens a pull request. The wrapper script
+   pushes, and the foreman opens the pull request. Issue Shipper does not
+   push or open the pull request.
+7. The builder stops after the tested commit, and review and merge are outside
+   this role.
 
 ## Outputs
 
