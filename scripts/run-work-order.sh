@@ -4,21 +4,17 @@
 # Usage: scripts/run-work-order.sh [--push] agents/work-orders/<owner>_<repo>-<issue>.md
 #
 # Exit codes: 0 ready (pushed with --push), 2 usage or bad work order,
-# 3 Grok Build failed or made no change, 4 protected path touched, 5 tests failed.
+# 3 Grok Build failed or made no change, 4 protected path touched or setup
+# changed a tracked file, 5 tests failed, 6 setup failed.
+# Before test_command, prepare the target environment: the work order's
+# setup_command, else agents.setup_command from origin/$base:.github/factory.yml
+# (never the working tree), else a Python venv or a Node install.
+# Grok's commits and leftover changes become one commit on top of the start
+# revision, "<title> (#<issue>)". Commits already on the remote stay put.
 # It never opens PRs or merges.
 set -euo pipefail
 
 die() { echo "run-work-order: $2" >&2; exit "$1"; }
-
-push=false
-if [[ "${1:-}" == "--push" ]]; then push=true; shift; fi
-[[ $# -eq 1 && -f "$1" ]] || die 2 "usage: $0 [--push] <work-order.md>"
-order="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
-here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-rules="$here/AGENTS.md"
-[[ -f "$rules" ]] || die 2 "missing $rules"
-for tool in git gh grok jq; do command -v "$tool" > /dev/null || die 2 "$tool not found"; done
-git var GIT_COMMITTER_IDENT > /dev/null 2>&1 || die 2 "set git user.name and user.email (the identity agent commits use)"
 
 # Front matter value: the text after `key:` up to a `#` comment, quotes stripped.
 field() {
@@ -31,59 +27,241 @@ field() {
     }' "$order"
 }
 
-repo=$(field repo); issue=$(field issue); branch=$(field branch)
-base=$(field base); tests=$(field test_command); title=$(field title)
-base=${base:-main}
-[[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || die 2 "bad repo: '$repo'"
-[[ "$issue" =~ ^[0-9]+$ ]] || die 2 "bad issue: '$issue'"
-[[ "$branch" =~ ^factory/[0-9]+-[A-Za-z0-9._-]+$ ]] || die 2 "branch must be factory/<issue>-<slug>"
-[[ "$base" =~ ^[A-Za-z0-9._/-]+$ ]] || die 2 "bad base: '$base'"
-[[ -n "$tests" ]] || die 2 "test_command is required"
-[[ -n "$title" ]] || die 2 "title is required"
+# agents.setup_command from a factory.yml document on stdin. Empty if unset.
+agents_setup_from_yaml() {
+  awk -v sq="'" '
+    function yaml_val(v, q, i, c, out) {
+      gsub(/^[ \t]+|[ \t]+$/, "", v)
+      q = substr(v, 1, 1)
+      if (q == "\"" || q == sq) {
+        out = ""
+        for (i = 2; i <= length(v); i++) {
+          c = substr(v, i, 1)
+          if (c == q) return out
+          out = out c
+        }
+        return v
+      }
+      sub(/[ \t]+#.*$/, "", v)
+      gsub(/[ \t]+$/, "", v)
+      return v
+    }
+    /^[[:space:]]*#/ { next }
+    /^[[:space:]]*$/ { next }
+    /^agents:[[:space:]]*(#.*)?$/ { in_agents = 1; child = 0; next }
+    !in_agents { next }
+    /^[^[:space:]#]/ { exit }
+    {
+      indent = $0
+      sub(/[^[:space:]].*$/, "", indent)
+      n = length(indent)
+      if (child == 0) child = n
+      if (n != child) next
+      line = $0
+      sub(/^[[:space:]]+/, "", line)
+      if (index(line, "setup_command:") != 1) next
+      print yaml_val(substr(line, length("setup_command:") + 1))
+      exit
+    }
+  '
+}
 
-dir=$(mktemp -d "/workspace/wo-${repo/\//_}-$issue-XXXXXX")
-echo "run-work-order: $repo#$issue in $dir"
-gh repo clone "$repo" "$dir" -- --quiet
-cd "$dir"
-if git ls-remote --exit-code --heads origin "$branch" > /dev/null; then
-  git fetch --quiet origin "$branch"
-  git switch --quiet "$branch"
-else
-  git switch --quiet -c "$branch" "origin/$base"
-fi
-start=$(git rev-parse HEAD)
+# Read agents.setup_command from origin/$base, not the working tree Grok edited.
+agents_setup() {
+  local yml
+  if ! yml=$(git show "origin/${base}:.github/factory.yml" 2>/dev/null); then
+    yml=""
+  fi
+  printf '%s\n' "$yml" | agents_setup_from_yaml
+}
 
-status=0
-env -u GH_TOKEN -u GITHUB_TOKEN grok --no-auto-update \
-  --cwd "$dir" --trust \
-  --prompt-file "$order" --rules "$(cat "$rules")" \
-  --output-format json --max-turns "${GROK_MAX_TURNS:-60}" \
-  --always-approve --sandbox workspace \
-  --deny 'Bash(git push*)' --deny 'Bash(gh *)' \
-  --disable-web-search > "$dir.grok.json" || status=$?
-stop=$(jq -r '.stopReason // "none"' "$dir.grok.json" 2> /dev/null || echo none)
-[[ $status -eq 0 && "$stop" == "end_turn" ]] || die 3 "grok exit $status, stopReason $stop; see $dir.grok.json"
+# True when $2 is a whole word in command string $1.
+tool_named() {
+  local pad
+  pad=" $(printf '%s' "$1" | LC_ALL=C tr -c 'A-Za-z0-9_' ' ') "
+  [[ "$pad" == *" $2 "* ]]
+}
 
-if [[ -n "$(git status --porcelain)" ]]; then
-  git add -A
-  git commit --quiet -m "$title (#$issue)"
-fi
-[[ "$(git rev-parse HEAD)" != "$start" ]] || die 3 "grok made no change"
+python_project() {
+  local req
+  if [[ -f pyproject.toml || -f setup.py ]]; then
+    return 0
+  fi
+  for req in requirements*.txt; do
+    if [[ -f "$req" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
 
-# AGENTS.md section 5: CI config, lockfiles, agent instructions, and edits to existing tests.
-protected='^(\.github/(workflows|actions)/|\.github/factory\.yml$|\.github/CODEOWNERS$|CODEOWNERS$|AGENTS\.md$|agents/)|(^|/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|go\.sum|[^/]*\.lock)$'
-tests_re='(^|/)(tests?|__tests__|spec)/|[._-](test|spec)\.[a-z]+$|(^|/)test_[^/]*$'
-hits=$({
-  git diff --name-only "$start" HEAD | grep -E "$protected"
-  git diff --name-only --diff-filter=MDR "$start" HEAD | grep -Ei "$tests_re"
-} || true)
-[[ -z "$hits" ]] || die 4 "needs a person, protected paths changed: $(echo "$hits" | tr '\n' ' ')"
+# Venv lives at "$dir.venv", outside the clone, so it is not a work-tree file.
+setup_python() {
+  local pip req tool
+  python3 -m venv "$dir.venv" || die 6 "setup failed"
+  pip="$dir.venv/bin/pip"
+  if [[ -f pyproject.toml || -f setup.py ]]; then
+    "$pip" install -e '.[dev]' \
+      || "$pip" install -e '.[test]' \
+      || "$pip" install -e . \
+      || die 6 "setup failed"
+  fi
+  for req in requirements*.txt; do
+    [[ -f "$req" ]] || continue
+    "$pip" install -r "$req" || die 6 "setup failed"
+  done
+  for tool in pytest ruff mypy black flake8; do
+    if tool_named "$tests" "$tool" && [[ ! -x "$dir.venv/bin/$tool" ]]; then
+      "$pip" install "$tool" || die 6 "setup failed"
+    fi
+  done
+  PATH="$dir.venv/bin:$PATH"
+  export PATH
+}
 
-bash -c "$tests" || die 5 "tests failed: $tests"
+setup_node() {
+  local tool
+  if [[ -f pnpm-lock.yaml ]]; then
+    tool=pnpm
+  elif [[ -f yarn.lock ]]; then
+    tool=yarn
+  else
+    tool=npm
+  fi
+  echo "run-work-order: setup: node $tool"
+  case "$tool" in
+    pnpm) pnpm install --frozen-lockfile || die 6 "setup failed" ;;
+    yarn) yarn install --frozen-lockfile || die 6 "setup failed" ;;
+    npm)
+      if [[ -f package-lock.json || -f npm-shrinkwrap.json ]]; then
+        npm ci || die 6 "setup failed"
+      else
+        npm install --no-package-lock || die 6 "setup failed"
+      fi
+      ;;
+  esac
+  PATH="$dir/node_modules/.bin:$PATH"
+  export PATH
+}
 
-if $push; then
-  git push --quiet -u origin "$branch"
-  echo "run-work-order: pushed $branch; open the PR with gh pr create"
-else
-  echo "run-work-order: ready in $dir on $branch; rerun with --push or push it yourself"
+prepare_env() {
+  local setup
+  setup=$(field setup_command)
+  if [[ -n "$setup" ]]; then
+    echo "run-work-order: setup: setup_command"
+    bash -c "$setup" || die 6 "setup failed"
+    return
+  fi
+  setup=$(agents_setup)
+  if [[ -n "$setup" ]]; then
+    echo "run-work-order: setup: agents.setup_command"
+    bash -c "$setup" || die 6 "setup failed"
+    return
+  fi
+  if python_project; then
+    echo "run-work-order: setup: python venv"
+    setup_python
+    return
+  fi
+  if [[ -f package.json ]]; then
+    setup_node
+    return
+  fi
+  echo "run-work-order: setup: none"
+}
+
+# Exit 4 when setup rewrote a tracked file (for example a lockfile).
+check_setup_tree() {
+  local dirty names
+  dirty=$(git status --porcelain --untracked-files=no)
+  if [[ -n "$dirty" ]]; then
+    names=$(printf '%s\n' "$dirty" | cut -c4- | tr '\n' ' ')
+    die 4 "setup changed tracked files: ${names% }"
+  fi
+}
+
+# One new commit on $start, titled "<title> (#<issue>)". Soft reset does not
+# rewrite commits that $start already reaches (the remote tip on a reused branch).
+finish_commit() {
+  if [[ "$(git rev-parse HEAD)" != "$start" || -n "$(git status --porcelain)" ]]; then
+    git reset --quiet --soft "$start"
+    git add -A
+    if git diff --cached --quiet; then
+      die 3 "grok made no change"
+    fi
+    git commit --quiet -m "$title (#$issue)"
+  fi
+  [[ "$(git rev-parse HEAD)" != "$start" ]] || die 3 "grok made no change"
+}
+
+main() {
+  local push=false
+  if [[ "${1:-}" == "--push" ]]; then push=true; shift; fi
+  [[ $# -eq 1 && -f "$1" ]] || die 2 "usage: $0 [--push] <work-order.md>"
+  order="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
+  here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  rules="$here/AGENTS.md"
+  [[ -f "$rules" ]] || die 2 "missing $rules"
+  for tool in git gh grok jq; do command -v "$tool" > /dev/null || die 2 "$tool not found"; done
+  git var GIT_COMMITTER_IDENT > /dev/null 2>&1 || die 2 "set git user.name and user.email (the identity agent commits use)"
+
+  repo=$(field repo); issue=$(field issue); branch=$(field branch)
+  base=$(field base); tests=$(field test_command); title=$(field title)
+  base=${base:-main}
+  [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || die 2 "bad repo: '$repo'"
+  [[ "$issue" =~ ^[0-9]+$ ]] || die 2 "bad issue: '$issue'"
+  [[ "$branch" =~ ^factory/[0-9]+-[A-Za-z0-9._-]+$ ]] || die 2 "branch must be factory/<issue>-<slug>"
+  [[ "$base" =~ ^[A-Za-z0-9._/-]+$ ]] || die 2 "bad base: '$base'"
+  [[ -n "$tests" ]] || die 2 "test_command is required"
+  [[ -n "$title" ]] || die 2 "title is required"
+
+  dir=$(mktemp -d "/workspace/wo-${repo/\//_}-$issue-XXXXXX")
+  echo "run-work-order: $repo#$issue in $dir"
+  gh repo clone "$repo" "$dir" -- --quiet
+  cd "$dir" || die 2 "cannot enter $dir"
+  if git ls-remote --exit-code --heads origin "$branch" > /dev/null; then
+    git fetch --quiet origin "$branch"
+    git switch --quiet "$branch"
+  else
+    git switch --quiet -c "$branch" "origin/$base"
+  fi
+  start=$(git rev-parse HEAD)
+
+  status=0
+  env -u GH_TOKEN -u GITHUB_TOKEN grok --no-auto-update \
+    --cwd "$dir" --trust \
+    --prompt-file "$order" --rules "$(cat "$rules")" \
+    --output-format json --max-turns "${GROK_MAX_TURNS:-60}" \
+    --always-approve --sandbox workspace \
+    --deny 'Bash(git push*)' --deny 'Bash(gh *)' \
+    --disable-web-search > "$dir.grok.json" || status=$?
+  stop=$(jq -r '.stopReason // "none"' "$dir.grok.json" 2> /dev/null || echo none)
+  [[ $status -eq 0 && "$stop" == "end_turn" ]] || die 3 "grok exit $status, stopReason $stop; see $dir.grok.json"
+
+  finish_commit
+
+  # AGENTS.md section 5: CI config, lockfiles, agent instructions, and edits to existing tests.
+  protected='^(\.github/(workflows|actions)/|\.github/factory\.yml$|\.github/CODEOWNERS$|CODEOWNERS$|AGENTS\.md$|agents/)|(^|/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|go\.sum|[^/]*\.lock)$'
+  tests_re='(^|/)(tests?|__tests__|spec)/|[._-](test|spec)\.[a-z]+$|(^|/)test_[^/]*$'
+  hits=$({
+    git diff --name-only "$start" HEAD | grep -E "$protected"
+    git diff --name-only --diff-filter=MDR "$start" HEAD | grep -Ei "$tests_re"
+  } || true)
+  [[ -z "$hits" ]] || die 4 "needs a person, protected paths changed: $(echo "$hits" | tr '\n' ' ')"
+
+  prepare_env
+  check_setup_tree
+
+  bash -c "$tests" || die 5 "tests failed: $tests"
+
+  if $push; then
+    git push --quiet -u origin "$branch"
+    echo "run-work-order: pushed $branch; open the PR with gh pr create"
+  else
+    echo "run-work-order: ready in $dir on $branch; rerun with --push or push it yourself"
+  fi
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
 fi

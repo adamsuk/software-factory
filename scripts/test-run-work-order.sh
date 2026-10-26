@@ -1,0 +1,539 @@
+#!/usr/bin/env bash
+# Behaviour tests for scripts/run-work-order.sh. The CI lint job shellchecks
+# this file; run it with bash to exercise setup and the squashed commit.
+set -euo pipefail
+
+here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=scripts/run-work-order.sh
+source "$here/run-work-order.sh"
+
+ROOT=$(mktemp -d)
+trap 'rm -rf "$ROOT"' EXIT
+ORIG_PATH=$PATH
+MOCK_BIN=$ROOT/mockbin
+mkdir -p "$MOCK_BIN"
+PYTHON_LOG=$ROOT/python.log
+NODE_LOG=$ROOT/node.log
+PIP_LOG=$ROOT/pip.log
+export PYTHON_LOG NODE_LOG PIP_LOG
+: > "$PYTHON_LOG"
+: > "$NODE_LOG"
+: > "$PIP_LOG"
+
+tname="startup"
+fail() { echo "FAIL ($tname): $*" >&2; exit 1; }
+assert_eq() { [[ "$1" == "$2" ]] || fail "expected [$2] got [$1]"; }
+
+new_repo() {
+  mkdir -p "$1"
+  git -C "$1" init -q -b main
+  git -C "$1" config user.name Test
+  git -C "$1" config user.email test@example.com
+  git -C "$1" config commit.gpgsign false
+}
+
+reset_logs() {
+  : > "$PYTHON_LOG"
+  : > "$NODE_LOG"
+  : > "$PIP_LOG"
+  unset PIP_FAIL_SUBSTR PIP_PROVIDE PIP_TOUCH NODE_TOUCH || true
+}
+
+# --- pure helpers -----------------------------------------------------------
+
+tname="yaml"
+expect_yaml() {
+  local got
+  got=$(printf '%s\n' "$2" | agents_setup_from_yaml)
+  assert_eq "$got" "$1"
+}
+
+expect_yaml "echo hello" "agents:
+  setup_command: echo hello"
+
+expect_yaml "echo # hi" "agents:
+  setup_command: \"echo # hi\""
+
+expect_yaml "echo hello" "agents:
+  setup_command: echo hello # note"
+
+expect_yaml "pip install -e .[dev]" "agents:
+  setup_command: 'pip install -e .[dev]'"
+
+expect_yaml "echo yes" "agents:
+  setup_command: \"echo yes\"  # comment"
+
+expect_yaml "" "setup_command: echo no
+other:
+  setup_command: echo also no"
+
+expect_yaml "" "agents:
+  extra:
+    setup_command: echo nested"
+
+expect_yaml "echo direct" "agents:
+  extra:
+    setup_command: echo nested
+  setup_command: echo direct"
+
+expect_yaml "echo yes" "# file
+agents: # roles
+  merge: true
+
+  # comment
+  setup_command: echo yes
+skip:
+  setup_command: echo no"
+
+expect_yaml "echo deep" "agents:
+    setup_command: echo deep"
+
+expect_yaml "" "agents:
+  merge: true"
+
+expect_yaml "" "agents:
+  setup_command:"
+
+expect_yaml "echo yes" "setup_command: echo no
+agents:
+  setup_command: echo yes"
+
+tname="tool-words"
+assert_tool() {
+  if tool_named "$1" "$2"; then
+    [[ "$3" == yes ]] || fail "unexpected match: $2 in [$1]"
+  else
+    [[ "$3" == no ]] || fail "missed $2 in [$1]"
+  fi
+}
+assert_tool "pytest -q" pytest yes
+assert_tool "pytest -q" ruff no
+assert_tool "notpytest" pytest no
+assert_tool "pytest_cov" pytest no
+assert_tool "ruff check . && pytest -q" ruff yes
+assert_tool "ruff check . && pytest -q" pytest yes
+assert_tool "python -m pytest" pytest yes
+assert_tool "mypy." mypy yes
+assert_tool "blacken" black no
+assert_tool "flake8 src" flake8 yes
+assert_tool "" pytest no
+
+tname="python-project-detect"
+proj=$ROOT/detect
+mkdir -p "$proj/nested"
+cd "$proj"
+if python_project; then fail "empty dir looked like python"; fi
+printf 'x\n' > nested/requirements.txt
+if python_project; then fail "nested requirements.txt counted"; fi
+printf 'x\n' > requirements-dev.txt
+python_project || fail "requirements-dev.txt not detected"
+rm requirements-dev.txt
+printf 'x\n' > setup.py
+python_project || fail "setup.py not detected"
+rm setup.py
+printf 'x\n' > pyproject.toml
+python_project || fail "pyproject.toml not detected"
+cd "$ROOT"
+
+tname="work-order-field"
+order=$ROOT/order.md
+cat > "$order" << 'EOF'
+---
+repo: acme/widgets
+setup_command: "pip install -e '.[dev]'" # comment
+---
+setup_command: echo hacked
+EOF
+assert_eq "$(field setup_command)" "pip install -e '.[dev]'"
+
+cat > "$order" << 'EOF'
+---
+repo: acme/widgets
+setup_command:
+---
+EOF
+assert_eq "$(field setup_command)" ""
+
+# --- commit squashing -------------------------------------------------------
+
+tname="commit-preserves-start"
+repo=$ROOT/commits
+new_repo "$repo"
+cd "$repo"
+printf 'base\n' > README
+git add README
+git commit -q -m base
+printf 'old\n' > old.txt
+git add old.txt
+git commit -q -m "previous attempt"
+start=$(git rev-parse HEAD)
+start_subject=$(git log -1 --format=%s)
+title="feat: prepare things"
+issue=34
+printf 'mid\n' > README
+git add README
+git commit -q -m "grok one"
+printf 'new\n' > new.txt
+git add new.txt
+git commit -q -m "grok two"
+printf 'final\n' > README
+printf 'extra\n' > extra.txt
+finish_commit
+assert_eq "$(git rev-parse HEAD^)" "$start"
+assert_eq "$(git rev-parse "$start")" "$start"
+assert_eq "$(git log -1 --format=%s "$start")" "$start_subject"
+assert_eq "$(git rev-list --count "$start"..HEAD)" "1"
+assert_eq "$(git log -1 --format=%s)" "feat: prepare things (#34)"
+assert_eq "$(git rev-list --count HEAD)" "3"
+assert_eq "$(git show HEAD:README)" "final"
+assert_eq "$(git show HEAD:old.txt)" "old"
+assert_eq "$(git show HEAD:new.txt)" "new"
+assert_eq "$(git show HEAD:extra.txt)" "extra"
+if git log --format=%s | grep -q "grok one"; then
+  fail "grok commit message survived the squash"
+fi
+
+tname="commit-dirty-only"
+repo=$ROOT/dirty-only
+new_repo "$repo"
+cd "$repo"
+printf 'v1\n' > f.txt
+git add f.txt
+git commit -q -m base
+start=$(git rev-parse HEAD)
+title="fix: tidy"
+issue=34
+printf 'v2\n' > f.txt
+finish_commit
+assert_eq "$(git rev-parse HEAD^)" "$start"
+assert_eq "$(git log -1 --format=%s)" "fix: tidy (#34)"
+assert_eq "$(git show HEAD:f.txt)" "v2"
+assert_eq "$(git rev-list --count "$start"..HEAD)" "1"
+
+tname="commit-no-change"
+repo=$ROOT/no-change
+new_repo "$repo"
+cd "$repo"
+git commit -q --allow-empty -m base
+start=$(git rev-parse HEAD)
+before=$start
+title="feat: nothing"
+issue=7
+code=0
+( finish_commit ) > /dev/null 2>&1 || code=$?
+assert_eq "$code" "3"
+assert_eq "$(git rev-parse HEAD)" "$before"
+
+tname="commit-net-zero"
+repo=$ROOT/net-zero
+new_repo "$repo"
+cd "$repo"
+git commit -q --allow-empty -m base
+start=$(git rev-parse HEAD)
+printf 'x\n' > f.txt
+git add f.txt
+git commit -q -m "grok add"
+git rm -q f.txt
+git commit -q -m "grok revert"
+title="feat: nothing"
+issue=7
+code=0
+( finish_commit ) > /dev/null 2>&1 || code=$?
+assert_eq "$code" "3"
+assert_eq "$(git rev-parse HEAD)" "$start"
+if git cat-file -e "HEAD:f.txt" 2> /dev/null; then
+  fail "reverted file still in the tree"
+fi
+
+# --- environment setup ------------------------------------------------------
+
+cat > "$MOCK_BIN/python3" << 'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "python3 $*" >> "${PYTHON_LOG:?}"
+if [[ "${1:-}" != "-m" || "${2:-}" != "venv" ]]; then
+  echo "unexpected python3: $*" >&2
+  exit 1
+fi
+dest="${3:?}"
+mkdir -p "$dest/bin"
+cat > "$dest/bin/pip" << 'PIP'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> "${PIP_LOG:?}"
+if [[ -n "${PIP_TOUCH:-}" ]]; then
+  printf 'touched\n' >> "$PIP_TOUCH"
+fi
+if [[ -n "${PIP_FAIL_SUBSTR:-}" && "$*" == *"$PIP_FAIL_SUBSTR"* ]]; then
+  exit 1
+fi
+if [[ -n "${PIP_PROVIDE:-}" ]]; then
+  printf '%s\n' '#!/bin/sh' > "$(dirname "$0")/${PIP_PROVIDE}"
+  chmod +x "$(dirname "$0")/${PIP_PROVIDE}"
+fi
+for arg in "$@"; do
+  case "$arg" in
+    pytest|ruff|mypy|black|flake8)
+      printf '%s\n' '#!/bin/sh' > "$(dirname "$0")/$arg"
+      chmod +x "$(dirname "$0")/$arg"
+      ;;
+  esac
+done
+PIP
+chmod +x "$dest/bin/pip"
+EOF
+chmod +x "$MOCK_BIN/python3"
+
+install_node_mock() {
+  local name=$1
+  cat > "$MOCK_BIN/$name" << EOF
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$name \$*" >> "\${NODE_LOG:?}"
+if [[ -n "\${NODE_TOUCH:-}" ]]; then
+  printf 'touched\n' >> "\${NODE_TOUCH}"
+fi
+if [[ "\${NODE_FAIL:-}" == "$name" ]]; then
+  exit 1
+fi
+mkdir -p node_modules/.bin
+EOF
+  chmod +x "$MOCK_BIN/$name"
+}
+install_node_mock pnpm
+install_node_mock yarn
+install_node_mock npm
+
+blank_order() {
+  order=$1/order.md
+  printf '%s\n' '---' 'repo: acme/widgets' '---' > "$order"
+}
+
+enter_project() {
+  local d=$1
+  new_repo "$d"
+  cd "$d"
+  blank_order "$d"
+  base=main
+  dir=$d
+  tests="pytest -q"
+  reset_logs
+  PATH="$MOCK_BIN:$ORIG_PATH"
+}
+
+run_fail() {
+  local want=$1
+  shift
+  local code=0 out
+  out=$("$@" 2>&1) || code=$?
+  assert_eq "$code" "$want"
+  captured=$out
+}
+
+tname="setup-none"
+enter_project "$ROOT/none"
+prepare_env > "$ROOT/none.out"
+assert_eq "$(cat "$ROOT/none.out")" "run-work-order: setup: none"
+assert_eq "$PATH" "$MOCK_BIN:$ORIG_PATH"
+[[ ! -e "$dir.venv" ]] || fail "venv created for an empty repo"
+assert_eq "$(cat "$PYTHON_LOG")" ""
+assert_eq "$(cat "$NODE_LOG")" ""
+check_setup_tree
+
+tname="setup-command-wins"
+enter_project "$ROOT/wins"
+marker=$ROOT/wins-marker
+printf '%s\n' '---' "setup_command: touch $marker" '---' > "$order"
+printf 'x\n' > pyproject.toml
+printf '{}\n' > package.json
+printf 'agents:\n  setup_command: touch %s\n' "$ROOT/wins-from-yml" > .github-nope
+prepare_env > "$ROOT/wins.out"
+assert_eq "$(cat "$ROOT/wins.out")" "run-work-order: setup: setup_command"
+[[ -f "$marker" ]] || fail "work order setup_command did not run"
+[[ ! -e "$dir.venv" ]] || fail "python setup ran as well"
+assert_eq "$(cat "$NODE_LOG")" ""
+
+tname="setup-command-fails"
+enter_project "$ROOT/setup-fail"
+printf '%s\n' '---' 'setup_command: exit 4' '---' > "$order"
+run_fail 6 prepare_env
+[[ "$captured" == *"setup: setup_command"* ]] || fail "missing setup line: $captured"
+[[ "$captured" == *"setup failed"* ]] || fail "missing setup failed: $captured"
+
+tname="agents-setup-from-base"
+enter_project "$ROOT/from-base"
+mkdir -p .github
+marker=$ROOT/from-base-marker
+printf 'agents:\n  merge: true\n  setup_command: touch %s\n' "$marker" > .github/factory.yml
+git add .github/factory.yml
+git commit -q -m base
+git update-ref refs/remotes/origin/main HEAD
+printf 'agents:\n  setup_command: touch %s\n' "$ROOT/from-worktree" > .github/factory.yml
+prepare_env > "$ROOT/from-base.out"
+assert_eq "$(cat "$ROOT/from-base.out")" "run-work-order: setup: agents.setup_command"
+[[ -f "$marker" ]] || fail "agents.setup_command did not run"
+[[ ! -e "$ROOT/from-worktree" ]] || fail "working tree factory.yml was used"
+
+tname="python-venv"
+enter_project "$ROOT/py"
+printf '[project]\nname = "demo"\n' > pyproject.toml
+printf 'pytest\n' > requirements.txt
+printf 'ruff\n' > requirements-dev.txt
+tests="ruff check . && pytest -q"
+PIP_PROVIDE=pytest
+export PIP_PROVIDE
+prepare_env > "$ROOT/py.out"
+assert_eq "$(cat "$ROOT/py.out")" "run-work-order: setup: python venv"
+[[ "$PATH" == "$dir.venv/bin:"* ]] || fail "venv bin is not first on PATH"
+[[ -x "$dir.venv/bin/pip" ]] || fail "venv pip missing"
+[[ ! -d "$dir/.venv" ]] || fail "venv was created inside the clone"
+[[ "$dir.venv" != "$dir/"* ]] || fail "venv path is inside the clone"
+assert_eq "$(sed -n '1p' "$PIP_LOG")" "install -e .[dev]"
+if grep -Fxq 'install -e .[test]' "$PIP_LOG"; then
+  fail "kept trying extras after .[dev] succeeded"
+fi
+grep -Fxq 'install -r requirements.txt' "$PIP_LOG" || fail "requirements.txt not installed"
+grep -Fxq 'install -r requirements-dev.txt' "$PIP_LOG" || fail "requirements-dev.txt not installed"
+if grep -Fxq 'install pytest' "$PIP_LOG"; then
+  fail "pytest reinstalled though the venv already had it"
+fi
+grep -Fxq 'install ruff' "$PIP_LOG" || fail "ruff from test_command was not installed"
+if grep -Fxq 'install mypy' "$PIP_LOG" || grep -Fxq 'install black' "$PIP_LOG" || grep -Fxq 'install flake8' "$PIP_LOG"; then
+  fail "installed a tool that test_command did not name"
+fi
+assert_eq "$(cat "$NODE_LOG")" ""
+check_setup_tree
+
+tname="python-editable-fallback"
+enter_project "$ROOT/py-fallback"
+printf '[project]\nname = "demo"\n' > pyproject.toml
+PIP_FAIL_SUBSTR='.[dev]'
+export PIP_FAIL_SUBSTR
+tests="pytest -q"
+prepare_env > "$ROOT/py-fallback.out"
+assert_eq "$(cat "$ROOT/py-fallback.out")" "run-work-order: setup: python venv"
+grep -Fxq 'install -e .[dev]' "$PIP_LOG" || fail "did not try .[dev]"
+grep -Fxq 'install -e .[test]' "$PIP_LOG" || fail "did not fall back to .[test]"
+if grep -Fxq 'install -e .' "$PIP_LOG"; then
+  fail "tried . after .[test] succeeded"
+fi
+
+tname="python-editable-all-fail"
+enter_project "$ROOT/py-fail"
+printf '[project]\nname = "demo"\n' > pyproject.toml
+printf 'pytest\n' > requirements.txt
+PIP_FAIL_SUBSTR='install -e'
+export PIP_FAIL_SUBSTR
+run_fail 6 prepare_env
+[[ "$captured" == *"setup: python venv"* ]] || fail "missing python line: $captured"
+[[ "$captured" == *"setup failed"* ]] || fail "missing setup failed: $captured"
+if grep -q 'install -r' "$PIP_LOG"; then
+  fail "continued to requirements after the project install failed"
+fi
+
+tname="python-requirements-only"
+enter_project "$ROOT/reqs"
+printf 'pytest\n' > requirements.txt
+tests="pytest -q"
+prepare_env > "$ROOT/reqs.out"
+assert_eq "$(cat "$ROOT/reqs.out")" "run-work-order: setup: python venv"
+if grep -q 'install -e' "$PIP_LOG"; then
+  fail "editable install without pyproject.toml or setup.py"
+fi
+grep -Fxq 'install -r requirements.txt' "$PIP_LOG" || fail "requirements.txt not installed"
+grep -Fxq 'install pytest' "$PIP_LOG" || fail "pytest not installed"
+
+tname="python-and-node-prefers-python"
+enter_project "$ROOT/both"
+printf '[project]\nname = "demo"\n' > pyproject.toml
+printf '{}\n' > package.json
+printf 'lock\n' > package-lock.json
+tests="pytest -q"
+prepare_env > "$ROOT/both.out"
+assert_eq "$(cat "$ROOT/both.out")" "run-work-order: setup: python venv"
+assert_eq "$(cat "$NODE_LOG")" ""
+
+tname="python-dirties-tracked"
+enter_project "$ROOT/py-dirty"
+printf '[project]\nname = "demo"\n' > pyproject.toml
+git add pyproject.toml
+git commit -q -m init
+PIP_TOUCH=$ROOT/py-dirty/pyproject.toml
+export PIP_TOUCH
+prepare_env > "$ROOT/py-dirty.out"
+run_fail 4 check_setup_tree
+[[ "$captured" == *"pyproject.toml"* ]] || fail "did not name the dirty file: $captured"
+
+tname="node-managers"
+node_case() {
+  local label=$1 seed=$2 expect_line=$3 expect_tool=$4
+  tname=$label
+  local d=$ROOT/$label
+  enter_project "$d"
+  printf '{}\n' > package.json
+  if [[ -n "$seed" ]]; then
+    printf 'lock\n' > "$seed"
+  fi
+  git add -A
+  git commit -q -m init
+  prepare_env > "$d.out"
+  assert_eq "$(cat "$d.out")" "run-work-order: setup: node $expect_tool"
+  assert_eq "$(cat "$NODE_LOG")" "$expect_line"
+  [[ "$PATH" == "$d/node_modules/.bin:"* ]] || fail "node_modules/.bin is not first on PATH"
+  check_setup_tree
+  [[ ! -e "$d.venv" ]] || fail "python venv created for a node repo"
+}
+node_case node-npm "" "npm install --no-package-lock" npm
+node_case node-ci package-lock.json "npm ci" npm
+node_case node-shrink npm-shrinkwrap.json "npm ci" npm
+node_case node-yarn yarn.lock "yarn install --frozen-lockfile" yarn
+node_case node-pnpm pnpm-lock.yaml "pnpm install --frozen-lockfile" pnpm
+
+tname="node-pnpm-wins"
+enter_project "$ROOT/node-both-locks"
+printf '{}\n' > package.json
+printf 'lock\n' > package-lock.json
+printf 'lock\n' > pnpm-lock.yaml
+prepare_env > "$ROOT/node-both-locks.out"
+assert_eq "$(cat "$ROOT/node-both-locks.out")" "run-work-order: setup: node pnpm"
+assert_eq "$(cat "$NODE_LOG")" "pnpm install --frozen-lockfile"
+
+tname="node-fails"
+enter_project "$ROOT/node-fail"
+printf '{}\n' > package.json
+NODE_FAIL=npm
+export NODE_FAIL
+run_fail 6 prepare_env
+[[ "$captured" == *"setup: node npm"* ]] || fail "missing node line: $captured"
+[[ "$captured" == *"setup failed"* ]] || fail "missing setup failed: $captured"
+unset NODE_FAIL
+
+tname="node-dirties-tracked"
+enter_project "$ROOT/node-dirty"
+printf '{}\n' > package.json
+git add package.json
+git commit -q -m init
+NODE_TOUCH=$ROOT/node-dirty/package.json
+export NODE_TOUCH
+prepare_env > "$ROOT/node-dirty.out"
+run_fail 4 check_setup_tree
+[[ "$captured" == *"package.json"* ]] || fail "did not name package.json: $captured"
+unset NODE_TOUCH
+
+tname="setup-untracked-ok"
+enter_project "$ROOT/untracked"
+printf '%s\n' '---' "setup_command: touch $ROOT/untracked/brand-new" '---' > "$order"
+git commit -q --allow-empty -m init
+prepare_env > "$ROOT/untracked.out"
+check_setup_tree
+[[ -f "$ROOT/untracked/brand-new" ]] || fail "setup did not create the untracked file"
+
+tname="header"
+header=$(sed -n '1,16p' "$here/run-work-order.sh")
+[[ "$header" == *"6 setup failed"* ]] || fail "header missing exit code 6"
+[[ "$header" == *"setup_command"* ]] || fail "header missing setup step"
+
+PATH=$ORIG_PATH
+# Read by finish_commit / prepare_env in the sourced runner.
+: "$title" "$issue" "$base" "$tests"
+echo "ok  run-work-order tests"

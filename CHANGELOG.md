@@ -5,6 +5,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 2026-10-26 (test environment setup)
+
+### Added
+
+- `scripts/run-work-order.sh` prepares the target repo's test environment before
+  `test_command`. A work order `setup_command` wins, otherwise `agents.setup_command`
+  from `.github/factory.yml` on `origin/$base` (not the working tree), otherwise a
+  Python venv outside the clone or a Node install (`pnpm` or `yarn` with a frozen
+  lockfile, `npm ci`, or `npm install --no-package-lock`). Setup failure exits 6.
+  A setup that changes tracked files exits 4.
+
+### Changed
+
+- `scripts/run-work-order.sh` turns Grok Build's commits and any leftover changes
+  into one commit on top of the starting revision, titled `<title> (#<issue>)`.
+  Commits that were already on the remote branch are left as they are.
+
 ## 2026-10-25 (rule fixes from the gh-factory#16 trial)
 
 ### Changed
