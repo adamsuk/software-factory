@@ -21,6 +21,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the work order from intake's latest `<!-- factory:triage -->` comment from the factory account.
   Other issues are left alone when picking; in-flight PRs still finish, and any stop after pickup
   moves the issue to `factory:blocked`. Labels record state and never grant merge permission.
+- Triage resolves the target repo first, checks it is enrolled with `builder` in its roles, and
+  dedupes by target repo plus fingerprint or title. Behaviour changes need a test acceptance
+  criterion, otherwise the issue is `factory:blocked`. The foreman checks `builder` in the target
+  repo, and `factory:ready` is checked at pickup.
 
 ## 2026-10-25 (rule fixes from the gh-factory#16 trial)
 

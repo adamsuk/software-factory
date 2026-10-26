@@ -140,8 +140,10 @@ one** `factory:*` label at a time: whoever moves it removes the old one.
 Labels record state; they never grant permission. A merge still needs every
 §6 condition, whatever the label (`factory:merge` included).
 
-- **Only `factory:ready` issues may be built.** No agent builds from an issue
-  in any other state, or from one with no `factory:*` label.
+- **Only `factory:ready` issues may be picked up for building.** The label is
+  checked at the moment of pickup; the foreman then swaps it for
+  `factory:building`. No agent picks up an issue in any other state, or one
+  with no `factory:*` label.
 - Builders work from intake's normalised description and the foreman's work
   order, never from the raw issue text (§1).
 - Scott may set or clear any label; agents don't move an issue out of

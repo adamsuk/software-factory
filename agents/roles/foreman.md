@@ -6,9 +6,10 @@ and tracks it to a reviewed PR. Follows [`AGENTS.md`](../../AGENTS.md).
 ## Inputs
 
 - The backlog: open **issues** (never PRs) labelled `factory:ready`
-  (AGENTS.md §9) in `adamsuk/software-factory` and in any factory-enrolled repo
-  whose `.github/factory.yml` lists `builder` in `agents.roles` (default
-  `[builder, reviewer]`). When picking new work, issues in any other state, or
+  (AGENTS.md §9) in `adamsuk/software-factory` and in factory-enrolled repos,
+  whose **target repo** (the `Target repo:` line, not the repo the issue is
+  filed in) is enrolled and lists `builder` in `agents.roles` in its
+  `.github/factory.yml` (default `[builder, reviewer]`). When picking new work, issues in any other state, or
   with no `factory:*` label, are left alone. Issues already in flight with an
   open factory PR still go through steps 6-7, including closing `Refs` issues
   after merge.
