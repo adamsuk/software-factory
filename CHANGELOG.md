@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 2026-10-26 (station 01 label-event metrics)
+
+### Added
+
+- `docs/stations/01-backlog-metrics.md`: one hand check of station 01's three label-event metrics (triage lead time, the share of `factory:ready` issues with one target-repo line and checkable acceptance criteria, and bounce-backs), each with a read-only command, and a worked example from #52 (`factory:done` at `2026-10-26T11:32:05Z`) (#65).
+
 ## 2026-10-26
 
 ### Added
