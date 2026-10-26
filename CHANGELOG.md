@@ -12,6 +12,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - README: the Backlog labels section names the nine `factory:*` status labels
   and links to AGENTS.md section 9 (Status labels) for who sets each one (#63).
 
+### Changed
+
+- README: "How the pieces fit" states that a backlog issue in this repo names
+  one target repository, and that Issue Shipper does not pick issues in other
+  repositories on its own (#71).
+
 ## 2026-10-26 (smoke test notes)
 
 ### Changed
