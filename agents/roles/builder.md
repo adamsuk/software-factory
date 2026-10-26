@@ -29,8 +29,7 @@ repo's `AGENTS.md` and `.github/factory.yml` (`agents.test_command`,
    repo as the PR, `(owner/repo#<issue>)` when it lives in another repo (for
    example a software-factory backlog issue built in gh-factory). Use the same
    form in the PR body: `Closes #<issue>` for the same repo,
-   `Refs owner/repo#<issue>` otherwise. A `Refs` issue doesn't close itself:
-   after the PR merges, close it with a comment linking the merged PR.
+   `Refs owner/repo#<issue>` otherwise.
 6. Grok Build never pushes or opens a pull request. The wrapper script
    pushes, and the foreman opens the pull request. Issue Shipper does not
    push or open the pull request.
