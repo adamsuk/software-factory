@@ -23,10 +23,12 @@ and tracks it to a reviewed PR. Follows [`AGENTS.md`](../../AGENTS.md).
 ## Steps (one issue per run)
 
 1. **Pick.** Oldest open `factory:ready` issue that is not labelled `decision`,
-   has no open PR or `factory/<issue>-*` branch, and is not assigned to a
-   person. Prefer `quick win`. On pickup, swap `factory:ready` for
-   `factory:building`. touchlineHQ targets are fine to build; only merging is
-   paused.
+   has no open PR or `factory/<issue>-*` branch for the same `issue_repo`
+   (the repo the issue is filed in) and issue number (a work order or PR
+   whose `issue_repo` and `issue` both match), and is not assigned to a
+   person. The same number in two repos cannot collide. Prefer `quick win`.
+   On pickup, swap `factory:ready` for `factory:building`. touchlineHQ
+   targets are fine to build; only merging is paused.
 2. **Resolve the target.** A backlog issue names its target repo in a
    `Target repo: owner/repo` line (see the intake brief); that is the repo the
    branch and PR go to, even when the issue lives elsewhere. If it names

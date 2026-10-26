@@ -16,7 +16,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Intake brief rewritten as the station 01 triage brief: dedupe, exactly one `Target repo:` line,
   a size, checkable acceptance criteria, and a triage comment that builders work from instead of
-  the raw issue text. Each issue ends at `factory:ready` or `factory:blocked` with a reason.
+  the raw issue text. Each non-duplicate issue ends at `factory:ready` or `factory:blocked` with a
+  reason, and duplicates are closed linking the original.
 - Foreman brief: picks only `factory:ready` issues, sets `factory:building` on pickup, and builds
   the work order from intake's latest `<!-- factory:triage -->` comment from the factory account.
   Other issues are left alone when picking; in-flight PRs still finish, and any stop after pickup
