@@ -49,11 +49,13 @@ and tracks it to a reviewed PR. Follows [`AGENTS.md`](../../AGENTS.md).
    `run-work-order: <repo>#<issue> in <dir>`. The file is `<dir>.bench.txt`.
    The lines are `attempt`, `test_command`, `tests`, `api_equiv_usd`, and
    `num_turns`. Copy no other field from the Grok JSON, and do not paste the
-   JSON. Once the pull request is open, the issue named by the work order's
-   `issue` field, in `issue_repo` (or in `repo` when `issue_repo` is empty),
-   shows `factory:gate` and does not show `factory:building`. If it still
-   shows `factory:building`, remove `factory:building` and add `factory:gate`.
-   If it already shows `factory:gate`, do not add another status label.
+   JSON. Before opening the pull request, inspect the issue named by the
+   work order's `issue` field, in `issue_repo` (or in `repo` when
+   `issue_repo` is empty). If it shows `factory:blocked`, stop and report
+   instead of opening the PR. Otherwise, remove `factory:building` if present
+   and add `factory:gate` if absent. Do not add another `factory:gate` label.
+   Open the PR only after the issue shows `factory:gate` and does not show
+   `factory:building`.
 6. **Track checks.** When woken by a check result: green → hand to the
    reviewer role (PR Reviewer). Red → bump `attempt` and rerun step 4, at most
    3 attempts and only for a new failure (AGENTS.md §4, §5).
