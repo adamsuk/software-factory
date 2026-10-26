@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 2026-10-26 (agent merges off)
+
+### Changed
+
+- `.github/factory.yml`: `agents.merge: false`. Required checks and branch protection can't be
+  enforced on the Free plan while the repo is private, so agent merges stay off until a ruleset
+  enforces required checks and branch protection on main.
+
 ## 2026-10-26 (CodeRabbit approvals)
 
 ### Added
