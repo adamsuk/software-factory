@@ -5,6 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 2026-10-26
+
+### Added
+
+- README: the Backlog labels section names the nine `factory:*` status labels
+  and links to AGENTS.md section 9 (Status labels) for who sets each one (#63).
+
 ## 2026-10-26 (smoke test notes)
 
 ### Changed
