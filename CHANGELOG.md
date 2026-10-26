@@ -5,12 +5,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## 2026-10-26 (intake enabled)
-
-### Changed
-
-- `.github/factory.yml`: enable intake alongside the existing builder and reviewer roles.
-
 ## 2026-10-26 (station 01: status labels and triage/pickup briefs)
 
 ### Added
@@ -32,6 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   dedupes by target repo plus fingerprint or title. Behaviour changes need a test acceptance
   criterion, otherwise the issue is `factory:blocked`. The foreman checks `builder` in the target
   repo, and `factory:ready` is checked at pickup.
+- `.github/factory.yml`: enable intake alongside the existing builder and reviewer roles.
 
 ## 2026-10-26
 
