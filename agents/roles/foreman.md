@@ -43,7 +43,17 @@ and tracks it to a reviewed PR. Follows [`AGENTS.md`](../../AGENTS.md).
 5. **Open the PR** with `gh pr create` from the pushed branch: title from the
    work order, body with the goal, `Closes #N` (same repo) or
    `Refs owner/repo#N` (issue in another repo), test command and result.
-   Add `skip-changelog` only if the repo keeps no CHANGELOG.md.
+   Add `skip-changelog` only if the repo keeps no CHANGELOG.md. The body also
+   includes the five lines from the bench file, copied unchanged and in the
+   file's order. The wrapper prints the clone directory as
+   `run-work-order: <repo>#<issue> in <dir>`. The file is `<dir>.bench.txt`.
+   The lines are `attempt`, `test_command`, `tests`, `api_equiv_usd`, and
+   `num_turns`. Copy no other field from the Grok JSON, and do not paste the
+   JSON. Once the pull request is open, the issue named by the work order's
+   `issue` field, in `issue_repo` (or in `repo` when `issue_repo` is empty),
+   shows `factory:gate` and does not show `factory:building`. If it still
+   shows `factory:building`, remove `factory:building` and add `factory:gate`.
+   If it already shows `factory:gate`, do not add another status label.
 6. **Track checks.** When woken by a check result: green → hand to the
    reviewer role (PR Reviewer). Red → bump `attempt` and rerun step 4, at most
    3 attempts and only for a new failure (AGENTS.md §4, §5).
