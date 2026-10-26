@@ -7,20 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 2026-10-26 (smoke test notes)
 
-### Changed
-
-- `agents/grok-build.md`: records the first end-to-end Grok Build run (2026-10-26, 1.0.70):
-  `--trust` works, `stopReason: end_turn` confirmed, the extra JSON fields (`thought`,
-  `modelUsage`, `total_cost_usd`, `total_cost_usd_ticks`, `requestId`, `cwd`) are never to be
-  pasted, and runs on the grok.com session draw from the SuperGrok allowance (`total_cost_usd`
-  is an API-equivalent figure). Documents the wrapper's test setup step and squashed commit (#34).
-- `agents/roles/foreman.md`: work orders may set an optional `setup_command`.
-
-### Added
-
-- `agents/work-orders/adamsuk_gh-factory-33.md`: the smoke-test work order (#33).
-
-## 2026-10-26 (test environment setup)
+### 2026-10-26 (test environment setup)
 
 ### Added
 
@@ -33,13 +20,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   in `[project.optional-dependencies]` (`-e '.[dev,test]'`, `-e '.[dev]'`,
   `-e '.[test]'`, or `-e .`). A `setup.py` without `pyproject.toml` installs
   `-e .`. Setup failure exits 6.
-  A setup that changes tracked files exits 4.
+  A setup that changes tracked files, moves `HEAD` or changes its tree exits 4.
+  The environment a custom setup command exports (for example an activated venv
+  or a `PATH` change) carries into `test_command`. On Python 3.10, extras are read
+  with `tomli` or pip's vendored copy, and skipped with a message if neither exists.
 
 ### Changed
 
 - `scripts/run-work-order.sh` turns Grok Build's commits and any leftover changes
   into one commit on top of the starting revision, titled `<title> (#<issue>)`.
   Commits that were already on the remote branch are left as they are.
+
+## 2026-10-26 (agent merges off)
+
+### Changed
+
+- `.github/factory.yml`: `agents.merge: false`. Required checks and branch protection can't be
+  enforced on the Free plan while the repo is private, so agent merges stay off until a ruleset
+  enforces required checks and branch protection on main.
+
+## 2026-10-26 (CodeRabbit approvals)
+
+### Added
+
+- `.coderabbit.yaml` turns on CodeRabbit's approve/request-changes workflow
+  (`reviews.auto_approvals.enabled: true`), so CodeRabbit posts APPROVED or CHANGES_REQUESTED
+  reviews instead of only COMMENTED ones and its approval can be one part of the sign-off gate.
+
+### Changed
+
+- AGENTS.md section 5: `.coderabbit.yaml` is a protected path, so changes to CodeRabbit's
+  config go to Scott.
 
 ## 2026-10-25 (rule fixes from the gh-factory#16 trial)
 

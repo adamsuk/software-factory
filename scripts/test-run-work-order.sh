@@ -149,6 +149,14 @@ assert_eq "$(field setup_command)" "pip install -e '.[dev]'"
 cat > "$order" << 'EOF'
 ---
 repo: acme/widgets
+setup_command: 'python -m venv "/tmp/test venv"' # comment
+---
+EOF
+assert_eq "$(field setup_command)" 'python -m venv "/tmp/test venv"'
+
+cat > "$order" << 'EOF'
+---
+repo: acme/widgets
 setup_command:
 ---
 EOF
@@ -365,6 +373,18 @@ printf '%s\n' '---' 'setup_command: exit 4' '---' > "$order"
 run_fail 6 prepare_env
 [[ "$captured" == *"setup: setup_command"* ]] || fail "missing setup line: $captured"
 [[ "$captured" == *"setup failed"* ]] || fail "missing setup failed: $captured"
+
+tname="setup-command-exit-trap-keeps-env"
+enter_project "$ROOT/setup-trap"
+# A setup EXIT trap must not drop exports that test_command needs.
+printf '%s\n' '---' 'setup_command: trap "true" EXIT; export SOMEVAR=from-setup' '---' > "$order"
+# shellcheck disable=SC2016 # expanded by test_command, not this script
+tests='printf %s "$SOMEVAR"'
+prepare_env > "$ROOT/setup-trap.out"
+assert_eq "$(cat "$ROOT/setup-trap.out")" "run-work-order: setup: setup_command"
+[[ ${#setup_env[@]} -gt 0 ]] || fail "setup snapshot missing"
+got=$(env -i "${setup_env[@]}" bash -c "$tests") || fail "test_command failed"
+assert_eq "$got" "from-setup"
 
 tname="agents-setup-from-base"
 enter_project "$ROOT/from-base"

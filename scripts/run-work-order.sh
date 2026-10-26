@@ -5,26 +5,33 @@
 #
 # Exit codes: 0 ready (pushed with --push), 2 usage or bad work order,
 # 3 Grok Build failed or made no change, 4 protected path touched or setup
-# changed a tracked file, 5 tests failed, 6 setup failed.
+# changed a tracked file or moved HEAD, 5 tests failed, 6 setup failed.
 # Before test_command, prepare the target environment: the work order's
 # setup_command, else agents.setup_command from origin/$base:.github/factory.yml
 # (never the working tree), else a Python venv (declared dev/test extras) or a
-# Node install.
+# Node install. A custom setup's exported environment carries into test_command.
 # Grok's commits and leftover changes become one commit on top of the start
 # revision, "<title> (#<issue>)". Commits already on the remote stay put.
 # It never opens PRs or merges.
 set -euo pipefail
 
+setup_env=()
 die() { echo "run-work-order: $2" >&2; exit "$1"; }
 
-# Front matter value: the text after `key:` up to a `#` comment, quotes stripped.
+# Front matter value: the text after `key:` up to a `#` comment, with one matching
+# pair of surrounding quotes (' or ") stripped. Inner or unmatched quotes stay.
 field() {
   awk -v k="$1" '
     NR == 1 && $0 != "---" { exit }
     NR > 1 && $0 == "---" { exit }
     NR > 1 && index($0, k ":") == 1 {
       v = substr($0, length(k) + 2); sub(/[ \t]+#.*$/, "", v)
-      gsub(/^[ \t"]+|[ \t"]+$/, "", v); print v; exit
+      gsub(/^[ \t]+|[ \t]+$/, "", v)
+      q = substr(v, 1, 1)
+      if (length(v) >= 2 && (q == "\"" || q == "'\''") && substr(v, length(v), 1) == q) {
+        v = substr(v, 2, length(v) - 2)
+      }
+      print v; exit
     }' "$order"
 }
 
@@ -97,17 +104,27 @@ python_project() {
 }
 
 # Comma-separated dev/test extras from [project.optional-dependencies].
-# Empty when neither is declared, tomllib is unavailable, or the file does not parse.
+# Empty when neither is declared, no TOML parser is available, or the file does not parse.
+# Python 3.10 has no tomllib: try tomli, then the copy pip vendors, else warn and skip.
 # Poetry [tool.poetry.group.<name>] groups are not pip extras; the named-tool install covers pytest/ruff.
 python_extras() {
   python3 -c '
+import sys
 try:
     import tomllib
 except ImportError:
-    raise SystemExit(0)
+    try:
+        import tomli as tomllib
+    except ImportError:
+        try:
+            from pip._vendor import tomli as tomllib
+        except ImportError:
+            print("run-work-order: setup: no TOML parser (tomllib, tomli); dev/test extras not read", file=sys.stderr)
+            raise SystemExit(0)
 try:
-    with open("pyproject.toml", "rb") as fh:
-        data = tomllib.load(fh)
+    # Text read: tomli 1.x (vendored by pip <= 22.0) rejects a binary handle in load().
+    with open("pyproject.toml", encoding="utf-8") as fh:
+        data = tomllib.loads(fh.read())
 except (OSError, ValueError):
     raise SystemExit(0)
 project = data.get("project") if isinstance(data, dict) else None
@@ -116,6 +133,29 @@ opt = found if isinstance(found, dict) else {}
 names = [name for name in ("dev", "test") if name in opt]
 print(",".join(names))
 ' || true
+}
+
+# False only when pyproject.toml parses and has neither [project] nor [build-system]
+# (tool settings only). True when no TOML parser is available or the file does not parse.
+pyproject_installable() {
+  python3 -c '
+try:
+    import tomllib
+except ImportError:
+    try:
+        import tomli as tomllib
+    except ImportError:
+        try:
+            from pip._vendor import tomli as tomllib
+        except ImportError:
+            raise SystemExit(0)
+try:
+    with open("pyproject.toml", encoding="utf-8") as fh:
+        data = tomllib.loads(fh.read())
+except (OSError, ValueError):
+    raise SystemExit(0)
+raise SystemExit(0 if "project" in data or "build-system" in data else 1)
+'
 }
 
 # Venv lives at "$dir.venv", outside the clone, so it is not a work-tree file.
@@ -132,7 +172,11 @@ setup_python() {
         spec=".[$extras]"
       fi
     fi
-    "$pip" install -e "$spec" || die 6 "setup failed"
+    if [[ -f setup.py ]] || pyproject_installable; then
+      "$pip" install -e "$spec" || die 6 "setup failed"
+    else
+      echo "run-work-order: setup: pyproject.toml has no [project] or [build-system]; not installing it"
+    fi
   fi
   for req in requirements*.txt; do
     [[ -f "$req" ]] || continue
@@ -172,18 +216,53 @@ setup_node() {
   export PATH
 }
 
+# Run a custom setup command and keep the environment it exports (for example an
+# activated venv or a PATH change) in setup_env, so test_command runs with it.
+# The snapshot file sits outside the clone, is private, and is removed at once.
+# Put back the INT/TERM/EXIT traps saved with trap -p. A subshell lists its parent's
+# traps without running them, so there the defaults come back instead.
+restore_traps() {
+  trap - INT TERM EXIT
+  if [[ "$BASHPID" == "$$" ]]; then
+    eval "$1"
+  fi
+}
+
+# While setup runs, INT, TERM and EXIT remove the snapshot; the caller's traps come back after.
+# The setup shell writes the snapshot when eval returns successfully, and on EXIT if setup exits early.
+run_setup_command() {
+  local prev_traps
+  setup_snap="$dir.setup-env"
+  rm -f "$setup_snap"
+  prev_traps=$(trap -p INT TERM EXIT)
+  trap 'rm -f "$setup_snap"' EXIT
+  trap 'rm -f "$setup_snap"; exit 130' INT
+  trap 'rm -f "$setup_snap"; exit 143' TERM
+  bash -c '__rwo_snap=$1; trap '\''(umask 077 && env -0 > "$__rwo_snap")'\'' EXIT; eval "$2"; __rwo_status=$?; if [[ $__rwo_status -eq 0 ]]; then (umask 077 && env -0 > "$__rwo_snap") || __rwo_status=$?; fi; exit "$__rwo_status"' _ "$setup_snap" "$1" || {
+    rm -f "$setup_snap"
+    restore_traps "$prev_traps"
+    die 6 "setup failed"
+  }
+  if [[ -f "$setup_snap" ]]; then
+    mapfile -d '' -t setup_env < "$setup_snap"
+    rm -f "$setup_snap"
+  fi
+  restore_traps "$prev_traps"
+}
+
 prepare_env() {
   local setup
+  setup_env=()
   setup=$(field setup_command)
   if [[ -n "$setup" ]]; then
     echo "run-work-order: setup: setup_command"
-    bash -c "$setup" || die 6 "setup failed"
+    run_setup_command "$setup"
     return
   fi
   setup=$(agents_setup)
   if [[ -n "$setup" ]]; then
     echo "run-work-order: setup: agents.setup_command"
-    bash -c "$setup" || die 6 "setup failed"
+    run_setup_command "$setup"
     return
   fi
   if python_project; then
@@ -198,9 +277,14 @@ prepare_env() {
   echo "run-work-order: setup: none"
 }
 
-# Exit 4 when setup rewrote a tracked file (for example a lockfile).
+# Exit 4 when setup rewrote a tracked file (for example a lockfile), or moved HEAD
+# or changed its tree after finish_commit (setup_head and setup_tree, when set).
 check_setup_tree() {
   local dirty names
+  if [[ -n "${setup_head:-}" ]] && [[ "$(git rev-parse HEAD)" != "$setup_head" ||
+    "$(git rev-parse 'HEAD^{tree}')" != "${setup_tree:-}" ]]; then
+    die 4 "setup changed repository history or tracked files"
+  fi
   dirty=$(git status --porcelain --untracked-files=no)
   if [[ -n "$dirty" ]]; then
     names=$(printf '%s\n' "$dirty" | cut -c4- | tr '\n' ' ')
@@ -267,6 +351,8 @@ main() {
   [[ $status -eq 0 && "$stop" == "end_turn" ]] || die 3 "grok exit $status, stopReason $stop; see $dir.grok.json"
 
   finish_commit
+  setup_head=$(git rev-parse HEAD)
+  setup_tree=$(git rev-parse 'HEAD^{tree}')
 
   # AGENTS.md section 5: CI config, lockfiles, agent instructions, and edits to existing tests.
   protected='^(\.github/(workflows|actions)/|\.github/factory\.yml$|\.github/CODEOWNERS$|CODEOWNERS$|AGENTS\.md$|agents/)|(^|/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|go\.sum|[^/]*\.lock)$'
@@ -280,7 +366,11 @@ main() {
   prepare_env
   check_setup_tree
 
-  bash -c "$tests" || die 5 "tests failed: $tests"
+  if [[ ${#setup_env[@]} -gt 0 ]]; then
+    env -i "${setup_env[@]}" bash -c "$tests" || die 5 "tests failed: $tests"
+  else
+    bash -c "$tests" || die 5 "tests failed: $tests"
+  fi
 
   if $push; then
     git push --quiet -u origin "$branch"
