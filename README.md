@@ -30,9 +30,8 @@ here rather than in public tooling.
 | Delivery repos | touchlineHQ/[private reference redacted], [private reference redacted], touchlineHQ, .github | org |
 | Agents | Grok Bot: Issue Shipper, PR Reviewer, Signal Issues, Research Scout | — |
 
-Backlog issues live here, **not** in touchlineHQ repos, because Issue Shipper
-auto-picks issues there. When an item is ready to build, a scoped issue is
-opened in the target repo.
+A backlog issue in this repo names one target repository. Issue Shipper does
+not pick issues in other repositories on its own.
 
 ## Agents
 
