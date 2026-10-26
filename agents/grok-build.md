@@ -75,29 +75,57 @@ Optional: `-m <model>` (see `grok models`), `--effort <level>`.
 
 `scripts/run-work-order.sh [--push] <work-order.md>`:
 
-1. Reads `repo`, `issue`, `branch`, `base`, `test_command`, `title` from the
-   work order's front matter, and validates them.
+1. Reads `repo`, `issue`, `branch`, `base`, `test_command`, `title` and the
+   optional `setup_command` from the work order's front matter, and validates them.
 2. Clones the repo into a new `mktemp -d /workspace/wo-<owner>_<repo>-<issue>-XXXXXX`
    directory, and switches to the branch (reusing it if it already exists on
    the remote).
 3. Runs the command above, with `GH_TOKEN`/`GITHUB_TOKEN` removed from Grok's
    environment.
 4. Stops (exit 3) if Grok fails or doesn't end with `end_turn`, or made no
-   change; stops (exit 4) if the change touches a protected path (AGENTS.md §5);
-   commits any uncommitted change with the work order's title.
-5. Runs `test_command` in the clone and stops (exit 5) if it fails.
-6. Pushes the branch only with `--push`. It never opens PRs or merges.
+   change. Grok Build often commits by itself, so its commits and any leftover
+   changes become one commit on top of the starting revision, titled
+   `<title> (#<issue>)` (commits already on a reused remote branch stay put).
+   Stops (exit 4) if the change touches a protected path (AGENTS.md §5).
+5. Prepares the test environment (#34): the work order's `setup_command`, else
+   `agents.setup_command` from `.github/factory.yml` on `origin/<base>`, else
+   auto-detect: a Python venv at `<clone>.venv`, outside the clone
+   (`pip install -e` with whichever of the `dev` and `test` extras
+   `pyproject.toml` declares in `[project.optional-dependencies]`, e.g.
+   `.[dev,test]`, else `.`; Poetry groups aren't pip extras and are ignored;
+   then each `requirements*.txt`, plus pytest/ruff/mypy/black/flake8 when
+   `test_command` names them), or a Node
+   install (`pnpm`/`yarn` with a frozen lockfile, `npm ci`, or
+   `npm install --no-package-lock`). Stops with exit 6 if setup fails, and exit 4
+   if setup changed a tracked file such as a lockfile. `setup_command` runs in
+   its own shell, so it can't change `PATH` for the tests.
+6. Runs `test_command` in the clone and stops (exit 5) if it fails.
+7. Pushes the branch only with `--push`. It never opens PRs or merges.
 
-## Not verified
+## Verified, and still not verified
 
-- Grok Build is not authenticated on the factory computer yet, so no
-  end-to-end run has been made; the flags were checked against `grok --help`
-  and the docs only.
-- `--trust` appears in the docs but not in `grok --help` (1.0.70).
-- The exact `stopReason` value after a `--max-turns` stop in `json` output
-  isn't documented (the streaming formats document `error_max_turns` and a
-  `max_turns_reached` event), so the wrapper treats anything but `end_turn`
-  as unfinished.
-- The sandbox's `workspace` profile still lets Grok **read** everywhere,
-  including the `gh` login. Until agents have their own identity (#7), the
-  `--deny` rules and removing `GH_TOKEN` are guardrails, not isolation.
+First end-to-end run: 2026-10-26 on Grok Build 1.0.70 (#33, adamsuk/gh-factory#23),
+then a second run that built #34 in this repo.
+
+- **Works:** the command above, unchanged. `--trust` is accepted (it's still not
+  listed in `grok --help`). A finished run ends with `stopReason: end_turn`.
+- **JSON output** has more fields than the docs list: `thought`, `modelUsage`,
+  `total_cost_usd`, `total_cost_usd_ticks`, `requestId` and `cwd`, as well as
+  `text`, `stopReason`, `sessionId`, `num_turns` and `usage`. `thought` and
+  `text` can hold file contents and reasoning, so **never paste the JSON**
+  anywhere; report only `stopReason`, `num_turns` and `usage`.
+- **Billing:** the factory computer is signed in with a grok.com (SuperGrok)
+  session, so runs draw from the SuperGrok weekly allowance, not API billing.
+  `total_cost_usd` is an API-equivalent figure, useful for comparing runs, not
+  a charge. (The smoke test was about $0.10 equivalent and 12 turns; #34 was
+  about $1.05, 44 turns and 24 minutes.)
+- **Grok Build commits by itself**, with its own message; the wrapper now
+  squashes that into `<title> (#<issue>)`.
+- **Not verified yet:** the exact `stopReason` after a `--max-turns` stop in
+  `json` output (the streaming formats document `error_max_turns` and a
+  `max_turns_reached` event), so the wrapper still treats anything but
+  `end_turn` as unfinished. Running with `XAI_API_KEY` instead of a session.
+- The sandbox's `workspace` profile (bubblewrap on this computer) still lets
+  Grok **read** everywhere, including the `gh` login. Until agents have their
+  own identity (#7), the `--deny` rules and removing `GH_TOKEN` are guardrails,
+  not isolation.
