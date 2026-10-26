@@ -5,6 +5,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 2026-10-26 (gate checks)
+
+### Added
+
+- `scripts/gate-issue.sh` reads the pull request head's required checks for a
+  `factory:gate` issue and prints `review`, `retry`, `blocked`, `pending`, or
+  `skip`. Green moves the label to `factory:review`. Attempt 3, a repeated red
+  list, or an empty `required_checks` list moves it to `factory:blocked` and
+  comments that Scott must act (#81)
+
 ## 2026-10-26
 
 ### Added
