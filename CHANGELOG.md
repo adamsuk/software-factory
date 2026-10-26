@@ -13,7 +13,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `test_command`. A work order `setup_command` wins, otherwise `agents.setup_command`
   from `.github/factory.yml` on `origin/$base` (not the working tree), otherwise a
   Python venv outside the clone or a Node install (`pnpm` or `yarn` with a frozen
-  lockfile, `npm ci`, or `npm install --no-package-lock`). Setup failure exits 6.
+  lockfile, `npm ci`, or `npm install --no-package-lock`). For a `pyproject.toml`,
+  the venv installs the project editable with the `dev` and `test` extras declared
+  in `[project.optional-dependencies]` (`-e '.[dev,test]'`, `-e '.[dev]'`,
+  `-e '.[test]'`, or `-e .`). A `setup.py` without `pyproject.toml` installs
+  `-e .`. Setup failure exits 6.
   A setup that changes tracked files exits 4.
 
 ### Changed

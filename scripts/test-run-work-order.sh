@@ -247,10 +247,16 @@ fi
 
 # --- environment setup ------------------------------------------------------
 
+# Non-venv python3 (reading pyproject.toml) is the real interpreter.
+REAL_PYTHON=$(command -v python3)
+export REAL_PYTHON
 cat > "$MOCK_BIN/python3" << 'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "python3 $*" >> "${PYTHON_LOG:?}"
+if [[ "${1:-}" == "-c" ]]; then
+  exec "${REAL_PYTHON:?}" "$@"
+fi
 if [[ "${1:-}" != "-m" || "${2:-}" != "venv" ]]; then
   echo "unexpected python3: $*" >&2
   exit 1
@@ -376,7 +382,13 @@ assert_eq "$(cat "$ROOT/from-base.out")" "run-work-order: setup: agents.setup_co
 
 tname="python-venv"
 enter_project "$ROOT/py"
-printf '[project]\nname = "demo"\n' > pyproject.toml
+cat > pyproject.toml << 'EOF'
+[project]
+name = "demo"
+
+[project.optional-dependencies]
+dev = ["pytest"]
+EOF
 printf 'pytest\n' > requirements.txt
 printf 'ruff\n' > requirements-dev.txt
 tests="ruff check . && pytest -q"
@@ -404,19 +416,65 @@ fi
 assert_eq "$(cat "$NODE_LOG")" ""
 check_setup_tree
 
-tname="python-editable-fallback"
-enter_project "$ROOT/py-fallback"
-printf '[project]\nname = "demo"\n' > pyproject.toml
-PIP_FAIL_SUBSTR='.[dev]'
-export PIP_FAIL_SUBSTR
-tests="pytest -q"
-prepare_env > "$ROOT/py-fallback.out"
-assert_eq "$(cat "$ROOT/py-fallback.out")" "run-work-order: setup: python venv"
-grep -Fxq 'install -e .[dev]' "$PIP_LOG" || fail "did not try .[dev]"
-grep -Fxq 'install -e .[test]' "$PIP_LOG" || fail "did not fall back to .[test]"
-if grep -Fxq 'install -e .' "$PIP_LOG"; then
-  fail "tried . after .[test] succeeded"
-fi
+tname="python-extra-test"
+enter_project "$ROOT/py-test-only"
+# Only test is a pip extra. A poetry dev group must not add dev.
+cat > pyproject.toml << 'EOF'
+[project]
+name = "demo"
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[tool.poetry.group.dev.dependencies]
+ruff = "*"
+EOF
+prepare_env > "$ROOT/py-test-only.out"
+assert_eq "$(cat "$ROOT/py-test-only.out")" "run-work-order: setup: python venv"
+assert_eq "$(sed -n '1p' "$PIP_LOG")" "install -e .[test]"
+
+tname="python-extra-both"
+enter_project "$ROOT/py-both-extras"
+# test is listed first; the install spec stays dev then test.
+cat > pyproject.toml << 'EOF'
+[project]
+name = "demo"
+
+[project.optional-dependencies]
+test = ["pytest"]
+dev = ["ruff"]
+EOF
+prepare_env > "$ROOT/py-both-extras.out"
+assert_eq "$(cat "$ROOT/py-both-extras.out")" "run-work-order: setup: python venv"
+assert_eq "$(sed -n '1p' "$PIP_LOG")" "install -e .[dev,test]"
+
+tname="python-extra-none"
+enter_project "$ROOT/py-no-extras"
+# No dev or test extra. Other extras are not installed.
+cat > pyproject.toml << 'EOF'
+[project]
+name = "demo"
+
+[project.optional-dependencies]
+docs = ["sphinx"]
+EOF
+prepare_env > "$ROOT/py-no-extras.out"
+assert_eq "$(cat "$ROOT/py-no-extras.out")" "run-work-order: setup: python venv"
+assert_eq "$(sed -n '1p' "$PIP_LOG")" "install -e ."
+
+tname="python-setup-py"
+enter_project "$ROOT/py-setup-py"
+printf 'x\n' > setup.py
+prepare_env > "$ROOT/py-setup-py.out"
+assert_eq "$(cat "$ROOT/py-setup-py.out")" "run-work-order: setup: python venv"
+assert_eq "$(sed -n '1p' "$PIP_LOG")" "install -e ."
+
+tname="python-bad-pyproject"
+enter_project "$ROOT/py-bad-toml"
+printf 'not = [[' > pyproject.toml
+prepare_env > "$ROOT/py-bad-toml.out"
+assert_eq "$(cat "$ROOT/py-bad-toml.out")" "run-work-order: setup: python venv"
+assert_eq "$(sed -n '1p' "$PIP_LOG")" "install -e ."
 
 tname="python-editable-all-fail"
 enter_project "$ROOT/py-fail"

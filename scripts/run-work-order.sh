@@ -8,7 +8,8 @@
 # changed a tracked file, 5 tests failed, 6 setup failed.
 # Before test_command, prepare the target environment: the work order's
 # setup_command, else agents.setup_command from origin/$base:.github/factory.yml
-# (never the working tree), else a Python venv or a Node install.
+# (never the working tree), else a Python venv (declared dev/test extras) or a
+# Node install.
 # Grok's commits and leftover changes become one commit on top of the start
 # revision, "<title> (#<issue>)". Commits already on the remote stay put.
 # It never opens PRs or merges.
@@ -95,16 +96,43 @@ python_project() {
   return 1
 }
 
+# Comma-separated dev/test extras from [project.optional-dependencies].
+# Empty when neither is declared, tomllib is unavailable, or the file does not parse.
+# Poetry [tool.poetry.group.<name>] groups are not pip extras; the named-tool install covers pytest/ruff.
+python_extras() {
+  python3 -c '
+try:
+    import tomllib
+except ImportError:
+    raise SystemExit(0)
+try:
+    with open("pyproject.toml", "rb") as fh:
+        data = tomllib.load(fh)
+except (OSError, ValueError):
+    raise SystemExit(0)
+project = data.get("project") if isinstance(data, dict) else None
+found = project.get("optional-dependencies") if isinstance(project, dict) else None
+opt = found if isinstance(found, dict) else {}
+names = [name for name in ("dev", "test") if name in opt]
+print(",".join(names))
+' || true
+}
+
 # Venv lives at "$dir.venv", outside the clone, so it is not a work-tree file.
 setup_python() {
-  local pip req tool
+  local pip req tool extras spec
   python3 -m venv "$dir.venv" || die 6 "setup failed"
   pip="$dir.venv/bin/pip"
   if [[ -f pyproject.toml || -f setup.py ]]; then
-    "$pip" install -e '.[dev]' \
-      || "$pip" install -e '.[test]' \
-      || "$pip" install -e . \
-      || die 6 "setup failed"
+    # setup.py without pyproject.toml has no extras table.
+    spec="."
+    if [[ -f pyproject.toml ]]; then
+      extras=$(python_extras)
+      if [[ -n "$extras" ]]; then
+        spec=".[$extras]"
+      fi
+    fi
+    "$pip" install -e "$spec" || die 6 "setup failed"
   fi
   for req in requirements*.txt; do
     [[ -f "$req" ]] || continue
