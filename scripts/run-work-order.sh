@@ -5,7 +5,7 @@
 #
 # Exit codes: 0 ready (pushed with --push), 2 usage or bad work order,
 # 3 Grok Build failed or made no change, 4 protected path touched or setup
-# changed a tracked file, 5 tests failed, 6 setup failed.
+# changed a tracked file or moved HEAD, 5 tests failed, 6 setup failed.
 # Before test_command, prepare the target environment: the work order's
 # setup_command, else agents.setup_command from origin/$base:.github/factory.yml
 # (never the working tree), else a Python venv (declared dev/test extras) or a
@@ -116,8 +116,9 @@ except ImportError:
             print("run-work-order: setup: no TOML parser (tomllib, tomli); dev/test extras not read", file=sys.stderr)
             raise SystemExit(0)
 try:
-    with open("pyproject.toml", "rb") as fh:
-        data = tomllib.load(fh)
+    # Text read: tomli 1.x (vendored by pip <= 22.0) rejects a binary handle in load().
+    with open("pyproject.toml", encoding="utf-8") as fh:
+        data = tomllib.loads(fh.read())
 except (OSError, ValueError):
     raise SystemExit(0)
 project = data.get("project") if isinstance(data, dict) else None
@@ -185,17 +186,34 @@ setup_node() {
 # Run a custom setup command and keep the environment it exports (for example an
 # activated venv or a PATH change) in setup_env, so test_command runs with it.
 # The snapshot file sits outside the clone, is private, and is removed at once.
+# Put back the INT/TERM/EXIT traps saved with trap -p. A subshell lists its parent's
+# traps without running them, so there the defaults come back instead.
+restore_traps() {
+  trap - INT TERM EXIT
+  if [[ "$BASHPID" == "$$" ]]; then
+    eval "$1"
+  fi
+}
+
+# While setup runs, INT, TERM and EXIT remove the snapshot; the caller's traps come back after.
 run_setup_command() {
-  local snap="$dir.setup-env"
-  rm -f "$snap"
-  bash -c '__rwo_snap=$1; trap '\''(umask 077 && env -0 > "$__rwo_snap")'\'' EXIT; eval "$2"' _ "$snap" "$1" || {
-    rm -f "$snap"
+  local prev_traps
+  setup_snap="$dir.setup-env"
+  rm -f "$setup_snap"
+  prev_traps=$(trap -p INT TERM EXIT)
+  trap 'rm -f "$setup_snap"' EXIT
+  trap 'rm -f "$setup_snap"; exit 130' INT
+  trap 'rm -f "$setup_snap"; exit 143' TERM
+  bash -c '__rwo_snap=$1; trap '\''(umask 077 && env -0 > "$__rwo_snap")'\'' EXIT; eval "$2"' _ "$setup_snap" "$1" || {
+    rm -f "$setup_snap"
+    restore_traps "$prev_traps"
     die 6 "setup failed"
   }
-  if [[ -f "$snap" ]]; then
-    mapfile -d '' -t setup_env < "$snap"
-    rm -f "$snap"
+  if [[ -f "$setup_snap" ]]; then
+    mapfile -d '' -t setup_env < "$setup_snap"
+    rm -f "$setup_snap"
   fi
+  restore_traps "$prev_traps"
 }
 
 prepare_env() {
