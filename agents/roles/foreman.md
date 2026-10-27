@@ -67,8 +67,9 @@ and tracks it to a reviewed PR. Follows [`AGENTS.md`](../../AGENTS.md).
    - `retry`: if the next fix would change a protected path (AGENTS.md §5),
      do not rerun step 4; remove `factory:gate`, add `factory:blocked`, and
      comment that Scott must act, naming the path. If `attempt` is already 3,
-     remove `factory:gate`, add `factory:blocked`, and comment that Scott must
-     act. Do not rerun step 4. If the path is not protected and `attempt` is
+     remove `factory:gate`, add `factory:blocked`, and comment with the failing
+     check names, a one-paragraph diagnosis, and that Scott must act. Do not
+     rerun step 4. If the path is not protected and `attempt` is
      below 3, leave `factory:gate`, increment `attempt` (1 becomes 2, 2
      becomes 3), and rerun step 4 on the same branch. Do not open a second
      pull request.

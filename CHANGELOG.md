@@ -11,7 +11,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Foreman gate step: when a check result wakes the foreman and the issue shows
   `factory:gate`, run `scripts/gate-issue.sh` once without `--watch` and act on
-  `pending`, `review`, `retry`, `blocked`, and `skip`. A stop on
+  `pending`, `review`, `retry`, `blocked`, and `skip`. A `retry` at attempt 3
+  blocks with the failing check names and a one-paragraph diagnosis. A stop on
   `factory:building` or `factory:gate` adds `factory:blocked`; a stop on
   `factory:gate` does not remove `factory:building` (#83).
 - Builder brief: takes only the foreman's work order for an issue already
