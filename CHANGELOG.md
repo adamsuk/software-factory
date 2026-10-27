@@ -5,6 +5,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 2026-10-27 (review repairs)
+
+### Fixed
+
+- Foreman retries allow new tests and fixture or test-data additions that
+  preserve existing assertions, subject to the §5 and §10.3 restrictions.
+- `scripts/review-issue.sh` accepts `PASS`, `FIX` and `ESCALATE` alongside
+  legacy verdicts, preserving the existing routing and should-fix guards.
+
 ## 2026-10-27 (watcher prompt file)
 
 ### Fixed
@@ -46,6 +55,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `AGENTS.md` §4 names `factory:gate` → `factory:review` when required checks
   are green and `factory:gate` → `factory:blocked` when the fix loop stops
   for a person, and points at §9 Status labels (#103)
+- `AGENTS.md` §10 and role docs record the 27 Oct 2026 review and fix rules (#107):
+  Failing CI routed to the fix path while rounds remain (otherwise blocked by failing CI),
+  CodeRabbit full-review follow-up once per head commit when needed, CodeRabbit fix
+  commands only on ordinary PRs with Grok Build fixes for protected/CI/tests/lockfile PRs
+  (PR's own files only; reject deletes/lockfile changes/test weakening), Dependabot/lockfile-only
+  PRs get no automatic fix and exhausted Grok budget waits. Independent Grok Build review
+  (PASS/FIX/ESCALATE); ready only if CI green and verdict PASS on current head. CodeRabbit
+  changes-requested alone doesn't block, approval alone not enough. PASS on a non-protected PR
+  may merge under standing permission, PASS on a protected PR goes to Scott, FIX goes to fix
+  path (3 rounds), ESCALATE goes to Scott.
 
 ### Fixed
 
