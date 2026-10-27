@@ -11,6 +11,8 @@ prompt_file=""
 work_order=""
 issue=""
 repo_ctx=""
+push_flag=""
+pass_args=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -19,24 +21,20 @@ while [[ $# -gt 0 ]]; do
     --work-order) work_order="$2"; shift 2;;
     --issue) issue="$2"; shift 2;;
     --repo) repo_ctx="$2"; shift 2;;
-    *) shift;;
+    --push) push_flag="--push"; shift;;
+    *) pass_args+=("$1"); shift;;
   esac
 done
 
 # For builder role, use the existing run-work-order.sh flow
 if [[ "$role" == "builder" && -n "$work_order" && -f "$work_order" ]]; then
-  # Check for --push flag
-  push_flag=""
-  if [[ " $* " == *" --push "* ]]; then
-    push_flag="--push"
-  fi
-  exec "$here/scripts/run-work-order.sh" $push_flag "$work_order"
+  exec "$here/scripts/run-work-order.sh" $push_flag "$work_order" "${pass_args[@]}"
 fi
 
 # For other roles, try to use grok CLI if available
 if command -v grok >/dev/null 2>&1; then
   if grok --help 2>&1 | grep -q "prompt-file"; then
-    exec grok --prompt-file "$prompt_file" --rules "$(cat "$here/AGENTS.md")" "$@"
+    exec grok --prompt-file "$prompt_file" --rules "$(cat "$here/AGENTS.md")" "${pass_args[@]}"
   fi
 fi
 

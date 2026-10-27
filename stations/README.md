@@ -27,5 +27,5 @@ FACTORY_PROVIDER=opencode ./scripts/station-run.sh intake issue-context.md
 ./scripts/station-run.sh --dry-run builder work-order-context.md
 
 # Orchestrated flow (foreman manages state machine)
-./scripts/foreman-orchestrate.sh pick --provider opencode
+./scripts/foreman-orchestrate.sh --provider opencode pick
 ```
