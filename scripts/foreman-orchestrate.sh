@@ -25,38 +25,46 @@ EOF
 }
 
 dry_run=false
+action=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --provider) provider="$2"; shift 2;;
-    --dry-run) dry_run=true; shift;;
-    --help) usage;;
-    *) break;;
+    --provider)
+      [[ $# -ge 2 ]] || die 2 "missing value for --provider"
+      provider="$2"; shift 2 ;;
+    --dry-run) dry_run=true; shift ;;
+    --help) usage ;;
+    pick|gate|review)
+      [[ -z "$action" ]] || die 2 "unexpected argument: $1"
+      action="$1"; shift ;;
+    *) die 2 "unknown argument: $1" ;;
   esac
 done
 
-[[ $# -ge 1 ]] || usage
-action="$1"
+[[ -n "$action" ]] || usage
+
+run_role() {
+  local role=$1
+  if $dry_run; then
+    "$here/scripts/station-run.sh" --provider "$provider" --dry-run "$role" /dev/null
+  else
+    "$here/scripts/station-run.sh" --provider "$provider" "$role" /dev/null
+  fi
+}
 
 case "$action" in
   pick)
     echo "Foreman: picking next factory:ready issue (provider: $provider)"
-    # This would integrate with GitHub API to find issues
-    # For now, delegate to foreman role via station-runner for planning
-    if $dry_run; then
-      "$here/scripts/station-run.sh" --provider "$provider" --dry-run foreman /dev/null
-    else
-      "$here/scripts/station-run.sh" --provider "$provider" foreman /dev/null
-    fi
+    echo "The agent must post with scripts/station-post.sh. This does not pick an issue by itself."
+    run_role foreman
     ;;
   gate)
     echo "Foreman: processing gate (provider: $provider)"
-    if $dry_run; then
-      "$here/scripts/station-run.sh" --provider "$provider" --dry-run foreman /dev/null
-    else
-      "$here/scripts/station-run.sh" --provider "$provider" foreman /dev/null
-    fi
+    echo "Run scripts/gate-issue.sh for the label move. The agent only reads."
+    run_role foreman
     ;;
-  *)
-    die 2 "unknown action: $action"
+  review)
+    echo "Reviewer: verdict on the open pull request (provider: $provider)"
+    echo "Post it with scripts/station-post.sh verdict. Do not merge."
+    run_role reviewer
     ;;
 esac

@@ -5,6 +5,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `scripts/station-post.sh` posts the factory trail for any provider: one
+  triage comment, one `factory:*` label, one `factory/<issue>-<slug>` pull
+  request, and one PASS / FIX / ESCALATE verdict. It refuses a second triage
+  comment, a second open pull request, and a merge.
+- OpenCode's adapter runs `opencode run --file` (there is no `--prompt-file`)
+  and the station prompt tells it to post only through that script.
+
 ## 2026-10-27 (review repairs)
 
 ### Fixed

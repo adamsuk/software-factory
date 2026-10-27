@@ -65,6 +65,14 @@ criteria. Never paste secrets or personal data from signals; redact them.
 Never set priority or answer a `decision`: those are Scott's. Don't file while
 Scott has the scan paused.
 
+## Station runner
+
+When `scripts/station-run.sh` starts this role, GitHub writes follow
+[`stations/github-writes.md`](../../stations/github-writes.md). Post the one
+triage comment with `scripts/station-post.sh triage`. Do not call `gh` to
+comment or relabel, and do not post a second triage comment. The Grok watcher
+posts for itself and does not use that script.
+
 ## Cost mode
 
 Batch the signal and issue read, triage at most a handful of issues per run,
