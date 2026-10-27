@@ -7,7 +7,8 @@ Stations are provider-agnostic implementations of factory roles. The canonical d
 1. **Canonical prompts** (`AGENTS.md`, `agents/roles/*.md`) - Provider-agnostic rules and role definitions
 2. **Station runner** (`scripts/station-run.sh`) - Composes prompts and delegates to adapters
 3. **Adapters** (`adapters/*/`) - Translate to provider-specific CLIs/APIs
-4. **Orchestration** (`scripts/foreman-orchestrate.sh`) - State machine logic using existing label/scripts
+4. **Orchestration** (`scripts/foreman-orchestrate.sh`) - Starts a station. It does not pick an issue or merge.
+5. **GitHub trail** (`scripts/station-post.sh`, `stations/github-writes.md`) - The comment and the single `factory:*` label a person sees on the issue. Every provider uses it. The Grok watcher keeps its own poster.
 
 ## Design Principles
 
@@ -26,6 +27,9 @@ FACTORY_PROVIDER=opencode ./scripts/station-run.sh intake issue-context.md
 # Dry run to inspect composed prompt
 ./scripts/station-run.sh --dry-run builder work-order-context.md
 
-# Orchestrated flow (foreman manages state machine)
+# Orchestrated flow. Options may come before or after the action.
 ./scripts/foreman-orchestrate.sh pick --provider opencode
 ```
+
+What you see on the issue is whatever `scripts/station-post.sh` posted.
+A run that only talks in its own transcript is not a finished station.

@@ -36,7 +36,9 @@ while [[ $# -gt 0 ]]; do
       provider="$2"; shift 2;;
     --work-order)
       [[ $# -ge 2 ]] || die 2 "missing value for --work-order"
-      work_order="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"; shift 2;;
+      [[ -f "$2" ]] || die 2 "work order not found: $2"
+      work_order="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"
+      shift 2;;
     --issue)
       [[ $# -ge 2 ]] || die 2 "missing value for --issue"
       issue="$2"; shift 2;;
@@ -57,6 +59,7 @@ done
 [[ $# -ge 2 ]] || usage
 role="$1"
 context_path="$2"
+shift 2
 
 # Validate role exists in canonical roles
 role_file="$here/agents/roles/${role}.md"
@@ -64,6 +67,7 @@ role_file="$here/agents/roles/${role}.md"
 
 agents_md="$here/AGENTS.md"
 [[ -f "$agents_md" ]] || die 2 "missing $agents_md"
+[[ -f "$here/stations/github-writes.md" ]] || die 2 "missing stations/github-writes.md"
 
 # Build context bundle
 bundle_dir="$(mktemp -d /tmp/station-bundle-XXXXXX)"
@@ -127,6 +131,10 @@ prompt_bundle="$bundle_dir/PROMPT.md"
   echo "# Role: $role"
   echo
   cat "$bundle_dir/ROLE.md"
+  echo
+  echo "# GitHub writes"
+  echo
+  cat "$here/stations/github-writes.md"
   echo
   echo "</system>"
   echo
