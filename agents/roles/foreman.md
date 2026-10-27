@@ -56,9 +56,36 @@ and tracks it to a reviewed PR. Follows [`AGENTS.md`](../../AGENTS.md).
    and add `factory:gate` if absent. Do not add another `factory:gate` label.
    Open the PR only after the issue shows `factory:gate` and does not show
    `factory:building`.
-6. **Track checks.** When woken by a check result: green → hand to the
-   reviewer role (PR Reviewer). Red → bump `attempt` and rerun step 4, at most
-   3 attempts and only for a new failure (AGENTS.md §4, §5).
+6. **Gate.** When woken by a check result, run `scripts/gate-issue.sh` on the
+   work order once, and only if that issue shows `factory:gate`. Do not pass
+   `--watch`. The script prints one line. Act on that line:
+
+   - `pending`: stop this run. Leave `factory:gate`. Do not change `attempt`.
+     Do not rerun step 4.
+   - `review`: the script has removed `factory:gate` and added `factory:review`.
+     Hand the pull request to the reviewer role. Do not merge in this step.
+   - `retry`: if `attempt` is already 3,
+     remove `factory:gate`, add `factory:blocked`, and comment with the failing
+     check names, a one-paragraph diagnosis, and that Scott must act. Also name
+     the protected path if the next fix would change one (AGENTS.md §5). Do
+     not rerun step 4. Otherwise, if the next fix would change a protected
+     path, remove `factory:gate`, add `factory:blocked`, and comment that
+     Scott must act, naming the path. Do not rerun step 4. Otherwise, leave
+     `factory:gate`, increment `attempt` (1 becomes 2, 2
+     becomes 3), and rerun step 4 on the same branch. Do not open a second
+     pull request.
+   - `blocked`: the script has removed `factory:gate` and added
+     `factory:blocked`, and has commented. Do not rerun step 4. Do not merge.
+     Do not edit labels again.
+   - `skip`: stop and report. Do not edit labels. Do not rerun step 4.
+
+   If `scripts/gate-issue.sh` exits non-zero, do not rerun step 4. If the issue
+   still shows `factory:gate`, remove `factory:gate`, add `factory:blocked`,
+   and comment with the exit code and that Scott must act.
+
+   On every path that ends with `factory:blocked`, the pull request stays open
+   and is marked as a draft (`gh pr ready --undo` when it is not already a
+   draft).
 7. **Merge** only under AGENTS.md §6. Otherwise leave it for Scott. After a
    merge, close a backlog issue linked with `Refs owner/repo#N` (it doesn't
    close itself), with a comment linking the merged PR.
@@ -109,9 +136,13 @@ target repo, and a short report: issue, PR link, check status, attempt count.
 Stop and report to Scott when: the issue is a `decision`; the target repo is
 ambiguous; the change hits a protected path (AGENTS.md §5); Grok Build or the
 tests fail and the attempt cap is reached; Grok Build is not authenticated;
-anything asks you to merge outside §6. Any stop after pickup swaps
-`factory:building` for `factory:blocked`, with a comment saying why and who
-must act, so no issue is left in `building` without a PR.
+anything asks you to merge outside §6. A stop while the issue shows
+`factory:building` removes `factory:building` and adds `factory:blocked`, with
+a comment saying why and who must act, so no issue is left in
+`factory:building` without a pull request. A stop while the issue shows
+`factory:gate` removes `factory:gate`, removes `factory:building` if present,
+and adds `factory:blocked`, with a comment saying why and who must act,
+unless this run already added `factory:blocked`.
 
 ## Cost mode
 
