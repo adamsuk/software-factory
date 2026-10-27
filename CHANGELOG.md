@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 2026-10-27 (pr run cost)
+
+### Changed
+
+- `scripts/run-work-order.sh` opens or updates the pull request on `--push`
+  after `set_gate_label`, and the body includes the lines `api_equiv_usd`
+  and `attempt` (#102)
+
 ## 2026-10-27
 
 ### Added
