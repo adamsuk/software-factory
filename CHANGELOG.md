@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 2026-10-27 (watcher prompt file)
+
 ### Fixed
 
 - `scripts/watcher/watch.sh` and `scripts/watcher/watch.new.sh` pass prompts
