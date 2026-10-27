@@ -69,6 +69,14 @@ agents_md="$here/AGENTS.md"
 bundle_dir="$(mktemp -d /tmp/station-bundle-XXXXXX)"
 trap 'rm -rf "$bundle_dir"' EXIT
 
+# Validate supplied paths
+if [[ -n "$work_order" && ! -e "$work_order" ]]; then
+  die 2 "work order does not exist: $work_order"
+fi
+if [[ -n "$context_path" && "$context_path" != "/dev/null" && ! -e "$context_path" ]]; then
+  die 2 "context path does not exist: $context_path"
+fi
+
 # Copy canonical files
 cp "$agents_md" "$bundle_dir/AGENTS.md"
 cp "$role_file" "$bundle_dir/ROLE.md"
@@ -96,7 +104,10 @@ if [[ -n "$work_order" && -f "$work_order" ]]; then
 fi
 
 # Include additional context
-if [[ -n "$context_path" && -f "$context_path" ]]; then
+if [[ -n "$context_path" && "$context_path" == "/dev/null" ]]; then
+  # Accept /dev/null as a context path
+  :
+elif [[ -n "$context_path" && -f "$context_path" ]]; then
   {
     echo "# Additional Context"
     echo
@@ -156,4 +167,5 @@ if [[ ! -x "$adapter" ]]; then
   fi
 fi
 
-exec "$adapter" --role "$role" --prompt "$prompt_bundle" --work-order "${work_order:-}" --issue "${issue:-}" --repo "${repo_ctx:-}" "$@"
+"$adapter" --role "$role" --prompt "$prompt_bundle" --work-order "${work_order:-}" --issue "${issue:-}" --repo "${repo_ctx:-}" "$@"
+exit $?
