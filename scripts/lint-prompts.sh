@@ -31,8 +31,10 @@ for role in "$here"/agents/roles/*.md; do
     errors=$((errors + 1))
   fi
   for pat in "${patterns[@]}"; do
-    if grep -n -E "$pat" "$role" >/dev/null 2>&1; then
-      if ! grep -n -E "$pat" "$role" | grep -q "# avoid\|# don't\|not.*$pat"; then
+    matches=$(grep -n -E "$pat" "$role" || true)
+    if [[ -n "$matches" ]]; then
+      unannotated=$(echo "$matches" | grep -v "# avoid\|# don't\|not.*$pat" || true)
+      if [[ -n "$unannotated" ]]; then
         echo "WARNING: $basename_role may contain harness-specific pattern: $pat"
       fi
     fi
@@ -46,8 +48,10 @@ if grep -n "tools\.opencode\|@opencode" "$here/AGENTS.md" >/dev/null 2>&1; then
   errors=$((errors + 1))
 fi
 for pat in "${patterns[@]}"; do
-  if grep -n -E "$pat" "$here/AGENTS.md" >/dev/null 2>&1; then
-    if ! grep -n -E "$pat" "$here/AGENTS.md" | grep -q "# avoid\|# don't"; then
+  matches=$(grep -n -E "$pat" "$here/AGENTS.md" || true)
+  if [[ -n "$matches" ]]; then
+    unannotated=$(echo "$matches" | grep -v "# avoid\|# don't" || true)
+    if [[ -n "$unannotated" ]]; then
       echo "WARNING: AGENTS.md may contain harness-specific pattern: $pat"
     fi
   fi
