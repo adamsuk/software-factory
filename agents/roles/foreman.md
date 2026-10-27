@@ -40,22 +40,21 @@ and tracks it to a reviewed PR. Follows [`AGENTS.md`](../../AGENTS.md).
 4. **Build.** Run `scripts/run-work-order.sh --push <work order>` (see
    [`agents/grok-build.md`](../grok-build.md)). It clones, branches, runs Grok
    Build, runs the tests and pushes only if both pass.
-5. **Open the PR** with `gh pr create` from the pushed branch: title from the
-   work order, body with the goal, `Closes #N` (same repo) or
-   `Refs owner/repo#N` (issue in another repo), test command and result.
-   Add `skip-changelog` only if the repo keeps no CHANGELOG.md. The body also
-   includes the five lines from the bench file, copied unchanged and in the
-   file's order. The wrapper prints the clone directory as
-   `run-work-order: <repo>#<issue> in <dir>`. The file is `<dir>.bench.txt`.
-   The lines are `attempt`, `test_command`, `tests`, `api_equiv_usd`, and
-   `num_turns`. Copy no other field from the Grok JSON, and do not paste the
-   JSON. Before opening the pull request, inspect the issue named by the
-   work order's `issue` field, in `issue_repo` (or in `repo` when
-   `issue_repo` is empty). If it shows `factory:blocked`, stop and report
-   instead of opening the PR. Otherwise, remove `factory:building` if present
-   and add `factory:gate` if absent. Do not add another `factory:gate` label.
-   Open the PR only after the issue shows `factory:gate` and does not show
-   `factory:building`.
+5. **Pull request.** `scripts/run-work-order.sh` is the only component that
+   opens the pull request. It does so on `--push` after `set_gate_label`. An
+   existing open pull request is a body update rather than a second
+   `gh pr create`. The foreman does not open one. The body contains
+   `Closes #<issue>` when `issue_repo` is empty or equal to `repo`, and
+   `Refs <issue_repo>#<issue>` otherwise, then five bench lines from
+   `<dir>.bench.txt` in that file's order: `attempt`, `test_command`, `tests`,
+   `api_equiv_usd`, and `num_turns`. `attempt`, `test_command`, `tests`, and
+   `num_turns` are copied unchanged. `api_equiv_usd` is a non-negative number
+   with at most two decimal places: half-up to two places, then drop a trailing
+   `.0` or a trailing zero in the second decimal place. Copy no other field
+   from the Grok JSON. If the issue is labelled `factory:blocked`, the script
+   skips the pull request and the foreman stops and reports. The script passes
+   `skip-changelog` only when `changelog` is `false`. The wrapper prints the
+   clone directory as `run-work-order: <repo>#<issue> in <dir>`.
 6. **Gate.** When woken by a check result, run `scripts/gate-issue.sh` on the
    work order once, and only if that issue shows `factory:gate`. Do not pass
    `--watch`. The script prints one line. Act on that line:
