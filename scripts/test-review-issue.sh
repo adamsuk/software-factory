@@ -962,4 +962,78 @@ write_order adamsuk/software-factory 96 adamsuk/software-factory "factory/96 rev
 set_labels factory:review
 expect_exit_2
 
+# Current reviewer verdicts use the existing routes and count guards.
+while read -r verdict should_fix expected; do
+  tname="${verdict} with should-fix ${should_fix} routes to ${expected}"
+  reset_case
+  write_order adamsuk/software-factory 96 adamsuk/software-factory factory/96-review-verdict 1
+  set_labels factory:review
+  add_comment adamsuk 2026-10-26T21:00:00Z "$verdict" "$should_fix" 3
+  set_factory << 'EOF'
+agents:
+  review_bot: none
+EOF
+  build_pr main 96
+  run_review
+  expect_word "$expected"
+  case "$expected" in
+    merge)
+      assert_edit adamsuk/software-factory factory:review factory:merge
+      assert_no_comment
+      assert_api_url "$(api_url adamsuk/software-factory main)"
+      ;;
+    build)
+      assert_edit adamsuk/software-factory factory:review factory:building
+      assert_no_comment
+      assert_no_api
+      ;;
+    blocked)
+      assert_edit adamsuk/software-factory factory:review factory:blocked
+      assert_one_comment "$(cat << 'EOF'
+<!-- factory:review -->
+blocked: needs-scott
+Scott must act.
+EOF
+)" adamsuk/software-factory
+      assert_no_api
+      ;;
+    wait)
+      assert_no_edit
+      assert_no_comment
+      assert_no_api
+      ;;
+  esac
+  grep -q '^attempt: 1$' "$order" || fail "attempt changed"
+  assert_no_forbidden
+done << 'EOF'
+PASS 0 merge
+PASS 2 wait
+FIX 2 build
+FIX 0 wait
+ESCALATE 0 blocked
+ESCALATE 2 blocked
+EOF
+
+for state in APPROVED CHANGES_REQUESTED; do
+  tname="PASS respects the existing coderabbit gate: ${state}"
+  reset_case
+  write_order adamsuk/software-factory 96 adamsuk/software-factory factory/96-review-verdict 1
+  set_labels factory:review
+  add_comment adamsuk 2026-10-26T21:00:00Z PASS 0 0
+  add_review coderabbitai "$state" 2026-10-26T22:00:00Z
+  use_coderabbit_yml
+  build_pr main 96
+  run_review
+  if [[ "$state" == "APPROVED" ]]; then
+    expect_word merge
+    assert_edit adamsuk/software-factory factory:review factory:merge
+  else
+    expect_word wait
+    assert_no_edit
+  fi
+  assert_no_comment
+  assert_api_url "$(api_url adamsuk/software-factory main)"
+  assert_no_forbidden
+done
+
 echo "ok"

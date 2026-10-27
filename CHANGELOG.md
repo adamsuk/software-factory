@@ -5,6 +5,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 2026-10-27 (review repairs)
+
+### Fixed
+
+- Foreman retries allow new tests and fixture or test-data additions that
+  preserve existing assertions, subject to the §5 and §10.3 restrictions.
+- `scripts/review-issue.sh` accepts `PASS`, `FIX` and `ESCALATE` alongside
+  legacy verdicts, preserving the existing routing and should-fix guards.
+
 ## 2026-10-27 (watcher prompt file)
 
 ### Fixed

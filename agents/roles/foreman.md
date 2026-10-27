@@ -67,8 +67,16 @@ and tracks it to a reviewed PR. Follows [`AGENTS.md`](../../AGENTS.md).
      remove `factory:gate`, add `factory:blocked`, and comment with the failing
      check names, a one-paragraph diagnosis, and that Scott must act. Also name
      the protected path if the next fix would change one (AGENTS.md §5). Do
-     not rerun step 4. Otherwise, if the next fix would change a protected
-     path or would violate §10.3 (e.g. fix targets locked files/tests/lockfiles/CI, or would delete files/weaken tests/change lockfiles), remove `factory:gate`, add `factory:blocked`, and comment that Scott must act, naming the path/restriction. Do not rerun step 4. Otherwise, leave `factory:gate`, increment `attempt` (1 becomes 2, 2 becomes 3), and rerun step 4 on the same branch. Do not open a second pull request.
+     not rerun step 4. Apply the test exceptions in §5: new tests and fixture
+     or test-data additions to existing tests are allowed when no existing
+     assertion is changed, removed or weakened and the PR body says so.
+     Touching a test file alone does not require blocking. If the next fix
+     would change a protected path under §5 or violate §10.3 (e.g. go outside
+     the PR's own files, delete files, change lockfiles or weaken tests),
+     remove `factory:gate`, add `factory:blocked`, and comment that Scott must
+     act, naming the path/restriction. Do not rerun step 4. Otherwise, leave
+     `factory:gate`, increment `attempt` (1 becomes 2, 2 becomes 3), and rerun
+     step 4 on the same branch. Do not open a second pull request.
 
    When routing to the reviewer, ensure the reviewer performs the independent review per §10.4. If the reviewer returns **FIX**, apply §4 with the §10.3 constraints (only the PR's own files; reject if deletes files, changes lockfiles, or weakens tests). If the reviewer returns **ESCALATE**, or rounds exhausted, move to `factory:blocked` with diagnosis and that Scott must act.
    - `blocked`: the script has removed `factory:gate` and added

@@ -49,7 +49,7 @@ parse_marker() {
   python3 -c 'import json, re, sys
 
 marker = "<!-- factory:review -->"
-verdict_re = re.compile(r"^verdict: (ready|changes-needed|needs-scott)\Z")
+verdict_re = re.compile(r"^verdict: (PASS|FIX|ESCALATE|ready|changes-needed|needs-scott)\Z")
 should_re = re.compile(r"^should-fix: (0|[1-9][0-9]*)\Z")
 nits_re = re.compile(r"^nits: (0|[1-9][0-9]*)\Z")
 
@@ -302,14 +302,14 @@ apply_verdict() {
   # Recorded from the verdict. It does not change the outcome.
   : "$nits"
   case "$verdict" in
-    needs-scott) apply_needs_scott ;;
-    changes-needed)
+    ESCALATE|needs-scott) apply_needs_scott ;;
+    FIX|changes-needed)
       if [[ "$should_fix" == "0" ]]; then
         finish wait
       fi
       apply_build
       ;;
-    ready)
+    PASS|ready)
       if [[ "$should_fix" != "0" ]]; then
         finish wait
       fi
