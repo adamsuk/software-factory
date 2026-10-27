@@ -5,6 +5,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 2026-10-27 (review verdict)
+
+### Added
+
+- `scripts/review-issue.sh` reads the PR Reviewer verdict on a `factory:review`
+  issue and prints `merge`, `build`, `blocked`, `wait`, or `skip`. A `ready`
+  verdict with no should-fix and a met review gate moves the label to
+  `factory:merge`. `changes-needed` with a positive should-fix moves it to
+  `factory:building` without changing `attempt`. `needs-scott` moves it to
+  `factory:blocked` and comments that Scott must act (#96)
+
 ## 2026-10-27
 
 ### Added
