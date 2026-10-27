@@ -5,7 +5,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## 2026-10-27 (review verdict)
+## 2026-10-27
 
 ### Added
 
@@ -15,6 +15,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `factory:merge`. `changes-needed` with a positive should-fix moves it to
   `factory:building` without changing `attempt`. `needs-scott` moves it to
   `factory:blocked` and comments that Scott must act (#96)
+
+### Fixed
+
+- Declare PyYAML and document the review workflow setup so parsing factory YAML
+  does not rely on an undeclared installation.
 
 ## 2026-10-27
 

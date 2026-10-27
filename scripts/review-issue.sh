@@ -113,6 +113,7 @@ sys.stdout.write("ok %s %s %s\n" % (verdict_m.group(1), should_m.group(1), nits_
 # agents.review_bot from a factory.yml document on stdin.
 # Prints none, coderabbit, or other. Exit non-zero if YAML cannot be parsed.
 # Missing agents, or a missing or null review_bot, is none.
+# Requires PyYAML from requirements.txt; see README.md for review workflow setup.
 review_bot_from_yaml() {
   python3 -c 'import sys
 try:
