@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 2026-10-27 (watcher source)
+
+### Added
+
+- `scripts/watcher/`: factory watcher source (`watch.sh`, build-lane `watch.new.sh`, `board-sync.sh`, `swap-early.sh`, `autopush.sh`, `push-protected.sh`) with machine paths as env vars, plus `README.md` (#108)
+
 ## 2026-10-27 (pr run cost)
 
 ### Changed
