@@ -65,6 +65,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `agents/roles/monitor.md`: the Factory Monitor weekly brief. It runs the two
+  read-only metrics scripts for `adamsuk/software-factory` and opens a pull
+  request for `metrics/<last-day>.md`. The pull request script is read from
+  the default branch (`origin/main`). The label script is read from
+  `origin/main` when that path exists, and from `origin/factory/84-label-metrics`
+  until then. A missing script commits nothing (#87)
+
+## 2026-10-26
+
+### Added
+
 - `scripts/run-work-order.sh` calls `set_gate_label` after a successful `--push`,
   replacing `factory:building` with `factory:gate` when that label is present and
   `factory:blocked` is not (#78)
