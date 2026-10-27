@@ -11,7 +11,7 @@ patterns=(
   "subagent.*tool"
   '"subagent"'
   "tools\.opencode"
-  "grok.*CLI.*specific"  # be careful not to be too strict
+  "grok.*CLI.*specific"
 )
 
 echo "Linting prompts for harness leakage..."
@@ -20,19 +20,25 @@ echo "Linting prompts for harness leakage..."
 for role in "$here"/agents/roles/*.md; do
   [[ -f "$role" ]] || continue
   basename_role=$(basename "$role")
-  # Allow "subagent" in general delegation language? The instruction says avoid harness-specific
-  # Check for OpenCode-specific tool references
   if grep -n "tools\.opencode\|@opencode" "$role" >/dev/null 2>&1; then
     echo "ERROR: $basename_role contains OpenCode-specific tool references"
     grep -n "tools\.opencode\|@opencode" "$role"
     errors=$((errors + 1))
   fi
-  # Check for specific model names that are provider-specific
   if grep -n '"big-pickle"\|providerID.*opencode' "$role" >/dev/null 2>&1; then
     echo "ERROR: $basename_role contains provider-specific model references"
     grep -n '"big-pickle"\|providerID.*opencode' "$role"
     errors=$((errors + 1))
   fi
+  for pat in "${patterns[@]}"; do
+    matches=$(grep -n -E "$pat" "$role" || true)
+    if [[ -n "$matches" ]]; then
+      unannotated=$(echo "$matches" | grep -v "# avoid\|# don't\|not.*$pat" || true)
+      if [[ -n "$unannotated" ]]; then
+        echo "WARNING: $basename_role may contain harness-specific pattern: $pat"
+      fi
+    fi
+  done
 done
 
 # Check AGENTS.md
@@ -41,6 +47,15 @@ if grep -n "tools\.opencode\|@opencode" "$here/AGENTS.md" >/dev/null 2>&1; then
   grep -n "tools\.opencode\|@opencode" "$here/AGENTS.md"
   errors=$((errors + 1))
 fi
+for pat in "${patterns[@]}"; do
+  matches=$(grep -n -E "$pat" "$here/AGENTS.md" || true)
+  if [[ -n "$matches" ]]; then
+    unannotated=$(echo "$matches" | grep -v "# avoid\|# don't" || true)
+    if [[ -n "$unannotated" ]]; then
+      echo "WARNING: AGENTS.md may contain harness-specific pattern: $pat"
+    fi
+  fi
+done
 
 if [[ $errors -eq 0 ]]; then
   echo "OK: No obvious harness-specific leakage found"
