@@ -5,6 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 2026-10-27
+
+### Added
+
+- `metrics/2026-10-26.md`: first recorded week of factory metrics for
+  `adamsuk/software-factory` from 2026-10-20 through 2026-10-26 (#86)
+
 ## 2026-10-26 (gate checks)
 
 ### Added
