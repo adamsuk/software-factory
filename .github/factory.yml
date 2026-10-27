@@ -14,3 +14,9 @@ agents:
   review_bot: coderabbit
   # The CI lint job (ShellCheck on the work-order runner).
   test_command: shellcheck scripts/*.sh
+
+# Station 04 reads these names. agents.merge stays false until a ruleset
+# can enforce them.
+required_checks:
+  - ShellCheck
+  - changelog / changelog
