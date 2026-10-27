@@ -9,10 +9,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `scripts/review-issue.sh` reads the PR Reviewer verdict on a `factory:review`
+  issue and prints `merge`, `build`, `blocked`, `wait`, or `skip`. A `ready`
+  verdict with no should-fix and a met review gate moves the label to
+  `factory:merge`. `changes-needed` with a positive should-fix moves it to
+  `factory:building` without changing `attempt`. `needs-scott` moves it to
+  `factory:blocked` and comments that Scott must act (#96)
 - `metrics/2026-10-26.md`: first recorded week of factory metrics for
   `adamsuk/software-factory` from 2026-10-20 through 2026-10-26 (#86)
 - `.github/factory.yml` records required checks `ShellCheck` and
   `changelog / changelog` for station 04. `agents.merge` stays false (#82)
+
+### Fixed
+
+- Declare PyYAML and document the review workflow setup so parsing factory YAML
+  does not rely on an undeclared installation.
 
 ## 2026-10-26 (gate checks)
 

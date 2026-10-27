@@ -49,6 +49,24 @@ so changes to them are reviewed like code (#17):
 Which roles run in a repo, and whether agents may merge there, is set per repo
 in `.github/factory.yml` under `agents:` (merging is off by default).
 
+### Review workflow setup
+
+`scripts/review-issue.sh` requires Bash, Python 3 with venv/pip, PyYAML,
+`jq`, and an authenticated GitHub CLI (`gh`). From this repo's root, prepare
+and activate an environment before running the review script:
+
+```bash
+python3 -m venv ../software-factory.venv
+source ../software-factory.venv/bin/activate
+python3 -m pip install -r requirements.txt
+scripts/review-issue.sh /path/to/work-order.md
+```
+
+Use the same activated environment for `bash scripts/test-review-issue.sh`;
+the tests use a fake `gh` and do not contact GitHub. The work-order runner's
+automatic Python setup also installs `requirements.txt` into its virtual
+environment. Shell lint requires `shellcheck` (`shellcheck scripts/*.sh`).
+
 ## Audits
 
 - [`audits/2026-10-24.md`](audits/2026-10-24.md): the first Line audit.
