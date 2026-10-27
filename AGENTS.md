@@ -61,6 +61,10 @@ rule fixes from the adamsuk/gh-factory#16 trial).
   open as a draft, and hand it to a person (Scott) with the failing check
   names and a one-paragraph diagnosis.
 
+When required checks are green, `factory:gate` moves to `factory:review`.
+When the fix loop stops for a person, `factory:gate` moves to
+`factory:blocked`. See §9 Status labels.
+
 ## 5. Protected paths go to a person (#25)
 
 A change that alters any of these needs a person, not an agent fix:
