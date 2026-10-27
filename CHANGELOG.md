@@ -5,30 +5,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## 2026-10-27
-
-### Fixed
-
-- Foreman stop on `factory:gate` also removes `factory:building` if present
-  when adding `factory:blocked`, preserving the comment and duplicate-label
-  handling.
-
-### Changed
-
-- Foreman retry instructions check the attempt limit before protected paths,
-  so attempt 3 always includes failing check names, a one-paragraph diagnosis,
-  and that Scott must act, plus the protected path when applicable.
-
 ## 2026-10-26
 
 ### Changed
 
 - Foreman gate step: when a check result wakes the foreman and the issue shows
   `factory:gate`, run `scripts/gate-issue.sh` once without `--watch` and act on
-  `pending`, `review`, `retry`, `blocked`, and `skip`. A `retry` at attempt 3
-  blocks with the failing check names and a one-paragraph diagnosis. A stop on
-  `factory:building` or `factory:gate` adds `factory:blocked`; a stop on
-  `factory:gate` does not remove `factory:building` (#83).
+  `pending`, `review`, `retry`, `blocked`, and `skip`. On `retry`, if `attempt`
+  is already 3, remove `factory:gate`, add `factory:blocked`, and comment with
+  the failing check names, a one-paragraph diagnosis, and that Scott must act,
+  also naming the protected path if the next fix would change one. Do not
+  rerun step 4. Otherwise, if the next fix would change a protected path,
+  remove `factory:gate`, add `factory:blocked`, and comment that Scott must
+  act, naming the path. Do not rerun step 4. Otherwise leave `factory:gate`,
+  increment `attempt`, and rerun step 4 on the same branch without opening a
+  second pull request. A stop while the issue shows `factory:building` removes
+  `factory:building` and adds `factory:blocked`, with a comment saying why and
+  who must act, so no issue is left in `factory:building` without a pull
+  request. A stop while the issue shows `factory:gate` removes `factory:gate`,
+  removes `factory:building` if present, and adds `factory:blocked`, with a
+  comment saying why and who must act, unless this run already added
+  `factory:blocked` (#83).
 - Builder brief: takes only the foreman's work order for an issue already
   labelled `factory:building`, and stops after the tested commit (#80).
 - Foreman step 5 copies the bench lines `attempt`, `test_command`, `tests`,
