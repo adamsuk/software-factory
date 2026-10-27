@@ -20,7 +20,6 @@ echo "Linting prompts for harness leakage..."
 for role in "$here"/agents/roles/*.md; do
   [[ -f "$role" ]] || continue
   basename_role=$(basename "$role")
-  # Allow "subagent" in general delegation language? The instruction says avoid harness-specific
   # Check for OpenCode-specific tool references
   if grep -n "tools\.opencode\|@opencode" "$role" >/dev/null 2>&1; then
     echo "ERROR: $basename_role contains OpenCode-specific tool references"
@@ -33,6 +32,15 @@ for role in "$here"/agents/roles/*.md; do
     grep -n '"big-pickle"\|providerID.*opencode' "$role"
     errors=$((errors + 1))
   fi
+  # Use patterns array to check for harness-specific leakage
+  for pat in "${patterns[@]}"; do
+    if grep -n -E "$pat" "$role" >/dev/null 2>&1; then
+      # Skip if it's in a comment explaining why it's avoided
+      if ! grep -n -E "$pat" "$role" | grep -q "# avoid\|# don't\|not.*$pat"; then
+        echo "WARNING: $basename_role may contain harness-specific pattern: $pat"
+      fi
+    fi
+  done
 done
 
 # Check AGENTS.md
@@ -41,6 +49,13 @@ if grep -n "tools\.opencode\|@opencode" "$here/AGENTS.md" >/dev/null 2>&1; then
   grep -n "tools\.opencode\|@opencode" "$here/AGENTS.md"
   errors=$((errors + 1))
 fi
+for pat in "${patterns[@]}"; do
+  if grep -n -E "$pat" "$here/AGENTS.md" >/dev/null 2>&1; then
+    if ! grep -n -E "$pat" "$here/AGENTS.md" | grep -q "# avoid\|# don't"; then
+      echo "WARNING: AGENTS.md may contain harness-specific pattern: $pat"
+    fi
+  fi
+done
 
 if [[ $errors -eq 0 ]]; then
   echo "OK: No obvious harness-specific leakage found"

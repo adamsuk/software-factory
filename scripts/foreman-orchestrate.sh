@@ -50,10 +50,20 @@ case "$action" in
     ;;
   gate)
     echo "Foreman: processing gate (provider: $provider)"
+    gate_issue="${FACTORY_GATE_ISSUE:-}"
+    gate_work_order="${FACTORY_GATE_WORK_ORDER:-}"
     if $dry_run; then
-      "$here/scripts/station-run.sh" --provider "$provider" --dry-run foreman /dev/null
+      if [[ -n "$gate_work_order" ]]; then
+        "$here/scripts/station-run.sh" --provider "$provider" --dry-run --work-order "$gate_work_order" ${gate_issue:+--issue "$gate_issue"} foreman /dev/null
+      else
+        "$here/scripts/station-run.sh" --provider "$provider" --dry-run foreman /dev/null
+      fi
     else
-      "$here/scripts/station-run.sh" --provider "$provider" foreman /dev/null
+      if [[ -n "$gate_work_order" ]]; then
+        "$here/scripts/station-run.sh" --provider "$provider" --work-order "$gate_work_order" ${gate_issue:+--issue "$gate_issue"} foreman /dev/null
+      else
+        "$here/scripts/station-run.sh" --provider "$provider" foreman /dev/null
+      fi
     fi
     ;;
   *)
