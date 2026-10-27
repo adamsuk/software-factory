@@ -9,6 +9,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Builder brief: takes only the foreman's work order for an issue already
+  labelled `factory:building`, and stops after the tested commit (#80).
 - Foreman step 5 copies the bench lines `attempt`, `test_command`, `tests`,
   `api_equiv_usd`, and `num_turns` unchanged into the pull request body. Before
   the PR is opened, `factory:blocked` stops the run. Otherwise Foreman removes
