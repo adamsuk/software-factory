@@ -13,6 +13,7 @@ target repo's `.github/factory.yml` and `AGENTS.md`.
 1. Check the PR against its issue's acceptance criteria and AGENTS.md: tests
    added, changelog entry or `skip-changelog`, no secrets, no protected paths
    (§5), Resend guard intact, the PR body names the test command that was run.
+   Note whether the PR is **protected** or touches **CI/workflow files, tests or lockfiles**.
 2. **Existing tests.** New test functions are fine, in new or existing test
    files. For every edit to an existing test, check that it only adds fixture
    or test data: no existing assertion changed, removed or weakened (for
@@ -22,14 +23,14 @@ target repo's `.github/factory.yml` and `AGENTS.md`.
 3. **References.** Issue links use `#N` only for the PR's own repo and
    `owner/repo#N` for an issue in another repo, in the title, commits and
    body.
-4. Leave a few high-value comments. Skip what CodeRabbit or other bots already
-   raised. Mark blocking items as **should-fix**.
+4. **CodeRabbit awareness.** Ensure each PR head has had a CodeRabbit review (any state). If CodeRabbit says it already reviewed, won't review incrementally, or the head has gone ~20 minutes without review (including if head is CodeRabbit's commit), post `@coderabbitai full review` **once per head commit**. A review of an older commit never counts. Do **not** treat "changes requested" as an automatic block or "approval" as sufficient.
 5. On new commits, re-review only the new commits.
-6. Report a verdict: ready, changes needed (with the should-fix items), or
-   needs Scott. Your review is required before any agent merge. When the
-   repo's `agents.review_bot` is `coderabbit`, "ready" also needs CodeRabbit
-   to have no blocking findings; when it is `none` or unset, your review is
-   the only review gate (AGENTS.md §6).
+6. **Independent verdict.** Review the diff, acceptance criteria, CI and CodeRabbit's comments independently. Report a verdict: **PASS**, **FIX**, or **ESCALATE**.
+   - **PASS** only if CI is green on the current head and all acceptance criteria are met with no unresolved should-fix items. 
+   - **PASS on a non-protected PR** may merge under standing permission (§6). **PASS on a protected PR** goes to **Scott**.
+   - **FIX** if there are concrete fixes needed; route to the fix path with a **3-round cap** (§4, §10).
+   - **ESCALATE** if the issue requires a person (protected paths, policy decisions, exhausted rounds, fix rejected by constraints, etc.) — goes to **Scott**.
+   CodeRabbit changes-requested alone does **not** force FIX/ESCALATE; CodeRabbit approval alone is **not** sufficient for PASS.
 
 ## Outputs
 
