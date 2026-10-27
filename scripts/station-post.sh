@@ -176,6 +176,15 @@ cmd_triage() {
   fi
   json=$(read_issue) || die 7 "could not read issue"
   if printf '%s\n' "$json" | first_line_is "$marker"; then
+    local want="factory:ready"
+    if [[ "$status" == "blocked" ]]; then
+      want="factory:blocked"
+    fi
+    if ! has_label "$want" "$(labels_of "$json")"; then
+      swap_to "$want" "$json"
+      echo "already posted: ${issue_repo}#${issue} triage; label set to ${want}"
+      exit 0
+    fi
     die 4 "triage comment already posted on ${issue_repo}#${issue}"
   fi
   post_issue "$text"
@@ -192,6 +201,11 @@ cmd_pickup() {
   json=$(read_issue) || die 7 "could not read issue"
   if printf '%s\n' "$json" | first_line_is "$marker"; then
     echo "already posted: ${issue_repo}#${issue} building"
+    # A comment that landed before a failed label write must not block the
+    # retry. Only factory:ready moves; factory:gate stays at the pull request.
+    if has_label "factory:ready" "$(labels_of "$json")"; then
+      swap_to "factory:building" "$json"
+    fi
     exit 0
   fi
   local names
@@ -223,7 +237,7 @@ cmd_pr() {
   ')
   other=$(printf '%s\n' "$existing" | jq -r --arg h "$head" --arg n "$issue" '
     def closes: ((.body // "") | test("([Cc]loses|[Ff]ixes|[Rr]esolves)[[:space:]]+#"+$n+"(?![0-9])"));
-    [ .[] | select(.headRefName != $h) | select(.headRefName | startswith("factory/"+$n+"-") or closes) | .number ]
+    [ .[] | select(.headRefName != $h) | select((.headRefName | startswith("factory/"+$n+"-")) or closes) | .number ]
     | if length == 0 then "" else .[0] | tostring end
   ')
   if [[ -n "$other" ]]; then
@@ -297,7 +311,8 @@ cmd_verdict() {
   four=$(printf '%s\n' "<!-- factory:review -->" "verdict: ${verdict}" "should-fix: ${should}" "nits: 0")
   if ! printf '%s\n' "$pr_json" | jq -e --arg v "verdict: ${verdict}" '
       [.comments[]? | ((.body // "") | split("\n") | map(gsub("\r$"; "")))]
-      | any(.[]; .[0] == "<!-- factory:review -->" and .[1] == $v)
+      | map(select(.[0] == "<!-- factory:review -->"))
+      | if length == 0 then false else (.[-1][1] == $v) end
     ' >/dev/null; then
     post_pr "$four"
   else
@@ -331,6 +346,9 @@ cmd_blocked() {
   json=$(read_issue) || die 7 "could not read issue"
   if printf '%s\n' "$json" | first_line_is "$marker"; then
     echo "already posted: ${issue_repo}#${issue} blocked"
+    if ! has_label "factory:blocked" "$(labels_of "$json")"; then
+      swap_to "factory:blocked" "$json"
+    fi
     exit 0
   fi
   post_issue "$text"

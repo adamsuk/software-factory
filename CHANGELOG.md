@@ -14,6 +14,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - OpenCode's adapter runs `opencode run --file` (there is no `--prompt-file`)
   and the station prompt tells it to post only through that script.
 
+### Fixed
+
+- `scripts/station-post.sh` treats `Closes #N` on a non-factory branch as a
+  duplicate pull request, and a retry still moves the label when the comment
+  was posted but the label write did not land.
+- `scripts/foreman-orchestrate.sh review` requires the pull request, issue,
+  repository, and head, and puts them in the reviewer prompt.
+
 ## 2026-10-27 (review repairs)
 
 ### Fixed

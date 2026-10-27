@@ -226,6 +226,32 @@ first=$(jq -r '.comments[-1].body' "$MOCK/issue.json" | head -n 1)
 assert_eq "$first" "<!-- factory:review -->"
 grep -q 'Scott must act' "$MOCK/issue.json" || fail "missing scott line"
 
+tname="closes on a non-factory branch"
+reset_issue "factory:building"
+python3 - << PY
+import json
+json.dump([{"number": 9, "headRefName": "temp-branch", "body": "Closes #7", "comments": []}], open("$MOCK/prs.json", "w"))
+PY
+set +e
+"$post" pr --repo acme/widgets --issue 7 --head factory/7-widgets --title "feat: x (#7)" --body-file "$root/body.md" >"$root/err" 2>&1
+rc=$?
+set -e
+assert_eq "$rc" "4"
+assert_eq "$(jq 'length' "$MOCK/prs.json")" "1"
+
+tname="pickup repairs a missed label"
+reset_issue "factory:ready"
+python3 - << 'PY'
+import json, os
+p = os.environ["MOCK_GH"] + "/issue.json"
+issue = {"labels": [{"name": "factory:ready"}], "comments": [{"body": "<!-- factory:building -->\nPicked up.\n"}]}
+json.dump(issue, open(p, "w"))
+PY
+out=$("$post" pickup --repo acme/widgets --issue 7 --branch factory/7-widgets)
+assert_eq "$(label_names)" "factory:building"
+assert_eq "$(comment_count)" "1"
+printf '%s\n' "$out" | grep -q 'already posted' || fail "pickup retry posted a second comment"
+
 tname="dry-run writes nothing"
 reset_issue "factory:triage"
 : > "$MOCK/log"
