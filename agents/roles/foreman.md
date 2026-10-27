@@ -64,13 +64,14 @@ and tracks it to a reviewed PR. Follows [`AGENTS.md`](../../AGENTS.md).
      Do not rerun step 4.
    - `review`: the script has removed `factory:gate` and added `factory:review`.
      Hand the pull request to the reviewer role. Do not merge in this step.
-   - `retry`: if the next fix would change a protected path (AGENTS.md §5),
-     do not rerun step 4; remove `factory:gate`, add `factory:blocked`, and
-     comment that Scott must act, naming the path. If `attempt` is already 3,
+   - `retry`: if `attempt` is already 3,
      remove `factory:gate`, add `factory:blocked`, and comment with the failing
-     check names, a one-paragraph diagnosis, and that Scott must act. Do not
-     rerun step 4. If the path is not protected and `attempt` is
-     below 3, leave `factory:gate`, increment `attempt` (1 becomes 2, 2
+     check names, a one-paragraph diagnosis, and that Scott must act. Also name
+     the protected path if the next fix would change one (AGENTS.md §5). Do
+     not rerun step 4. Otherwise, if the next fix would change a protected
+     path, remove `factory:gate`, add `factory:blocked`, and comment that
+     Scott must act, naming the path. Do not rerun step 4. Otherwise, leave
+     `factory:gate`, increment `attempt` (1 becomes 2, 2
      becomes 3), and rerun step 4 on the same branch. Do not open a second
      pull request.
    - `blocked`: the script has removed `factory:gate` and added

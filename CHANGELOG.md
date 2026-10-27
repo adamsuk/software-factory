@@ -13,6 +13,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   when adding `factory:blocked`, preserving the comment and duplicate-label
   handling.
 
+### Changed
+
+- Foreman retry instructions check the attempt limit before protected paths,
+  so attempt 3 always includes failing check names, a one-paragraph diagnosis,
+  and that Scott must act, plus the protected path when applicable.
+
 ## 2026-10-26
 
 ### Changed
