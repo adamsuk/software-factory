@@ -12,10 +12,10 @@
 # Node install. A custom setup's exported environment carries into test_command.
 # Grok's commits and leftover changes become one commit on top of the start
 # revision, "<title> (#<issue>)". Commits already on the remote stay put.
-# It never opens PRs or merges.
+# On --push this script opens or updates the pull request and never merges.
 set -euo pipefail
 
-# Exit 7: gh issue view or the factory:gate label edit failed.
+# Exit 7: gh issue view, the factory:gate label edit, or a pull request gh call failed.
 setup_env=()
 die() { echo "run-work-order: $2" >&2; exit "$1"; }
 
@@ -339,6 +339,121 @@ set_gate_label() {
     --add-label "factory:gate" || die 7 "could not set factory:gate"
 }
 
+# Open or update the pull request on --push, after set_gate_label.
+# issue_repo names the issue's repository; an empty issue_repo means repo.
+# factory:blocked returns without listing, creating, or editing a pull request.
+# The body is Closes #<issue> when the issue lives in repo, otherwise
+# Refs <issue_repo>#<issue>, then the five bench lines in file order.
+# api_equiv_usd is half-up to two decimal places, then a trailing .0 or a
+# trailing zero in the second decimal place is dropped. The bench file is
+# left unchanged. attempt, test_command, tests, and num_turns are copied
+# unchanged. changelog false adds skip-changelog. A non-zero gh call exits 7.
+# This never merges.
+publish_pr() {
+  local target number labels name blocked=0
+  local repo_name branch_name base_name title_name issue_repo_value
+  local pr_json pr_number body line key value formatted link changelog
+  target=$(field issue_repo)
+  if [[ -z "$target" ]]; then
+    target=$(field repo)
+  fi
+  number=$(field issue)
+  labels=$(gh issue view "$number" --repo "$target" --json labels --jq '.labels[].name') \
+    || die 7 "could not read labels"
+  while IFS= read -r name; do
+    if [[ "$name" == "factory:blocked" ]]; then
+      blocked=1
+    fi
+  done <<< "$labels"
+  if [[ "$blocked" -eq 1 ]]; then
+    echo "run-work-order: factory:blocked; skip pull request" >&2
+    return 0
+  fi
+
+  repo_name=$(field repo)
+  branch_name=$(field branch)
+  base_name=$(field base)
+  if [[ -z "$base_name" ]]; then
+    base_name=main
+  fi
+  title_name=$(field title)
+  issue_repo_value=$target
+  if [[ -z "$issue_repo_value" || "$issue_repo_value" == "$repo_name" ]]; then
+    link="Closes #${number}"
+  else
+    link="Refs ${issue_repo_value}#${number}"
+  fi
+
+  body=$link
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    key=${line%%:*}
+    case "$key" in
+      attempt|test_command|tests|num_turns)
+        body="${body}"$'\n'"${line}"
+        ;;
+      api_equiv_usd)
+        value=${line#api_equiv_usd:}
+        value=${value# }
+        formatted=$(python3 -c '
+import sys
+from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
+raw = sys.argv[2].strip()
+if raw == "":
+    raise SystemExit(0)
+try:
+    number = Decimal(raw)
+except InvalidOperation:
+    raise SystemExit(1)
+if not number.is_finite() or number < 0:
+    raise SystemExit(1)
+text = format(number.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP), "f")
+if text.endswith("0"):
+    text = text[:-1]
+if text.endswith(".0"):
+    text = text[:-2]
+sys.stdout.write(text)
+' -- "$value") || die 7 "could not format api_equiv_usd"
+        if [[ -n "$formatted" ]]; then
+          [[ "$formatted" =~ ^[0-9]+(\.[0-9]{1,2})?$ ]] || die 7 "could not format api_equiv_usd"
+          line="api_equiv_usd: ${formatted}"
+        else
+          line="api_equiv_usd:"
+        fi
+        body="${body}"$'\n'"${line}"
+        ;;
+    esac
+  done < "$dir.bench.txt"
+
+  pr_json=$(gh pr list --repo "$repo_name" --head "$branch_name" --state open --json number) \
+    || die 7 "could not list pull requests"
+  pr_number=$(printf '%s\n' "$pr_json" | jq -r 'if type == "array" and length > 0 then .[0].number else "" end') \
+    || die 7 "could not list pull requests"
+  if [[ -n "$pr_number" && ! "$pr_number" =~ ^[0-9]+$ ]]; then
+    die 7 "could not list pull requests"
+  fi
+
+  changelog=$(field changelog)
+  if [[ -n "$pr_number" ]]; then
+    if [[ "$changelog" == "false" ]]; then
+      gh pr edit "$pr_number" --repo "$repo_name" --body "$body" --add-label skip-changelog \
+        || die 7 "could not update pull request"
+    else
+      gh pr edit "$pr_number" --repo "$repo_name" --body "$body" \
+        || die 7 "could not update pull request"
+    fi
+  else
+    if [[ "$changelog" == "false" ]]; then
+      gh pr create --repo "$repo_name" --base "$base_name" --head "$branch_name" \
+        --title "$title_name" --body "$body" --label skip-changelog \
+        || die 7 "could not open pull request"
+    else
+      gh pr create --repo "$repo_name" --base "$base_name" --head "$branch_name" \
+        --title "$title_name" --body "$body" \
+        || die 7 "could not open pull request"
+    fi
+  fi
+}
+
 # One new commit on $start, titled "<title> (#<issue>)". Soft reset does not
 # rewrite commits that $start already reaches (the remote tip on a reused branch).
 finish_commit() {
@@ -428,7 +543,8 @@ main() {
   if $push; then
     git push --quiet -u origin "$branch"
     set_gate_label
-    echo "run-work-order: pushed $branch; open the PR with gh pr create"
+    publish_pr
+    echo "run-work-order: pushed $branch"
   else
     echo "run-work-order: ready in $dir on $branch; rerun with --push or push it yourself"
   fi

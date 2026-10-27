@@ -9,6 +9,9 @@
 # 200 items (the request cap, so the totals would be incomplete). No stdout.
 # --since is inclusive and --until is exclusive. Both dates are UTC midnights.
 # The only gh calls are the two `gh pr list` reads below.
+# Station 08 matches two whole-line shapes: `api_equiv_usd:` then a
+# non-negative number with at most two decimal places, and `attempt:` then
+# `1`, `2`, or `3`.
 set -euo pipefail
 
 export LC_ALL=C

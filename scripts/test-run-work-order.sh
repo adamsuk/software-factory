@@ -999,6 +999,354 @@ guard_line=$(printf '%s\n' "$main_src" | awk '/-n "\$issue_repo"|-z "\$issue_rep
 repo_line=$(printf '%s\n' "$main_src" | grep -F "\"\$repo\" =~" || true)
 [[ "$repo_line" == *"$pat"* ]] || fail "repo owner/name pattern changed"
 
+# --- publish pull request ---------------------------------------------------
+# A fake gh is first on PATH. These cases call publish_pr only.
+# They do not call main, and they do not call the real gh.
+
+tname="publish-pr-setup"
+GH_BODY=$ROOT/pr-body.txt
+export GH_BODY
+cat > "$GH_BIN/gh" << 'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+{
+  printf '%s\n' "$*"
+  printf '%s\n' '---'
+} >> "${GH_LOG:?}"
+
+prev=""
+for arg in "$@"; do
+  if [[ "$prev" == "--body" ]]; then
+    printf '%s\n' "$arg" > "${GH_BODY:?}"
+  fi
+  prev=$arg
+done
+
+if [[ "${GH_STATUS:-0}" != "0" ]]; then
+  exit "${GH_STATUS}"
+fi
+
+if [[ "${1:-}" == "issue" && "${2:-}" == "view" ]]; then
+  printf '%s\n' "${GH_LABELS-}"
+  exit 0
+fi
+
+if [[ "${1:-}" == "pr" && "${2:-}" == "list" ]]; then
+  if [[ -n "${GH_PR_NUMBER:-}" ]]; then
+    printf '%s\n' "[{\"number\":${GH_PR_NUMBER}}]"
+  else
+    printf '%s\n' "[]"
+  fi
+  exit 0
+fi
+
+if [[ "${1:-}" == "pr" && "${2:-}" == "create" ]]; then
+  exit 0
+fi
+
+if [[ "${1:-}" == "pr" && "${2:-}" == "edit" ]]; then
+  exit 0
+fi
+
+printf 'unexpected gh args\n' >&2
+exit 99
+EOF
+chmod +x "$GH_BIN/gh"
+hash -r
+assert_eq "$(command -v gh)" "$GH_BIN/gh"
+
+reset_publish_gh() {
+  : > "$GH_LOG"
+  : > "$GH_BODY"
+  GH_LABELS=""
+  GH_STATUS=0
+  GH_PR_NUMBER=""
+  export GH_LABELS GH_STATUS GH_PR_NUMBER
+}
+
+write_publish_order() {
+  local repo_name=$1 issue_repo_value=$2 issue_num=$3 changelog_value=$4
+  order=$ROOT/publish-order.md
+  {
+    printf '%s\n' "---"
+    printf '%s\n' "repo: ${repo_name}"
+    printf '%s\n' "issue: ${issue_num}"
+    printf '%s\n' "issue_repo: ${issue_repo_value}"
+    printf '%s\n' "branch: factory/${issue_num}-pr-run-cost"
+    printf '%s\n' "base: main"
+    printf '%s\n' "title: feat: record Grok Build cost and attempt on the pull request"
+    if [[ -n "$changelog_value" ]]; then
+      printf '%s\n' "changelog: ${changelog_value}"
+    fi
+    printf '%s\n' "---"
+  } > "$order"
+}
+
+write_bench() {
+  dir=$ROOT/publish-dir
+  printf '%s\n' "$@" > "$dir.bench.txt"
+}
+
+write_standard_bench() {
+  local attempt=$1
+  local cost=$2
+  local turns=${3:-12}
+  write_bench \
+    "attempt: ${attempt}" \
+    "test_command: shellcheck scripts/*.sh" \
+    "tests: pass" \
+    "api_equiv_usd: ${cost}" \
+    "num_turns: ${turns}"
+}
+
+assert_body() {
+  local expected
+  expected=$(printf '%s\n' "$@")
+  assert_eq "$(cat "$GH_BODY")" "$expected"
+  if grep -q '^[[:space:]]' "$GH_BODY"; then
+    fail "body line has a leading space: $(cat "$GH_BODY")"
+  fi
+}
+
+assert_consecutive() {
+  local expect
+  expect=$ROOT/expect-block.txt
+  printf '%s\n' "$@" > "$expect"
+  awk '
+    NR == FNR { want[++n] = $0; next }
+    {
+      if ($0 == want[i + 1]) {
+        i++
+        if (i == n) { found = 1; exit }
+      } else if ($0 == want[1]) {
+        i = 1
+      } else {
+        i = 0
+      }
+    }
+    END { exit found ? 0 : 1 }
+  ' "$expect" "$GH_LOG" || fail "expected consecutive lines missing from log: $(cat "$GH_LOG")"
+}
+
+assert_log_has() {
+  local needle=$1
+  grep -Fq -- "$needle" "$GH_LOG" || fail "log missing [$needle]: $(cat "$GH_LOG")"
+}
+
+assert_log_lacks() {
+  local needle=$1
+  if grep -Fq -- "$needle" "$GH_LOG"; then
+    fail "log unexpectedly has [$needle]: $(cat "$GH_LOG")"
+  fi
+}
+
+tname="publish-pr-create"
+reset_publish_gh
+write_publish_order "adamsuk/software-factory" "adamsuk/software-factory" "102" "true"
+GH_LABELS=$(printf '%s\n' "factory:gate" "enhancement")
+export GH_LABELS
+write_standard_bench "1" "1.05" "12"
+bench_before=$(cat "$dir.bench.txt")
+run_fail 0 publish_pr
+assert_eq "$(cat "$dir.bench.txt")" "$bench_before"
+assert_log_has "pr create"
+assert_log_lacks "pr edit"
+assert_log_has "issue view 102 --repo adamsuk/software-factory"
+assert_log_has "--repo adamsuk/software-factory"
+assert_log_has "--base main"
+assert_log_has "--head factory/102-pr-run-cost"
+assert_log_has "--title feat: record Grok Build cost and attempt on the pull request"
+assert_log_lacks "skip-changelog"
+assert_body \
+  "Closes #102" \
+  "attempt: 1" \
+  "test_command: shellcheck scripts/*.sh" \
+  "tests: pass" \
+  "api_equiv_usd: 1.05" \
+  "num_turns: 12"
+assert_consecutive \
+  "attempt: 1" \
+  "test_command: shellcheck scripts/*.sh" \
+  "tests: pass" \
+  "api_equiv_usd: 1.05" \
+  "num_turns: 12"
+assert_log_has "Closes #102"
+
+tname="publish-pr-edit"
+reset_publish_gh
+write_publish_order "adamsuk/software-factory" "adamsuk/software-factory" "102" "true"
+GH_LABELS=$(printf '%s\n' "factory:gate")
+GH_PR_NUMBER=55
+export GH_LABELS GH_PR_NUMBER
+write_standard_bench "2" "1.234" "12"
+bench_before=$(cat "$dir.bench.txt")
+run_fail 0 publish_pr
+assert_eq "$(cat "$dir.bench.txt")" "$bench_before"
+assert_log_has "pr edit"
+assert_log_lacks "pr create"
+assert_log_lacks "skip-changelog"
+assert_log_lacks "--title"
+assert_body \
+  "Closes #102" \
+  "attempt: 2" \
+  "test_command: shellcheck scripts/*.sh" \
+  "tests: pass" \
+  "api_equiv_usd: 1.23" \
+  "num_turns: 12"
+assert_consecutive \
+  "attempt: 2" \
+  "test_command: shellcheck scripts/*.sh" \
+  "tests: pass" \
+  "api_equiv_usd: 1.23" \
+  "num_turns: 12"
+assert_log_has "attempt: 2"
+assert_log_has "api_equiv_usd: 1.23"
+if grep -Fq 'api_equiv_usd: 1.234' "$GH_LOG"; then
+  fail "unrounded api_equiv_usd reached the log"
+fi
+
+tname="publish-pr-blocked"
+reset_publish_gh
+write_publish_order "adamsuk/software-factory" "adamsuk/software-factory" "102" "true"
+GH_LABELS=$(printf '%s\n' "factory:blocked" "factory:building")
+export GH_LABELS
+write_standard_bench "1" "1.05" "12"
+run_fail 0 publish_pr
+assert_log_has "issue view"
+assert_log_lacks "pr list"
+assert_log_lacks "pr create"
+assert_log_lacks "pr edit"
+
+tname="publish-pr-refs"
+reset_publish_gh
+write_publish_order "adamsuk/software-factory" "adamsuk/gh-factory" "102" "true"
+GH_LABELS=$(printf '%s\n' "factory:gate")
+export GH_LABELS
+write_standard_bench "1" "1.05" "12"
+run_fail 0 publish_pr
+assert_log_has "issue view 102 --repo adamsuk/gh-factory"
+assert_log_has "pr create --repo adamsuk/software-factory"
+assert_log_has "Refs adamsuk/gh-factory#102"
+assert_log_lacks "Closes #102"
+assert_body \
+  "Refs adamsuk/gh-factory#102" \
+  "attempt: 1" \
+  "test_command: shellcheck scripts/*.sh" \
+  "tests: pass" \
+  "api_equiv_usd: 1.05" \
+  "num_turns: 12"
+
+tname="publish-pr-skip-changelog"
+reset_publish_gh
+write_publish_order "adamsuk/software-factory" "adamsuk/software-factory" "102" "false"
+GH_LABELS=$(printf '%s\n' "factory:gate")
+export GH_LABELS
+write_standard_bench "1" "1.05" "12"
+run_fail 0 publish_pr
+assert_log_has "pr create"
+assert_log_has "--label skip-changelog"
+assert_log_lacks "--add-label"
+assert_log_lacks "pr edit"
+
+tname="publish-pr-edit-skip-changelog"
+reset_publish_gh
+write_publish_order "adamsuk/software-factory" "adamsuk/software-factory" "102" "false"
+GH_LABELS=$(printf '%s\n' "factory:gate")
+GH_PR_NUMBER=55
+export GH_LABELS GH_PR_NUMBER
+write_standard_bench "2" "1.20" "9"
+run_fail 0 publish_pr
+assert_log_has "pr edit"
+assert_log_has "--add-label skip-changelog"
+assert_log_lacks "pr create"
+assert_log_has "api_equiv_usd: 1.2"
+assert_body \
+  "Closes #102" \
+  "attempt: 2" \
+  "test_command: shellcheck scripts/*.sh" \
+  "tests: pass" \
+  "api_equiv_usd: 1.2" \
+  "num_turns: 9"
+
+tname="publish-pr-empty-issue-repo"
+reset_publish_gh
+write_publish_order "adamsuk/software-factory" "" "102" "true"
+GH_LABELS=$(printf '%s\n' "factory:building")
+export GH_LABELS
+write_standard_bench "3" "8" "4"
+run_fail 0 publish_pr
+assert_log_has "issue view 102 --repo adamsuk/software-factory"
+assert_log_has "pr create"
+assert_log_has "Closes #102"
+assert_log_lacks "Refs "
+assert_body \
+  "Closes #102" \
+  "attempt: 3" \
+  "test_command: shellcheck scripts/*.sh" \
+  "tests: pass" \
+  "api_equiv_usd: 8" \
+  "num_turns: 4"
+
+tname="publish-pr-cost-shape"
+expect_cost() {
+  local raw=$1 want=$2
+  tname="publish-pr-cost-${raw}"
+  reset_publish_gh
+  write_publish_order "adamsuk/software-factory" "adamsuk/software-factory" "102" "true"
+  GH_LABELS=$(printf '%s\n' "factory:gate")
+  export GH_LABELS
+  write_standard_bench "1" "$raw" "12"
+  bench_before=$(cat "$dir.bench.txt")
+  run_fail 0 publish_pr
+  assert_eq "$(cat "$dir.bench.txt")" "$bench_before"
+  assert_body \
+    "Closes #102" \
+    "attempt: 1" \
+    "test_command: shellcheck scripts/*.sh" \
+    "tests: pass" \
+    "api_equiv_usd: ${want}" \
+    "num_turns: 12"
+  [[ "$want" =~ ^[0-9]+(\.[0-9]{1,2})?$ ]] || fail "fixture ${want} is not the two-decimal shape"
+}
+expect_cost "1.05" "1.05"
+expect_cost "1.234" "1.23"
+expect_cost "1.235" "1.24"
+expect_cost "1.20" "1.2"
+expect_cost "8" "8"
+
+tname="publish-pr-gh-fails"
+reset_publish_gh
+write_publish_order "adamsuk/software-factory" "adamsuk/software-factory" "102" "true"
+GH_LABELS=$(printf '%s\n' "factory:gate")
+GH_STATUS=1
+export GH_LABELS GH_STATUS
+write_standard_bench "1" "1.05" "12"
+run_fail 7 publish_pr
+assert_log_lacks "pr create"
+assert_log_lacks "pr edit"
+
+tname="publish-pr-main-placement"
+main_src=$(declare -f main)
+push_if=$(printf '%s\n' "$main_src" | awk '/^[[:space:]]*if \$push; then[[:space:]]*$/ { print NR; exit }')
+gate_call=$(printf '%s\n' "$main_src" | awk '/^[[:space:]]*set_gate_label[[:space:]]*;?[[:space:]]*$/ { print NR; exit }')
+publish_call=$(printf '%s\n' "$main_src" | awk '/^[[:space:]]*publish_pr[[:space:]]*;?[[:space:]]*$/ { print NR; exit }')
+else_line=$(printf '%s\n' "$main_src" | awk -v start="$push_if" 'NR > start && /^[[:space:]]*else[[:space:]]*$/ { print NR; exit }')
+fi_line=$(printf '%s\n' "$main_src" | awk -v start="$else_line" 'NR > start && /^[[:space:]]*fi;?[[:space:]]*$/ { print NR; exit }')
+[[ -n "$push_if" && -n "$gate_call" && -n "$publish_call" && -n "$else_line" && -n "$fi_line" ]] \
+  || fail "could not see publish_pr in main (if=$push_if gate=$gate_call publish=$publish_call else=$else_line fi=$fi_line)"
+[[ "$publish_call" -gt "$gate_call" && "$publish_call" -lt "$else_line" ]] \
+  || fail "publish_pr is not after set_gate_label inside the --push branch"
+[[ "$publish_call" -gt "$push_if" ]] || fail "publish_pr is not inside the --push branch"
+publish_hits=$(printf '%s\n' "$main_src" | grep -c "publish_pr" || true)
+assert_eq "$publish_hits" "1"
+else_body=$(printf '%s\n' "$main_src" | awk -v a="$else_line" -v b="$fi_line" 'NR > a && NR < b { print }')
+if [[ "$else_body" == *publish_pr* ]]; then
+  fail "a run without --push calls publish_pr"
+fi
+if printf '%s\n' "$main_src" | grep -Eq '^[[:space:]]*gh[[:space:]]+pr([[:space:]]|$)'; then
+  fail "main calls gh pr"
+fi
+
 PATH=$ORIG_PATH
 # Read by finish_commit / prepare_env in the sourced runner.
 : "$title" "$issue" "$base" "$tests"
