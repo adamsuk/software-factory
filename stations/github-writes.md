@@ -15,6 +15,8 @@ The factory is readable on the issue only when each step leaves one comment and 
 
 Triage, once. `--status ready` or `--status blocked`. The body is the normalised brief. The script adds `<!-- factory:triage -->` when the file does not start with it, then sets `factory:ready` or `factory:blocked`.
 
+The script records the status on the comment's second line. A retry repairs a missing label only when every existing triage comment records the requested status; a different or unrecorded status is refused.
+
 ```bash
 scripts/station-post.sh triage --repo owner/repo --issue N \
   --status ready --body-file /tmp/triage.md

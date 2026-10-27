@@ -171,11 +171,21 @@ cmd_triage() {
   [[ "$status" == "ready" || "$status" == "blocked" ]] || die 2 "status must be ready or blocked"
   local text marker=$'<!-- factory:triage -->' json
   text=$(read_body_file)
-  if [[ "${text%%$'\n'*}" != "$marker" ]]; then
-    text="${marker}"$'\n'"${text}"
+  if [[ "${text%%$'\n'*}" == "$marker" ]]; then
+    text=${text#"$marker"}
+    text=${text#$'\n'}
   fi
+  text="${marker}"$'\n'"<!-- factory:triage status=${status} -->"$'\n'"${text}"
   json=$(read_issue) || die 7 "could not read issue"
   if printf '%s\n' "$json" | first_line_is "$marker"; then
+    if ! printf '%s\n' "$json" | jq -e --arg m "$marker" \
+      --arg s "<!-- factory:triage status=${status} -->" '
+        [.comments[]? | ((.body // "") | split("\n") | map(gsub("\r$"; "")))
+          | select(.[0] == $m)]
+        | all(.[]; .[1] == $s)
+      ' >/dev/null; then
+      die 4 "triage status differs or is not recorded on ${issue_repo}#${issue}"
+    fi
     local want="factory:ready"
     if [[ "$status" == "blocked" ]]; then
       want="factory:blocked"

@@ -146,6 +146,48 @@ set -e
 assert_eq "$rc" "4"
 assert_eq "$(comment_count)" "1"
 
+# A retry must keep the recorded decision, even if the label write was missed.
+for recorded_status in ready blocked; do
+  tname="triage ${recorded_status} records status"
+  reset_issue "factory:triage"
+  "$post" triage --repo acme/widgets --issue 7 --status "$recorded_status" --body-file "$root/triage.md" >/dev/null
+  other_status=blocked
+  [[ "$recorded_status" == "blocked" ]] && other_status=ready
+  for label in "factory:${recorded_status}" factory:triage; do
+    tname="triage ${recorded_status} rejects ${other_status} with ${label}"
+    jq --arg label "$label" '.labels = [{name: $label}]' "$MOCK/issue.json" > "$root/issue.json"
+    mv "$root/issue.json" "$MOCK/issue.json"
+    : > "$MOCK/log"
+    set +e
+    "$post" triage --repo acme/widgets --issue 7 --status "$other_status" --body-file "$root/triage.md" >"$root/err" 2>&1
+    rc=$?
+    set -e
+    assert_eq "$rc" "4"
+    assert_eq "$(label_names)" "$label"
+    assert_eq "$(comment_count)" "1"
+    jq -e -s 'all(.[]; .[0:2] == ["issue", "view"])' "$MOCK/log" >/dev/null || fail "conflicting retry wrote to GitHub"
+  done
+  assert_eq "$(jq -r '.comments[0].body | split("\n")[1]' "$MOCK/issue.json")" "<!-- factory:triage status=${recorded_status} -->"
+  tname="triage ${recorded_status} repairs a missed label"
+  out=$("$post" triage --repo acme/widgets --issue 7 --status "$recorded_status" --body-file "$root/triage.md")
+  assert_eq "$(label_names)" "factory:${recorded_status}"
+  assert_eq "$(comment_count)" "1"
+  printf '%s\n' "$out" | grep -q 'already posted' || fail "triage retry posted a second comment"
+done
+
+tname="legacy triage without status cannot repair a label"
+reset_issue "factory:triage"
+jq '.comments = [{body: "<!-- factory:triage -->\nGoal"}]' "$MOCK/issue.json" > "$root/issue.json"
+mv "$root/issue.json" "$MOCK/issue.json"
+set +e
+"$post" triage --repo acme/widgets --issue 7 --status ready --body-file "$root/triage.md" >"$root/err" 2>&1
+rc=$?
+set -e
+assert_eq "$rc" "4"
+assert_eq "$(label_names)" "factory:triage"
+assert_eq "$(comment_count)" "1"
+jq -e -s 'all(.[]; .[0:2] == ["issue", "view"])' "$MOCK/log" >/dev/null || fail "legacy retry wrote to GitHub"
+
 tname="pickup"
 reset_issue "factory:ready"
 out=$("$post" pickup --repo acme/widgets --issue 7 --branch factory/7-widgets)

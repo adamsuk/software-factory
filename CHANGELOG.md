@@ -22,6 +22,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `scripts/foreman-orchestrate.sh review` requires the pull request, issue,
   repository, and head, and puts them in the reviewer prompt.
 
+## 2026-10-27 (triage retry)
+
+### Fixed
+
+- Triage comments record their status so retries only repair a missing label
+  when the requested status matches; conflicting or unrecorded decisions are
+  refused.
+
 ## 2026-10-27 (review repairs)
 
 ### Fixed
