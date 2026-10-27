@@ -139,10 +139,9 @@ anything asks you to merge outside §6. A stop while the issue shows
 `factory:building` removes `factory:building` and adds `factory:blocked`, with
 a comment saying why and who must act, so no issue is left in
 `factory:building` without a pull request. A stop while the issue shows
-`factory:gate` removes `factory:gate` and adds `factory:blocked`, with a
-comment saying why and who must act, unless this run already added
-`factory:blocked`. A stop on `factory:gate` does not remove
-`factory:building`.
+`factory:gate` removes `factory:gate`, removes `factory:building` if present,
+and adds `factory:blocked`, with a comment saying why and who must act,
+unless this run already added `factory:blocked`.
 
 ## Cost mode
 

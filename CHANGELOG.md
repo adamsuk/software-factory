@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 2026-10-27
+
+### Fixed
+
+- Foreman stop on `factory:gate` also removes `factory:building` if present
+  when adding `factory:blocked`, preserving the comment and duplicate-label
+  handling.
+
 ## 2026-10-26
 
 ### Changed
