@@ -1,0 +1,2 @@
+# Factory YAML parsing in the review and gate scripts.
+PyYAML>=6.0,<7
