@@ -9,6 +9,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `metrics/2026-10-26.md`: first recorded week of factory metrics for
+  `adamsuk/software-factory` from 2026-10-20 through 2026-10-26 (#86)
 - `.github/factory.yml` records required checks `ShellCheck` and
   `changelog / changelog` for station 04. `agents.merge` stays false (#82)
 
