@@ -20,6 +20,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `.github/factory.yml` records required checks `ShellCheck` and
   `changelog / changelog` for station 04. `agents.merge` stays false (#82)
 
+### Changed
+
+- `AGENTS.md` §4 names `factory:gate` → `factory:review` when required checks
+  are green and `factory:gate` → `factory:blocked` when the fix loop stops
+  for a person, and points at §9 Status labels (#103)
+
 ### Fixed
 
 - Declare PyYAML and document the review workflow setup so parsing factory YAML
