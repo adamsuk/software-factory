@@ -5,6 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 2026-10-27
+
+### Added
+
+- `.github/factory.yml` records required checks `ShellCheck` and
+  `changelog / changelog` for station 04. `agents.merge` stays false (#82)
+
 ## 2026-10-26 (gate checks)
 
 ### Added
