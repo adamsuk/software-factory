@@ -1335,19 +1335,22 @@ run_grok() {
     return 1
   fi
   mark_grok_job "$repo" "$ref" 1
-  local stamp out err rc cost stop result
+  local stamp out err rc cost stop result prompt_file
   local -a grok_cmd
   stamp=$(date -u +%Y%m%dT%H%M%SZ)
   out="${STATE}/grok-${kind}-$(repo_slug "$repo")-${ref}-${stamp}.json"
   err="${out%.json}.err"
   GROK_LAST_OUT=$out
   rc=0
-  grok_cmd=(grok -p "$(cat "$prompt")" --output-format json --max-turns "$turns" --always-approve --cwd "$cwd")
+  prompt_file=$(mktemp "${STATE}/grok-prompt.XXXXXX" 2>/dev/null || mktemp "${TMPDIR:-/tmp}/grok-prompt.XXXXXX") || return 1
+  cp "$prompt" "$prompt_file" || { rm -f "$prompt_file"; return 1; }
+  grok_cmd=(grok --prompt-file "$prompt_file" --output-format json --max-turns "$turns" --always-approve --cwd "$cwd")
   if [[ -n $schema ]]; then
     grok_cmd+=(--json-schema "$schema")
   fi
   log "grok start kind=${kind} repo=${repo} ref=${ref} turns=${turns} cwd=${cwd}"
   timeout 40m "${grok_cmd[@]}" >"$out" 2>"$err" || rc=$?
+  rm -f "$prompt_file"
   cost=$(jq -r '.total_cost_usd // .cost_usd // empty' "$out" 2>/dev/null || true)
   stop=$(jq -r '.stopReason // empty' "$out" 2>/dev/null || true)
   result="exit-${rc}"

@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `scripts/watcher/watch.sh` and `scripts/watcher/watch.new.sh` pass prompts
+  via `--prompt-file` so large prompts no longer exceed argument limits (#120)
+
 ## 2026-10-27 (watcher source)
 
 ### Added
