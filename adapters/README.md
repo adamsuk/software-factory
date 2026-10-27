@@ -23,6 +23,11 @@ Adapters translate provider-agnostic station execution into provider-specific in
 ./adapters/opencode/run.sh --role foreman --prompt /tmp/prompt.md
 ```
 
+OpenCode attaches the prompt with `opencode run --file`. It does not take
+`--prompt-file`. The station prompt includes `stations/github-writes.md`:
+comments and `factory:*` labels go through `scripts/station-post.sh`, which
+is what shows the run on the issue. The adapter does not merge.
+
 ## Available Adapters
 
 - `opencode/` - OpenCode CLI adapter

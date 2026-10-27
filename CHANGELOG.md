@@ -5,6 +5,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `scripts/station-post.sh` posts the factory trail for any provider: one
+  triage comment, one `factory:*` label, one `factory/<issue>-<slug>` pull
+  request, and one PASS / FIX / ESCALATE verdict. It refuses a second triage
+  comment, a second open pull request, and a merge.
+- OpenCode's adapter runs `opencode run --file` (there is no `--prompt-file`)
+  and the station prompt tells it to post only through that script.
+
+### Fixed
+
+- `scripts/station-post.sh` treats `Closes #N` on a non-factory branch as a
+  duplicate pull request, and a retry still moves the label when the comment
+  was posted but the label write did not land.
+- `scripts/foreman-orchestrate.sh review` requires the pull request, issue,
+  repository, and head, and puts them in the reviewer prompt.
+
+## 2026-10-27 (triage retry)
+
+### Fixed
+
+- Triage comments record their status so retries only repair a missing label
+  when the requested status matches; conflicting or unrecorded decisions are
+  refused.
+
 ## 2026-10-27 (review repairs)
 
 ### Fixed

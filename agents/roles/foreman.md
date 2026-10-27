@@ -149,6 +149,20 @@ a comment saying why and who must act, so no issue is left in
 and adds `factory:blocked`, with a comment saying why and who must act,
 unless this run already added `factory:blocked`.
 
+## Station runner
+
+When `scripts/station-run.sh` starts this role, GitHub writes follow
+[`stations/github-writes.md`](../../stations/github-writes.md). Pickup, the
+one pull request, and a stop are `scripts/station-post.sh pickup`, `pr`, and
+`blocked`. Do not call `gh` to comment, open a pull request, relabel, or
+merge. Do not open a second pull request or a branch that is not
+`factory/<issue>-<slug>`.
+
+Grok Build still runs through `scripts/run-work-order.sh` (step 4). That
+script is Grok-only. Another provider edits the target clone itself and opens
+the pull request with `station-post.sh pr`. The Grok watcher posts for itself
+and does not use `station-post.sh`.
+
 ## Cost mode
 
 One issue per run. Write short work orders. Don't read the whole repo: Grok
