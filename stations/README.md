@@ -26,9 +26,15 @@ and nothing enforced it (#142).
 | `foreman` | no | writes only labels and comments, through `station-post.sh` |
 | `builder` | **yes** | the only role that changes files; `--read-only` is refused for it |
 
-`scripts/station-run.sh --read-only` runs the station in a detached `git
-worktree` under `/tmp` with its `origin` removed, and deletes it afterwards. An
-edit the agent makes is thrown away, and it has nothing to push to.
+`scripts/station-run.sh --read-only` runs the station in a throwaway `git
+clone` under `/tmp` with its `origin` removed, and deletes it afterwards. An
+edit the agent makes is thrown away, and it has nothing to push to. Only
+committed state is copied, so a station sees the head commit, not the caller's
+uncommitted changes.
+
+A clone and not a linked worktree on purpose: a worktree shares `.git/config`
+with the real repository, so removing the worktree's `origin` removes the
+repository's own remote. That happened while building #142.
 
 This is the filesystem half only. The agent still runs with the caller's `gh`
 credentials, so it could still write through the API — comment, label, or
