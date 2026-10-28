@@ -33,6 +33,7 @@ done
 
 [[ -n "$role" ]] || die 2 "missing role"
 [[ -n "$prompt_file" && -f "$prompt_file" ]] || die 2 "missing prompt"
+[[ "$prompt_file" == /* ]] || prompt_file="$PWD/$prompt_file"
 
 # The builder role is not available on this provider yet: scripts/run-work-order.sh
 # invokes the grok CLI directly, so it is not provider-agnostic. Every other
@@ -44,7 +45,7 @@ fi
 command -v claude >/dev/null 2>&1 || die 2 "claude CLI not found in PATH"
 
 claude_supports() {
-  claude --help 2>&1 | grep -q -- "$1"
+  claude --help 2>&1 | grep -- "$1" >/dev/null
 }
 
 # Print mode is the non-interactive entry point. Without it this would open a

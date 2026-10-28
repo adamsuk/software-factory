@@ -30,6 +30,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ -n "$role" && -n "$prompt_file" && -f "$prompt_file" ]] || die 2 "missing role or prompt"
+[[ "$prompt_file" == /* ]] || prompt_file="$PWD/$prompt_file"
 command -v opencode >/dev/null 2>&1 || die 2 "opencode CLI not found in PATH"
 
 title="factory:${role}"
@@ -43,7 +44,7 @@ fi
 # from the repo root, because the prompt tells it to call scripts/station-post.sh
 # by relative path.
 opencode_run_supports() {
-  opencode run --help 2>&1 | grep -q -- "$1"
+  opencode run --help 2>&1 | grep -- "$1" >/dev/null
 }
 
 args=(run --auto --title "$title" --file "$prompt_file")

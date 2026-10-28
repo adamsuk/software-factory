@@ -30,11 +30,25 @@ make_fake() {
   local name=$1 help=$2
   cat > "$BIN/$name" << FAKE
 #!/usr/bin/env bash
+set -euo pipefail
 if [[ "\$*" == *--help* ]]; then
   printf '%s\n' "$help"
+  if [[ "\${FAKE_LARGE_HELP:-0}" == 1 ]]; then
+    head -c 1048576 /dev/zero
+  fi
   exit 0
 fi
 printf '%s\0' "\$@" >> "$MOCK/$name.argv"
+previous=""
+for arg in "\$@"; do
+  if [[ "\$previous" == --file ]]; then
+    cat -- "\$arg" > "$MOCK/$name.prompt"
+  fi
+  previous="\$arg"
+done
+if [[ "$name" == claude ]]; then
+  cat > "$MOCK/claude.stdin"
+fi
 exit 0
 FAKE
   chmod +x "$BIN/$name"
@@ -60,7 +74,7 @@ done
 tname="opencode omits --dir on a CLI without it"
 rm -f "$MOCK/opencode.argv"
 make_fake opencode "--auto --title --file --model"
-run_adapter opencode --role reviewer --prompt "$prompt" --issue 138 >/dev/null || true
+run_adapter opencode --role reviewer --prompt "$prompt" --issue 138 >/dev/null
 [[ -f "$MOCK/opencode.argv" ]] || fail "opencode was never invoked"
 got=$(argv_of opencode)
 assert_not_contains "$got" "--dir"
@@ -73,7 +87,7 @@ pass
 tname="opencode passes --dir on a CLI that supports it"
 rm -f "$MOCK/opencode.argv"
 make_fake opencode "--auto --dir --title --file"
-run_adapter opencode --role reviewer --prompt "$prompt" >/dev/null || true
+run_adapter opencode --role reviewer --prompt "$prompt" >/dev/null
 assert_contains "$(argv_of opencode)" "--dir"
 pass
 
@@ -101,7 +115,7 @@ pass
 tname="claudecode runs a non-builder role in print mode"
 rm -f "$MOCK/claude.argv"
 make_fake claude "--print --append-system-prompt --permission-mode"
-run_adapter claudecode --role reviewer --prompt "$prompt" --issue 138 >/dev/null || true
+run_adapter claudecode --role reviewer --prompt "$prompt" --issue 138 >/dev/null
 [[ -f "$MOCK/claude.argv" ]] || fail "claude was never invoked"
 got=$(argv_of claude)
 assert_contains "$got" "--print"
@@ -114,5 +128,43 @@ out=$(PATH="$work/empty:/usr/bin:/bin" bash "$root_dir/adapters/claudecode/run.s
   --role reviewer --prompt "$prompt" 2>&1 || true)
 assert_contains "$out" "not found in PATH"
 pass
+
+# Relative prompts must still identify the caller's file after changing directories.
+mkdir -p "$work/caller dir/nested dir"
+cp "$prompt" "$work/caller dir/nested dir/PROMPT.md"
+for mode in opencode-cd opencode-dir claudecode; do
+  tname="$mode reads a relative prompt from another directory"
+  provider=opencode
+  case "$mode" in
+    opencode-cd) make_fake opencode "--auto --title --file" ;;
+    opencode-dir) make_fake opencode "--auto --dir --title --file" ;;
+    claudecode)
+      provider=claudecode
+      make_fake claude "--print --append-system-prompt --permission-mode"
+      ;;
+  esac
+  (cd "$work/caller dir" && run_adapter "$provider" --role reviewer --prompt "nested dir/PROMPT.md") >/dev/null
+  if [[ "$provider" == opencode ]]; then
+    assert_contains "$(argv_of opencode)" "--file $work/caller dir/nested dir/PROMPT.md"
+    cmp "$prompt" "$MOCK/opencode.prompt" || fail "wrong attached prompt"
+  else
+    assert_contains "$(cat "$MOCK/claude.stdin")" "station prompt body"
+  fi
+  pass
+done
+
+# Help larger than a pipe buffer must be drained even when a flag matches early.
+for provider in opencode grok claudecode; do
+  tname="$provider handles large help output"
+  make_fake opencode "--auto --dir --title --file"
+  make_fake grok "--prompt-file"
+  make_fake claude "--print --append-system-prompt --permission-mode"
+  rm -f "$MOCK/opencode.argv"
+  FAKE_LARGE_HELP=1 run_adapter "$provider" --role reviewer --prompt "$prompt" >/dev/null
+  if [[ "$provider" == opencode ]]; then
+    assert_contains "$(argv_of opencode)" "--dir"
+  fi
+  pass
+done
 
 echo "all adapter tests passed"

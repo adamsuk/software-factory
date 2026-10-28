@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 2026-10-28
+
 ### Added
 
 - `adapters/claudecode/run.sh` implements the adapter interface for every
@@ -28,13 +30,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `adapters/grok/run.sh` separates a missing CLI from a CLI that lacks
   `--prompt-file`; both previously reported the same message.
 - `scripts/gate-issue.sh` names a missing PyYAML instead of reporting
-  `could not read factory.yml`, and the `gh` minimum version (2.26, for
+  `could not read factory.yml`, and the `gh` minimum version (2.50, for
   `gh pr checks --json`) is documented with the other prerequisites.
 - `scripts/station-post.sh` treats `Closes #N` on a non-factory branch as a
   duplicate pull request, and a retry still moves the label when the comment
   was posted but the label write did not land.
 - `scripts/foreman-orchestrate.sh review` requires the pull request, issue,
   repository, and head, and puts them in the reviewer prompt.
+- Provider capability probes drain full help output, and OpenCode and Claude
+  Code preserve caller-relative prompt paths when changing directories.
+- Adapter success tests propagate failures, and the gate's invalid-YAML test
+  expects the parser diagnostic.
 
 ## 2026-10-27 (triage retry)
 

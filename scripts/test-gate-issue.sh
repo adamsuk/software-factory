@@ -791,7 +791,7 @@ assert_eq "$stdout" ""
 assert_no_edit
 assert_no_comment
 assert_invocations 0 pr checks
-grep -q 'could not read factory.yml' "$ROOT/err" || fail "stderr missing parser failure"
+grep -q 'could not parse required_checks in factory.yml' "$ROOT/err" || fail "stderr missing parser failure"
 
 tname="blank line keeps later required checks"
 reset_case

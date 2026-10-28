@@ -45,7 +45,7 @@ fi
 # ("not supported or grok CLI not available") could not tell a missing binary
 # from a CLI that lacks the flag, which cost a run on #140.
 command -v grok >/dev/null 2>&1 || die 2 "grok CLI not found in PATH"
-grok --help 2>&1 | grep -q "prompt-file" \
+grok --help 2>&1 | grep -- "prompt-file" >/dev/null \
   || die 3 "grok CLI in PATH does not support --prompt-file, needed for role '$role'"
 
 exec grok --prompt-file "$prompt_file" --rules "$(cat "$here/AGENTS.md")"
