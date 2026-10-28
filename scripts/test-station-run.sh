@@ -43,6 +43,13 @@ run_ro() {
     bash "$root_dir/scripts/station-run.sh" --read-only "$@" 2>&1
 }
 
+# Recorded before any station runs, so the origin check below can tell "the
+# station removed it" from "there was never one here".
+had_origin=no
+if git -C "$root_dir" remote get-url origin > /dev/null 2>&1; then
+  had_origin=yes
+fi
+
 tname="builder is refused --read-only"
 out=$(PATH="$BIN:$PATH" FACTORY_PROVIDER=opencode \
   bash "$root_dir/scripts/station-run.sh" --read-only builder /dev/null 2>&1 || true)
@@ -74,9 +81,16 @@ pass
 # origin removed the real repository's remote. That broke push while building
 # #142. A clone keeps its own config.
 tname="the repo keeps its own origin afterwards"
-git -C "$root_dir" remote get-url origin > /dev/null 2>&1 \
-  || fail "the real repository lost its origin remote"
-pass
+if [[ "$had_origin" == "yes" ]]; then
+  git -C "$root_dir" remote get-url origin > /dev/null 2>&1 \
+    || fail "the real repository lost its origin remote"
+  pass
+else
+  # The suite itself can run inside a read-only sandbox, which has no origin by
+  # design, so there is nothing to lose. Checked before the station ran rather
+  # than assumed.
+  echo "skip: $tname (this checkout has no origin to begin with)"
+fi
 
 tname="the sandbox is cleaned up"
 [[ ! -d "$cwd" ]] || fail "sandbox left behind at $cwd"
