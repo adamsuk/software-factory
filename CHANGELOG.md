@@ -39,8 +39,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   repository, and head, and puts them in the reviewer prompt.
 - Provider capability probes drain full help output, and OpenCode and Claude
   Code preserve caller-relative prompt paths when changing directories.
-- Adapter success tests propagate failures, and the gate's invalid-YAML test
-  expects the parser diagnostic.
+- Adapter success tests propagate failures.
 
 ## 2026-10-27 (triage retry)
 
