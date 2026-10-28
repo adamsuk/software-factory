@@ -78,6 +78,10 @@ environment. Shell lint requires `shellcheck` (`shellcheck scripts/*.sh`).
 - [`audits/2026-10-26.md`](audits/2026-10-26.md): the re-run after the agent
   rules and Grok Build landed. Its gaps are grouped into one ticket per Line
   station (label `station`, #43 to #51).
+- [`audits/2026-10-28.md`](audits/2026-10-28.md): the first audit scoped to
+  **this repo alone**, against guide v2026-10-27 (27 recommendations: 2 met, 13
+  partial, 12 missing). Its gaps are prioritised `P0` to `P3` under one parent,
+  #134, that spans all nine stations.
 
 Audits are read-only and never print secret values.
 
@@ -87,6 +91,7 @@ Audits are read-only and never print secret values.
 | --- | --- |
 | `best practice` / `cutting edge` | Exactly as Line classifies the recommendation. Never re-graded here. |
 | `audit-2026-10-25` | Raised by that audit |
+| `audit-2026-10-28` | Raised by that audit |
 | `area: repo setup` | Repo settings, rulesets, CODEOWNERS, templates |
 | `area: delivery & release` | Environments, releases, Dependabot, provenance |
 | `area: agents & automation` | Agent identity, briefs, review, fix loops, evals |
@@ -96,6 +101,7 @@ Audits are read-only and never print secret values.
 | `decision` | Needs Scott's call before anyone acts |
 | `station` / `station: NN <name>` | Creates or runs one Line station (01 Backlog to 09 Return) |
 | `priority: next` | The one station ticket to build next |
+| `priority: P0` / `P1` / `P2` / `P3` | Urgent, high, medium, low. Set by an audit; Scott re-ranks. |
 | `factory:triage`, `factory:ready`, `factory:building`, `factory:gate`, `factory:review`, `factory:merge`, `factory:release`, `factory:done`, `factory:blocked` | Exactly one status label at a time. Who sets each one is in [AGENTS.md section 9 (Status labels)](AGENTS.md#9-status-labels-43). |
 
 The [Software Factory](https://github.com/users/adamsuk/projects) GitHub
