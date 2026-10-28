@@ -21,6 +21,14 @@ reviews:
   # checkout, so it would stop CodeRabbit *reviewing* the riskiest files. Review
   # on those files is worth more than autofix on ordinary ones, so all writing
   # is off and every fix comes from Grok Build or a person.
+  #
+  # NOT fully closed by this file. CodeRabbit's "autopilot" is a separate
+  # feature with no key in schema.v2.json, and its "Autofix - Keep fixing
+  # CodeRabbit findings and required CI" checkbox still rendered on PR #143
+  # after CodeRabbit had read this file at commit 9c6c3e8 with all four
+  # switches already false. Turning autopilot off is a dashboard setting only
+  # Scott can change. Until he does, a person ticking that box can still make
+  # CodeRabbit commit here.
   finishing_touches:
     autofix:
       enabled: false
