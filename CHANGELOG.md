@@ -9,9 +9,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- `scripts/station-run.sh --read-only` runs a station in a detached worktree
-  with no `origin`, so file writes are discarded and there is nothing to push
-  to. `foreman-orchestrate.sh review` uses it; `builder` is refused it.
+- `scripts/station-run.sh` runs every role but `builder` in a throwaway clone
+  with no `origin`, by default rather than on request, so writes under the
+  station's working directory are discarded and there is nothing to push to.
+  `--writable` is the explicit way out. It is not an OS boundary: the original
+  checkout stays reachable by absolute path, which `stations/README.md` states
+  plainly and which real isolation (#44) would close.
   `stations/README.md` lists which roles may write. A clone, not a linked
   worktree: a worktree shares `.git/config`, so dropping its origin drops the
   repository's own remote. `scripts/test-station-run.sh` regression-tests that.

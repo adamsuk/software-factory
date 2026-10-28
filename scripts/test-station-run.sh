@@ -96,4 +96,64 @@ tname="the sandbox is cleaned up"
 [[ ! -d "$cwd" ]] || fail "sandbox left behind at $cwd"
 pass
 
+# --- read-only is the default, not an opt-in (CodeRabbit, PR #143) ----------
+run_plain() {
+  PATH="$BIN:$PATH" FACTORY_PROVIDER=opencode FAKE_OUT="$OUT" \
+    bash "$root_dir/scripts/station-run.sh" "$@" 2>&1
+}
+
+tname="a non-builder role is read-only with no flag"
+rm -f "$OUT"
+run_plain reviewer /dev/null > /dev/null
+cwd=$(grep '^cwd=' "$OUT" | cut -d= -f2-)
+[[ "$cwd" != "$root_dir" ]] || fail "reviewer ran in the real repo without --read-only"
+grep -q "^origin=.*No such remote" "$OUT" || fail "no sandbox: origin still present"
+pass
+
+tname="intake is read-only by default too"
+rm -f "$OUT"
+run_plain intake /dev/null > /dev/null
+cwd=$(grep '^cwd=' "$OUT" | cut -d= -f2-)
+[[ "$cwd" != "$root_dir" ]] || fail "intake ran in the real repo"
+pass
+
+tname="--writable opts out deliberately"
+# A reporting-only provider for this one case: the default fake edits tracked
+# files, and --writable runs in the real repository, so using it here would
+# damage the checkout. It did exactly that once while this test was written.
+cat > "$BIN/opencode" << 'SAFE'
+#!/usr/bin/env bash
+if [[ "$*" == *--help* ]]; then printf '%s\n' "--auto --title --file"; exit 0; fi
+printf 'cwd=%s\n' "$PWD" > "$FAKE_OUT"
+exit 0
+SAFE
+chmod +x "$BIN/opencode"
+rm -f "$OUT"
+# Compared before and after, not against HEAD: the checkout may legitimately
+# have uncommitted edits while this suite runs.
+before=$(cksum < "$root_dir/scripts/station-run.sh")
+run_plain --writable reviewer /dev/null > /dev/null
+cwd=$(grep '^cwd=' "$OUT" | cut -d= -f2-)
+[[ "$cwd" == "$root_dir" ]] || fail "--writable should run in the repo, ran in $cwd"
+[[ "$(cksum < "$root_dir/scripts/station-run.sh")" == "$before" ]] \
+  || fail "the --writable case modified a tracked file"
+pass
+
+# --- an exported GIT_DIR must not redirect the sandbox's git calls -----------
+# Without unsetting it, `git -C sandbox remote remove origin` can act on the
+# caller's repository and strip the real remote.
+tname="an exported GIT_DIR cannot reach the real repo"
+probe=$work/probe
+rm -rf "$probe"; mkdir -p "$probe"
+git -C "$probe" init -q -b main
+git -C "$probe" config user.email t@e.com
+git -C "$probe" config user.name t
+git -C "$probe" commit -q --allow-empty -m base
+git -C "$probe" remote add origin https://example.invalid/x.git
+rm -f "$OUT"
+GIT_DIR="$probe/.git" GIT_WORK_TREE="$probe" run_plain reviewer /dev/null > /dev/null
+git -C "$probe" remote get-url origin > /dev/null 2>&1 \
+  || fail "the station stripped the origin of the repo named by GIT_DIR"
+pass
+
 echo "all station-run read-only tests passed"
