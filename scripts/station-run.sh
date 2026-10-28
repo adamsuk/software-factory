@@ -17,6 +17,9 @@ Options:
   --issue <n>         Issue number
   --repo <owner/repo> Repo context
   --dry-run           Print composed prompt bundle without invoking provider
+  --read-only         Run the station in a throwaway worktree with no remote, so
+                      file writes are discarded. For roles that must not change
+                      the repo (see stations/README.md, "Which roles may write").
   --help              Show this help
 EOF
   exit 2
@@ -24,6 +27,7 @@ EOF
 
 provider="${FACTORY_PROVIDER:-opencode}"
 dry_run=false
+read_only=false
 work_order=""
 issue=""
 repo_ctx=""
@@ -47,6 +51,8 @@ while [[ $# -gt 0 ]]; do
       repo_ctx="$2"; shift 2;;
     --dry-run)
       dry_run=true; shift;;
+    --read-only)
+      read_only=true; shift;;
     --help)
       usage;;
     -*)
@@ -71,7 +77,7 @@ agents_md="$here/AGENTS.md"
 
 # Build context bundle
 bundle_dir="$(mktemp -d /tmp/station-bundle-XXXXXX)"
-trap 'rm -rf "$bundle_dir"' EXIT
+trap 'rm -rf "$bundle_dir"' EXIT  # replaced by cleanup_station once a worktree may exist
 
 # Copy canonical files
 cp "$agents_md" "$bundle_dir/AGENTS.md"
@@ -164,4 +170,33 @@ if [[ ! -x "$adapter" ]]; then
   fi
 fi
 
-exec "$adapter" --role "$role" --prompt "$prompt_bundle" --work-order "${work_order:-}" --issue "${issue:-}" --repo "${repo_ctx:-}" "$@"
+# A read-only station runs in a detached worktree with its origin removed, so
+# an edit it makes is thrown away and it has nothing to push to. This is the
+# filesystem half of the boundary: the agent still holds the caller's gh
+# credentials, so API writes are not blocked here (#7, #44).
+workdir="$here"
+worktree=""
+cleanup_station() {
+  local st=$?
+  if [[ -n "$worktree" ]]; then
+    git -C "$here" worktree remove --force "$worktree" > /dev/null 2>&1 || true
+    rm -rf "$(dirname "$worktree")"
+  fi
+  rm -rf "$bundle_dir"
+  return "$st"
+}
+
+if $read_only; then
+  [[ "$role" != "builder" ]] || die 2 "builder cannot run --read-only: it exists to change the repo"
+  worktree="$(mktemp -d /tmp/station-ro-XXXXXX)/wt"
+  git -C "$here" worktree add --detach -q "$worktree" HEAD \
+    || die 7 "could not create the read-only worktree"
+  git -C "$worktree" remote remove origin > /dev/null 2>&1 || true
+  workdir="$worktree"
+  echo "station-run: read-only worktree at $worktree (origin removed)" >&2
+fi
+
+# Not exec: the worktree has to be cleaned up after the adapter returns.
+trap cleanup_station EXIT
+"$adapter" --role "$role" --prompt "$prompt_bundle" --work-order "${work_order:-}" \
+  --issue "${issue:-}" --repo "${repo_ctx:-}" --workdir "$workdir" "$@"

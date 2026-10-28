@@ -65,6 +65,7 @@ done
 run_role() {
   local role=$1
   local ctx=$2
+  shift 2
   local -a args=(--provider "$provider")
   if [[ -n "$issue" ]]; then
     args+=(--issue "$issue")
@@ -74,6 +75,12 @@ run_role() {
   fi
   if $dry_run; then
     args+=(--dry-run)
+  fi
+  # Any remaining arguments are station-run options, so they go before the
+  # positional role and context: station-run stops parsing at the first
+  # non-option argument.
+  if [[ $# -gt 0 ]]; then
+    args+=("$@")
   fi
   "$here/scripts/station-run.sh" "${args[@]}" "$role" "$ctx"
 }
@@ -104,6 +111,7 @@ Issue: ${issue}
 Head: ${sha}
 Post the verdict with scripts/station-post.sh verdict --repo ${repo_arg} --pr ${pr} --issue ${issue} --sha ${sha}. Do not merge.
 EOF
-    run_role reviewer "$ctx"
+    # The reviewer reads; it does not change the repo (#142).
+    run_role reviewer "$ctx" --read-only
     ;;
 esac
