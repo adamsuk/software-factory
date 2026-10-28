@@ -2,12 +2,13 @@
 # Behaviour tests for scripts/check-test-assertions.sh. ShellCheck covers this
 # file. Builds throwaway git repos under a temp dir; no network, no writes
 # outside it.
-set -euo pipefail
-
 # SC2016 off for this file: the single-quoted strings below are literal fixture
 # content written into throwaway test scripts. They must reach disk with their
 # $variables unexpanded, because the point is to assert on the text itself.
+# A file-level directive has to precede the first command, so it sits above
+# `set`, not below it.
 # shellcheck disable=SC2016
+set -euo pipefail
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 check="$here/check-test-assertions.sh"
