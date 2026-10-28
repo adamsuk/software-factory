@@ -79,7 +79,7 @@ agents_md="$here/AGENTS.md"
 
 # Build context bundle
 bundle_dir="$(mktemp -d /tmp/station-bundle-XXXXXX)"
-trap 'rm -rf "$bundle_dir"' EXIT  # replaced by cleanup_station once a worktree may exist
+trap 'rm -rf "$bundle_dir"' EXIT  # replaced by cleanup_station once a sandbox may exist
 
 # Copy canonical files
 cp "$agents_md" "$bundle_dir/AGENTS.md"
@@ -172,7 +172,7 @@ if [[ ! -x "$adapter" ]]; then
   fi
 fi
 
-# A read-only station runs in a detached worktree with its origin removed, so
+# A read-only station runs in a throwaway clone with its origin removed, so
 # an edit it makes is thrown away and it has nothing to push to. This is the
 # filesystem half of the boundary: the agent still holds the caller's gh
 # credentials, so API writes are not blocked here (#7, #44).
@@ -204,7 +204,7 @@ if $read_only; then
   echo "station-run: read-only clone of ${head_sha:0:7} at $workdir (no origin)" >&2
 fi
 
-# Not exec: the worktree has to be cleaned up after the adapter returns.
+# Not exec: the sandbox has to be cleaned up after the adapter returns.
 trap cleanup_station EXIT
 "$adapter" --role "$role" --prompt "$prompt_bundle" --work-order "${work_order:-}" \
   --issue "${issue:-}" --repo "${repo_ctx:-}" --workdir "$workdir" "$@"
