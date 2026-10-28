@@ -49,6 +49,8 @@ than the ticket proposed:
 - [ ] `scripts/test-check-test-assertions.sh` passes
 - [ ] `stations/README.md` says which roles may write, and states plainly that
       the API half is not covered
+- [ ] `scripts/test-station-run.sh` proves the boundary holds and that the real
+      repository keeps its own `origin`
 
 ## Likely files
 

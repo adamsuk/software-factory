@@ -12,7 +12,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `scripts/station-run.sh --read-only` runs a station in a detached worktree
   with no `origin`, so file writes are discarded and there is nothing to push
   to. `foreman-orchestrate.sh review` uses it; `builder` is refused it.
-  `stations/README.md` lists which roles may write.
+  `stations/README.md` lists which roles may write. A clone, not a linked
+  worktree: a worktree shares `.git/config`, so dropping its origin drops the
+  repository's own remote. `scripts/test-station-run.sh` regression-tests that.
 - `scripts/check-test-assertions.sh` fails a pull request that changes or
   removes an existing assertion in `scripts/test-*.sh`, overridable with the
   `approved-test-change` label, and runs as the `Test assertions` CI job.
