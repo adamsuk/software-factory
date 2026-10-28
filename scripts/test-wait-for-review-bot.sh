@@ -28,7 +28,10 @@ case "$*" in
   *"pulls/"*"/comments"*) cat "$MOCK/comments.json" ;;
   *"pr view"*"headRefOid"*) cat "$MOCK/head.txt" ;;
   *"pr view"*comments*) cat "$MOCK/prcomments.json" ;;
-  *"pr checks"*) cat "$MOCK/checks.json" ;;
+  *"pr checks"*)
+    cat "$MOCK/checks.json"
+    if [[ -f "$MOCK/checks_rc" ]]; then exit "$(cat "$MOCK/checks_rc")"; fi ;;
+  *"commits/"*) cat "$MOCK/resolved.txt" ;;
   *"pr comment"*) echo "posted" ;;
   *) echo "[]" ;;
 esac
@@ -47,6 +50,8 @@ reset() {
   echo '{"comments":[]}' > "$MOCK/prcomments.json"
   echo "[]" > "$MOCK/checks.json"
   printf '%s\n' "$SHA" > "$MOCK/head.txt"
+  printf '%s\n' "$SHA" > "$MOCK/resolved.txt"
+  rm -f "$MOCK/checks_rc"
 }
 
 run() {
@@ -159,6 +164,60 @@ tname="--bot overrides factory.yml"
 reset
 printf '[{"user":{"login":"someone-else"},"commit_id":"%s"}]\n' "$SHA" > "$MOCK/reviews.json"
 [[ "$(code --sha "$SHA" --bot someone-else --timeout 5 --no-nudge)" == "0" ]] || fail "--bot should match that login"
+pass
+
+# --- CodeRabbit's findings on #150 -----------------------------------------
+
+# gh api --paginate prints one array per page, so an unslurped jq filter yields
+# one count per page. Two pages with no match gave "0\n0", which is not "0" and
+# was read as a hit: the wait ended at once on exactly the busy pull requests it
+# exists for.
+tname="two pages with no match does not read as reviewed"
+reset
+{
+  printf '[{"user":{"login":"someone"},"commit_id":"%s"}]\n' "$OTHER"
+  printf '[{"user":{"login":"another"},"commit_id":"%s"}]\n' "$OTHER"
+} > "$MOCK/reviews.json"
+cp "$MOCK/reviews.json" "$MOCK/comments.json"
+printf '[{"name":"CodeRabbit","bucket":"pending"}]\n' > "$MOCK/checks.json"
+out=$(run --sha "$SHA" --timeout 2 --no-nudge || true)
+[[ "$out" != *"has reviewed"* ]] || fail "a two-page miss was read as a review: [$out]"
+pass
+
+tname="two pages with a match on the second page is found"
+reset
+{
+  printf '[{"user":{"login":"someone"},"commit_id":"%s"}]\n' "$OTHER"
+  printf '[{"user":{"login":"coderabbitai[bot]"},"commit_id":"%s"}]\n' "$SHA"
+} > "$MOCK/reviews.json"
+out=$(run --sha "$SHA" --timeout 5 --no-nudge)
+[[ "$out" == *"has reviewed"* ]] || fail "a match on page two was missed: [$out]"
+pass
+
+# gh documents exit 8 as "Checks pending", the state this script waits through.
+tname="exit 8 from gh pr checks is not an error"
+reset
+printf '[{"name":"CodeRabbit","bucket":"pending"}]\n' > "$MOCK/checks.json"
+printf '%s\n' "8" > "$MOCK/checks_rc"
+[[ "$(code --sha "$SHA" --timeout 2 --no-nudge)" == "1" ]] \
+  || fail "exit 8 should keep it waiting, not kill it"
+rm -f "$MOCK/checks_rc"
+pass
+
+tname="a real gh failure still stops it"
+reset
+printf '%s\n' "7" > "$MOCK/checks_rc"
+[[ "$(code --sha "$SHA" --timeout 5 --no-nudge)" == "7" ]] \
+  || fail "a non-8 failure should die 7"
+rm -f "$MOCK/checks_rc"
+pass
+
+tname="an abbreviated --sha is resolved before comparing"
+reset
+printf '[{"user":{"login":"coderabbitai[bot]"},"commit_id":"%s"}]\n' "$SHA" > "$MOCK/reviews.json"
+printf '%s\n' "$SHA" > "$MOCK/resolved.txt"
+out=$(run --sha "${SHA:0:7}" --timeout 5 --no-nudge)
+[[ "$out" == *"has reviewed"* ]] || fail "an abbreviated sha was not resolved: [$out]"
 pass
 
 echo "all wait-for-review-bot tests passed"

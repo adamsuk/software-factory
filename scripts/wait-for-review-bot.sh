@@ -87,7 +87,17 @@ fi
 
 pr_head=$(gh pr view "$pr" --repo "$repo" --json headRefOid --jq .headRefOid) \
   || die 7 "could not read the pull request head"
-[[ -n "$sha" ]] || sha="$pr_head"
+if [[ -z "$sha" ]]; then
+  sha="$pr_head"
+else
+  # commit_id and headRefOid are full lowercase SHAs, and
+  # foreman-orchestrate.sh accepts 7 to 40 hex characters in any case. Compared
+  # raw, an abbreviated or upper-case --sha matches nothing and the script waits
+  # out the whole timeout for no reason.
+  sha=$(gh api "repos/${repo}/commits/${sha}" --jq .sha 2>/dev/null) \
+    || die 7 "could not resolve --sha to a commit in ${repo}"
+  [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || die 7 "resolved --sha is not a commit id: $sha"
+fi
 short=${sha:0:7}
 
 # `gh pr checks` always reports the pull request's current head, so it is only
@@ -109,8 +119,13 @@ bot_reviewed_sha() {
   local path out n
   for path in reviews comments; do
     out=$(gh api "repos/${repo}/pulls/${pr}/${path}" --paginate) || return 2
-    n=$(printf '%s' "$out" | jq -r --arg u "$bot_login" --arg s "$sha" \
-      '[.[] | select(.user.login == $u) | select(.commit_id == $s)] | length')
+    # jq -s with .[][]: --paginate prints one JSON array per page, so an
+    # unslurped filter runs once per page and a two-page miss yields "0\n0",
+    # which is not equal to "0" and so read as a hit. CodeRabbit found that on
+    # #150, and busy pull requests -- the whole point of this wait -- are the
+    # ones with more than one page.
+    n=$(printf '%s' "$out" | jq -s -r --arg u "$bot_login" --arg s "$sha" \
+      '[.[][] | select(.user.login == $u) | select(.commit_id == $s)] | length')
     [[ "$n" == "0" ]] || return 0
   done
   return 1
@@ -119,8 +134,14 @@ bot_reviewed_sha() {
 # gh pr checks takes no --arg, so the name goes through real jq. The exit status
 # is kept: a failed gh call must not read as "absent".
 bucket_now() {
-  local out
-  out=$(gh pr checks "$pr" --repo "$repo" --json name,bucket) || return 1
+  local out rc
+  out=$(gh pr checks "$pr" --repo "$repo" --json name,bucket) && rc=0 || rc=$?
+  # gh documents exit 8 as "Checks pending", which is the state this script
+  # exists to wait through, so it is not an error. On gh 2.103.3 the --json form
+  # returns 0 while pending, but the documented contract is what we rely on.
+  if [[ "$rc" -ne 0 && "$rc" -ne 8 ]]; then
+    return 1
+  fi
   printf '%s' "$out" \
     | jq -r --arg n "$check_name" '[.[] | select(.name == $n) | .bucket][0] // ""'
 }

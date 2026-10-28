@@ -109,8 +109,15 @@ case "$action" in
     # #141, #143 and #146 (#147). A timeout is not fatal: the review still
     # happens, and the reviewer reports what it could and could not see.
     if ! $dry_run; then
+      wait_rc=0
       "$here/scripts/wait-for-review-bot.sh" --repo "$repo_arg" --pr "$pr" --sha "$sha" \
-        || echo "Reviewer: proceeding without a ${provider} review-bot result (see above)."
+        || wait_rc=$?
+      if [[ "$wait_rc" -ne 0 ]]; then
+        # Not ${provider}: that is the station's agent provider, not the review
+        # bot. And the || branch also catches usage and configuration errors,
+        # which are not timeouts.
+        echo "Reviewer: no review-bot result for ${sha} (wait exited ${wait_rc}; see above). Reviewing anyway and saying what was unavailable."
+      fi
     fi
     ctx=$(mktemp)
     trap 'rm -f "$ctx"' EXIT

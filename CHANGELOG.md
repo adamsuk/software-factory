@@ -16,9 +16,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the commit is the pull request's head. Nudges `@coderabbitai full review`
   once per head per §10.2, and a timeout is not fatal. Covered by
   `scripts/test-wait-for-review-bot.sh` (15 tests).
-
-### Added
-
 - `scripts/factory-flagged.sh` lists the issues flagged `priority: next` on the
   Software Factory board, ordered `priority: P0`-`P3` then issue number, so
   "pick up what's flagged" resolves to one read-only command. Covered by
