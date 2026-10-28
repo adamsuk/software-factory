@@ -252,11 +252,28 @@ if $read_only; then
     git -C "$sandbox/repo" remote set-url origin "$origin_url" > /dev/null 2>&1 \
       || die 7 "could not set the read-only clone's fetch URL"
   fi
+  # pushurl is multi-valued and inherits from global config, so a global
+  # remote.origin.pushurl survives alongside the blocked one and git pushes to
+  # both. Confirmed by experiment. Clear the local list, set the blocked URL,
+  # then verify it is the only one and refuse to run if it is not.
+  git -C "$sandbox/repo" config --unset-all remote.origin.pushurl > /dev/null 2>&1 || true
   git -C "$sandbox/repo" remote set-url --push origin \
     "no-push://blocked-by-read-only-station" > /dev/null 2>&1 \
     || die 7 "could not block pushes from the read-only clone"
+  effective_push=$(git -C "$sandbox/repo" remote get-url --push --all origin 2>/dev/null \
+    | grep -v '^no-push://blocked-by-read-only-station$' || true)
+  if [[ -n "$effective_push" ]]; then
+    die 7 "inherited push URL would bypass the read-only station: ${effective_push//$'\n'/ }. Remove remote.origin.pushurl from your global git config."
+  fi
   workdir="$sandbox/repo"
   echo "station-run: read-only clone of ${head_sha:0:7} at $workdir (push blocked)" >&2
+fi
+
+# A station reading another repository must not have unqualified gh calls fall
+# back to this checkout's origin. GH_REPO makes gh default to the repo the
+# station was given, which the adapters do not pass through.
+if [[ -n "${repo_ctx:-}" ]]; then
+  export GH_REPO="$repo_ctx"
 fi
 
 # Not exec: the sandbox has to be cleaned up after the adapter returns. The

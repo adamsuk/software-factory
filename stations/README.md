@@ -38,6 +38,15 @@ the fetch URL is deliberate: removing the remote blinded the reviewer, because
 pull request, its checks, or CodeRabbit's comments — the things §10.4 asks it to
 review against. It reviewed the local diff instead and said so (#149).
 
+A station given `--repo` also gets `GH_REPO` set to it, so an unqualified `gh`
+read inside the sandbox cannot fall back to this checkout's `origin` and inspect
+the wrong repository.
+
+A global `remote.origin.pushurl` would survive into the clone alongside the
+blocked one — `pushurl` is multi-valued, so git would push to both. The station
+checks the effective push URLs after setting the blocked one and refuses to run
+if any other remains, naming it.
+
 **What this does and does not stop.** It moves the working directory and breaks
 the clone's push URL, so an agent writing relative paths has its edits thrown
 away and a plain `git push` fails. It is not a guarantee that nothing can be

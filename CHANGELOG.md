@@ -15,6 +15,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `git push` fails. The clone keeps `origin`'s fetch URL so `gh` still works —
   removing it blinded the reviewer (#149) — and breaks only the push URL.
   `--writable` is the explicit way out; `foreman` and `builder` write by design.
+  A station given `--repo` gets `GH_REPO`, so an unqualified `gh` read cannot
+  inspect the wrong repository, and an inherited `remote.origin.pushurl` is
+  refused rather than silently providing a working push target.
   It is not an OS boundary: the original checkout stays reachable by absolute
   path, which `stations/README.md` states plainly and real isolation (#44) would
   close.

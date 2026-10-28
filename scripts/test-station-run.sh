@@ -66,7 +66,9 @@ pass
 tname="the read-only clone can still read its origin"
 # Deliberately not removed: gh needs the remote to infer the repository, or the
 # reviewer cannot read the pull request it is reviewing (#149).
-grep -q "^origin=https" "$OUT" || fail "clone lost its fetch URL: $(grep '^origin=' "$OUT")"
+want_origin=$(git -C "$root_dir" remote get-url origin)
+grep -qxF "origin=$want_origin" "$OUT" \
+  || fail "clone's fetch URL is not the source repo's ($want_origin): $(grep '^origin=' "$OUT")"
 pass
 
 tname="a write inside it cannot be pushed"
@@ -97,6 +99,19 @@ else
   # than assumed.
   echo "skip: $tname (this checkout has no origin to begin with)"
 fi
+
+# A global remote.origin.pushurl survives into the clone alongside the blocked
+# one, because pushurl is multi-valued, so git would push to it. Simulated
+# through GIT_CONFIG_GLOBAL so the real user config is never touched.
+tname="an inherited push URL is refused, not silently bypassed"
+fake_global=$work/gitconfig
+printf '[remote "origin"]\n\tpushurl = https://example.invalid/leak.git\n' > "$fake_global"
+out=$(GIT_CONFIG_GLOBAL="$fake_global" PATH="$BIN:$PATH" FACTORY_PROVIDER=opencode \
+  FAKE_OUT="$OUT" bash "$root_dir/scripts/station-run.sh" reviewer /dev/null 2>&1 || true)
+[[ "$out" == *"inherited push URL would bypass"* ]] \
+  || fail "expected a refusal, got [$out]"
+[[ "$out" == *"example.invalid/leak.git"* ]] || fail "refusal did not name the URL"
+pass
 
 tname="the sandbox is cleaned up"
 [[ ! -d "$cwd" ]] || fail "sandbox left behind at $cwd"
