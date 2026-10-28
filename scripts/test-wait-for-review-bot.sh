@@ -29,6 +29,7 @@ case "$*" in
   *"pr view"*"headRefOid"*) cat "$MOCK/head.txt" ;;
   *"pr view"*comments*) cat "$MOCK/prcomments.json" ;;
   *"pr checks"*)
+    if [[ -f "$MOCK/checks_err" ]]; then cat "$MOCK/checks_err" >&2; fi
     cat "$MOCK/checks.json"
     if [[ -f "$MOCK/checks_rc" ]]; then exit "$(cat "$MOCK/checks_rc")"; fi ;;
   *"commits/"*) cat "$MOCK/resolved.txt" ;;
@@ -51,7 +52,7 @@ reset() {
   echo "[]" > "$MOCK/checks.json"
   printf '%s\n' "$SHA" > "$MOCK/head.txt"
   printf '%s\n' "$SHA" > "$MOCK/resolved.txt"
-  rm -f "$MOCK/checks_rc"
+  rm -f "$MOCK/checks_rc" "$MOCK/checks_err"
 }
 
 run() {
@@ -78,9 +79,11 @@ out=$(run --sha "$SHA" --timeout 5 --no-nudge)
 [[ "$out" == *"has reviewed"* ]] || fail "expected success, got [$out]"
 pass
 
-tname="a review comment for the sha is enough"
+tname="a review comment written against the sha is enough"
 reset
-printf '[{"user":{"login":"coderabbitai[bot]"},"commit_id":"%s"}]\n' "$SHA" > "$MOCK/comments.json"
+# original_commit_id, not commit_id: see the re-anchoring test below.
+printf '[{"user":{"login":"coderabbitai[bot]"},"commit_id":"%s","original_commit_id":"%s"}]\n' \
+  "$SHA" "$SHA" > "$MOCK/comments.json"
 [[ "$(code --sha "$SHA" --timeout 5 --no-nudge)" == "0" ]] || fail "comments alone should suffice"
 pass
 
@@ -92,7 +95,8 @@ pass
 
 tname="a review of another sha does not count"
 reset
-printf '[{"user":{"login":"coderabbitai[bot]"},"commit_id":"%s"}]\n' "$OTHER" > "$MOCK/reviews.json"
+printf '[{"user":{"login":"coderabbitai[bot]"},"commit_id":"%s","original_commit_id":"%s"}]\n' \
+  "$OTHER" "$OTHER" > "$MOCK/reviews.json"
 [[ "$(code --sha "$SHA" --timeout 2 --no-nudge)" == "1" ]] || fail "wrong sha should not satisfy it"
 pass
 
@@ -218,6 +222,46 @@ printf '[{"user":{"login":"coderabbitai[bot]"},"commit_id":"%s"}]\n' "$SHA" > "$
 printf '%s\n' "$SHA" > "$MOCK/resolved.txt"
 out=$(run --sha "${SHA:0:7}" --timeout 5 --no-nudge)
 [[ "$out" == *"has reviewed"* ]] || fail "an abbreviated sha was not resolved: [$out]"
+pass
+
+# GitHub re-anchors a review comment when the diff moves under it, rewriting
+# commit_id to a newer commit while original_commit_id keeps the one it was
+# written against. Matching commit_id ended the wait on heads the bot had never
+# seen -- observed on #149, where every comment reporting a8ca777 originated on
+# an older head.
+tname="a re-anchored comment does not count as a review of the new head"
+reset
+printf '[{"user":{"login":"coderabbitai[bot]"},"commit_id":"%s","original_commit_id":"%s"}]\n' \
+  "$SHA" "$OTHER" > "$MOCK/comments.json"
+printf '[{"name":"CodeRabbit","bucket":"pending"}]\n' > "$MOCK/checks.json"
+out=$(run --sha "$SHA" --timeout 2 --no-nudge || true)
+[[ "$out" != *"has reviewed"* ]] || fail "a re-anchored comment satisfied the wait: [$out]"
+pass
+
+tname="a comment written against the head does count"
+reset
+printf '[{"user":{"login":"coderabbitai[bot]"},"commit_id":"%s","original_commit_id":"%s"}]\n' \
+  "$OTHER" "$SHA" > "$MOCK/comments.json"
+out=$(run --sha "$SHA" --timeout 5 --no-nudge)
+[[ "$out" == *"has reviewed"* ]] || fail "an original_commit_id match was missed: [$out]"
+pass
+
+tname="a review record still matches on commit_id, not original"
+reset
+printf '[{"user":{"login":"coderabbitai[bot]"},"commit_id":"%s"}]\n' "$SHA" > "$MOCK/reviews.json"
+out=$(run --sha "$SHA" --timeout 5 --no-nudge)
+[[ "$out" == *"has reviewed"* ]] || fail "reviews should match commit_id: [$out]"
+pass
+
+# A pull request can sit with no checks at all; gh errors on that, and treating
+# it as fatal ended the wait on the first poll.
+tname="no checks reported keeps it polling rather than dying"
+reset
+echo "[]" > "$MOCK/checks.json"
+printf 'no checks reported on the factory/x branch\n' > "$MOCK/checks_err"
+printf '%s\n' "1" > "$MOCK/checks_rc"
+[[ "$(code --sha "$SHA" --timeout 2 --no-nudge)" == "1" ]] \
+  || fail "no-checks should time out, not die 7"
 pass
 
 echo "all wait-for-review-bot tests passed"

@@ -117,15 +117,27 @@ check_is_about_sha=false
 # head".
 bot_reviewed_sha() {
   local path out n
+  # Two endpoints, two different fields.
+  #
+  # reviews: commit_id is the commit the review was submitted against.
+  #
+  # comments: GitHub RE-ANCHORS a review comment when the diff moves under it,
+  # rewriting commit_id to a newer commit while original_commit_id keeps the one
+  # it was written against. So commit_id on a comment is not evidence the bot
+  # looked at that commit. On #149 every comment reporting commit_id a8ca777 had
+  # original_commit_id 0def4af, 1fe1527 or 83add89 -- all older heads -- and
+  # /reviews had no record for a8ca777 at all. Matching on commit_id therefore
+  # ended the wait on a head the bot had never seen, which is the exact failure
+  # this script exists to prevent. CodeRabbit found it on #150.
+  local path field out n
   for path in reviews comments; do
+    if [[ "$path" == comments ]]; then field=original_commit_id; else field=commit_id; fi
     out=$(gh api "repos/${repo}/pulls/${pr}/${path}" --paginate) || return 2
     # jq -s with .[][]: --paginate prints one JSON array per page, so an
     # unslurped filter runs once per page and a two-page miss yields "0\n0",
-    # which is not equal to "0" and so read as a hit. CodeRabbit found that on
-    # #150, and busy pull requests -- the whole point of this wait -- are the
-    # ones with more than one page.
-    n=$(printf '%s' "$out" | jq -s -r --arg u "$bot_login" --arg s "$sha" \
-      '[.[][] | select(.user.login == $u) | select(.commit_id == $s)] | length')
+    # which is not equal to "0" and so read as a hit.
+    n=$(printf '%s' "$out" | jq -s -r --arg u "$bot_login" --arg s "$sha" --arg f "$field" \
+      '[.[][] | select(.user.login == $u) | select(.[$f] == $s)] | length')
     [[ "$n" == "0" ]] || return 0
   done
   return 1
@@ -134,14 +146,26 @@ bot_reviewed_sha() {
 # gh pr checks takes no --arg, so the name goes through real jq. The exit status
 # is kept: a failed gh call must not read as "absent".
 bucket_now() {
-  local out rc
-  out=$(gh pr checks "$pr" --repo "$repo" --json name,bucket) && rc=0 || rc=$?
-  # gh documents exit 8 as "Checks pending", which is the state this script
-  # exists to wait through, so it is not an error. On gh 2.103.3 the --json form
-  # returns 0 while pending, but the documented contract is what we rely on.
+  local out err rc
+  err=$(mktemp)
+  out=$(gh pr checks "$pr" --repo "$repo" --json name,bucket 2>"$err") && rc=0 || rc=$?
+  # Exit 8 is documented as "Checks pending", the state this script waits
+  # through, so it is not an error. On gh 2.103.3 the --json form returns 0
+  # while pending, but the documented contract is what we rely on.
+  #
+  # "no checks reported" means the checks are absent, not that the API failed:
+  # a pull request can sit with no checks for a while, and treating that as
+  # fatal ended the wait on the first poll. Keep polling instead.
   if [[ "$rc" -ne 0 && "$rc" -ne 8 ]]; then
+    if grep -qi "no checks reported" "$err"; then
+      rm -f "$err"
+      printf '%s' ""
+      return 0
+    fi
+    rm -f "$err"
     return 1
   fi
+  rm -f "$err"
   printf '%s' "$out" \
     | jq -r --arg n "$check_name" '[.[] | select(.name == $n) | .bucket][0] // ""'
 }

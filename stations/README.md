@@ -91,9 +91,17 @@ findings** and no verdict read any of them; four were real, and one had broken
 the pull request it was reviewing.
 
 The wait is satisfied when the bot has posted a review **or** a review comment
-for that exact commit. Both are checked, because neither is sufficient alone —
-on #149 CodeRabbit left comments on one head with no review record, and a review
-record on another with no comments.
+written against that exact commit. Both are checked, because neither is
+sufficient alone — on #149 CodeRabbit left a review record on `79632eb` with no
+comments.
+
+The two use different fields, which matters. GitHub **re-anchors** a review
+comment when the diff moves under it, rewriting `commit_id` to a newer commit
+while `original_commit_id` keeps the one it was written against. Every comment
+on #149 reporting `commit_id` `a8ca777` had originated on an older head, and
+`/reviews` had no record for `a8ca777` at all — so matching `commit_id` ended
+the wait on a head the bot had never seen, the exact failure this exists to
+prevent. Comments are matched on `original_commit_id`; reviews on `commit_id`.
 
 The bot's check is only a secondary signal, and only when the requested commit
 is the pull request's current head: `gh pr checks` always reports the head, so a

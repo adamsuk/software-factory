@@ -12,8 +12,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   bot's comments as AGENTS.md §10.4 requires. It had not been waiting: across
   #141, #143 and #146 CodeRabbit left 16 inline findings and no verdict read
   any of them. Satisfied by a review **or** a review comment for the exact
-  commit, since neither is sufficient alone; the bot's check counts only when
-  the commit is the pull request's head. Nudges `@coderabbitai full review`
+  commit, since neither is sufficient alone. Comments match on
+  `original_commit_id`, because GitHub re-anchors a comment's `commit_id` to a
+  newer commit and matching that ended the wait on heads the bot had never
+  seen. The bot's check counts only when the commit is the pull request's head,
+  tolerates the documented exit 8, and treats "no checks reported" as absent
+  rather than fatal. Nudges `@coderabbitai full review`
   once per head per §10.2, and a timeout is not fatal. Covered by
   `scripts/test-wait-for-review-bot.sh` (15 tests).
 - `scripts/factory-flagged.sh` lists the issues flagged `priority: next` on the
