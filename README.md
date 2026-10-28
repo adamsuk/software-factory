@@ -52,7 +52,10 @@ in `.github/factory.yml` under `agents:` (merging is off by default).
 ### Review workflow setup
 
 `scripts/review-issue.sh` requires Bash, Python 3 with venv/pip, PyYAML,
-`jq`, and an authenticated GitHub CLI (`gh`). From this repo's root, prepare
+`jq`, and an authenticated GitHub CLI (`gh`) **2.50 or newer**:
+`scripts/gate-issue.sh` reads check results with `gh pr checks --json`, which
+older builds do not have. Without PyYAML the gate stops and names the missing
+module. From this repo's root, prepare
 and activate an environment before running the review script:
 
 ```bash
