@@ -103,6 +103,22 @@ case "$action" in
     [[ "$sha" =~ ^[0-9a-fA-F]{7,40}$ ]] || die 2 "review requires --sha"
     echo "Reviewer: verdict on ${repo_arg}#${pr} (provider: $provider)"
     echo "Post it with scripts/station-post.sh verdict. Do not merge."
+    # AGENTS.md section 10.4 has the independent review weigh CodeRabbit's
+    # comments, so wait for them first. Without this the reviewer ran while
+    # CodeRabbit was still going and 16 of its findings went unread across
+    # #141, #143 and #146 (#147). A timeout is not fatal: the review still
+    # happens, and the reviewer reports what it could and could not see.
+    if ! $dry_run; then
+      wait_rc=0
+      "$here/scripts/wait-for-review-bot.sh" --repo "$repo_arg" --pr "$pr" --sha "$sha" \
+        || wait_rc=$?
+      if [[ "$wait_rc" -ne 0 ]]; then
+        # Not ${provider}: that is the station's agent provider, not the review
+        # bot. And the || branch also catches usage and configuration errors,
+        # which are not timeouts.
+        echo "Reviewer: no review-bot result for ${sha} (wait exited ${wait_rc}; see above). Reviewing anyway and saying what was unavailable."
+      fi
+    fi
     ctx=$(mktemp)
     trap 'rm -f "$ctx"' EXIT
     cat > "$ctx" << EOF
