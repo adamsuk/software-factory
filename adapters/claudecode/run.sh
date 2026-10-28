@@ -12,6 +12,7 @@ die() { echo "claudecode-adapter: $2" >&2; exit "$1"; }
 role=""
 prompt_file=""
 issue=""
+workdir=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -24,6 +25,9 @@ while [[ $# -gt 0 ]]; do
     --issue)
       [[ $# -ge 2 ]] || die 2 "missing value for --issue"
       issue="$2"; shift 2 ;;
+    --workdir)
+      [[ $# -ge 2 ]] || die 2 "missing value for --workdir"
+      workdir="$2"; shift 2 ;;
     --work-order|--repo)
       [[ $# -ge 2 ]] || die 2 "missing value for $1"
       shift 2 ;;
@@ -72,7 +76,9 @@ else
   die 3 "claude CLI in PATH has no way to auto-approve tool use, needed for an unattended station"
 fi
 
-cd "$here" || die 2 "cannot enter repo root: $here"
+run_dir="${workdir:-$here}"
+[[ -d "$run_dir" ]] || die 2 "working directory does not exist: $run_dir"
+cd "$run_dir" || die 2 "cannot enter working directory: $run_dir"
 
 # The bundle is the prompt. The trailing instruction mirrors the other adapters.
 {

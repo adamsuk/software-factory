@@ -5,3 +5,28 @@
 reviews:
   auto_approvals:
     enabled: true
+
+  # CodeRabbit reviews here; it does not write here (#142).
+  #
+  # Every one of these defaults to true, so until 2026-10-28 CodeRabbit held
+  # standing permission to commit code and generate tests in this repo. It used
+  # it: commit 96e5e3e landed on factory/140-provider-adapters and changed an
+  # existing assertion in scripts/test-gate-issue.sh so the test passed against
+  # an error string the code no longer produced.
+  #
+  # AGENTS.md 10.3 allows CodeRabbit fixes on ordinary PRs only, and reserves
+  # protected, CI, test and lockfile PRs for Grok Build. These switches are
+  # global booleans with no path scope, so that rule cannot be expressed here.
+  # path_filters would scope by path but also drives CodeRabbit's sparse
+  # checkout, so it would stop CodeRabbit *reviewing* the riskiest files. Review
+  # on those files is worth more than autofix on ordinary ones, so all writing
+  # is off and every fix comes from Grok Build or a person.
+  finishing_touches:
+    autofix:
+      enabled: false
+    fix_ci:
+      enabled: false
+    unit_tests:
+      enabled: false
+    docstrings:
+      enabled: false

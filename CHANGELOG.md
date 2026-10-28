@@ -9,6 +9,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `scripts/station-run.sh --read-only` runs a station in a detached worktree
+  with no `origin`, so file writes are discarded and there is nothing to push
+  to. `foreman-orchestrate.sh review` uses it; `builder` is refused it.
+  `stations/README.md` lists which roles may write.
+- `scripts/check-test-assertions.sh` fails a pull request that changes or
+  removes an existing assertion in `scripts/test-*.sh`, overridable with the
+  `approved-test-change` label, and runs as the `Test assertions` CI job.
+  Covered by `scripts/test-check-test-assertions.sh`.
 - `adapters/claudecode/run.sh` implements the adapter interface for every
   non-builder role: the station bundle goes in on stdin in print mode and
   `AGENTS.md` is appended to the system prompt. `builder` still needs grok,
@@ -31,6 +39,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- `.coderabbit.yaml` turns off `autofix`, `fix_ci`, `unit_tests` and
+  `docstrings`. All four default to true, so CodeRabbit held standing
+  permission to commit code and generate tests here, and used it: 96e5e3e
+  changed an existing assertion so a test passed against an error string the
+  code no longer produced. CodeRabbit now reviews and does not write.
 - `adapters/opencode/run.sh` no longer passes `--dir`, which opencode v2.2.0
   rejects outright and which stopped every station on that provider. It probes
   for the flag and enters the repo root itself when it is absent.

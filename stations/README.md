@@ -10,6 +10,31 @@ Stations are provider-agnostic implementations of factory roles. The canonical d
 4. **Orchestration** (`scripts/foreman-orchestrate.sh`) - Starts a station. It does not pick an issue or merge.
 5. **GitHub trail** (`scripts/station-post.sh`, `stations/github-writes.md`) - The comment and the single `factory:*` label a person sees on the issue. Every provider uses it. The Grok watcher keeps its own poster.
 
+## Which roles may write
+
+A station that reads must not be able to write. On 2026-10-28 the reviewer
+station edited five files and staged them, including an existing test
+assertion, because its brief said "post only through `scripts/station-post.sh`"
+and nothing enforced it (#142).
+
+| Role | Changes the repo? | How |
+| --- | --- | --- |
+| `intake` | no | `--read-only` |
+| `research` | no | `--read-only` |
+| `reviewer` | no | `--read-only`, set by `foreman-orchestrate.sh review` |
+| `monitor` | no | `--read-only`; its scripts are read-only already |
+| `foreman` | no | writes only labels and comments, through `station-post.sh` |
+| `builder` | **yes** | the only role that changes files; `--read-only` is refused for it |
+
+`scripts/station-run.sh --read-only` runs the station in a detached `git
+worktree` under `/tmp` with its `origin` removed, and deletes it afterwards. An
+edit the agent makes is thrown away, and it has nothing to push to.
+
+This is the filesystem half only. The agent still runs with the caller's `gh`
+credentials, so it could still write through the API — comment, label, or
+merge. Closing that needs a scoped token the agent owns (#7, #44). Until then
+the API side rests on the brief, not on a control.
+
 ## Design Principles
 
 - **Capability-based**: Roles describe what needs to be done, not how (no provider-specific tool calls)
