@@ -133,6 +133,10 @@ gh auth refresh -s project
 Without it `board-sync.sh` fails with `missing required scopes [read:project]`.
 `scripts/factory-flagged.sh` reads labels, not the board, so it works either way.
 
+`board-sync.sh` also needs **bash 4 or newer** (`declare -A`, `${w^}`). Those
+are runtime features, so bash 3.2 parses the file and then fails on it — run it
+with the `bash` on your `PATH`, not macOS's `/bin/bash`, which is 3.2.
+
 ## Backlog labels
 
 | Label | Meaning |

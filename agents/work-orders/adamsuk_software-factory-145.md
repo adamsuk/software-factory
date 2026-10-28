@@ -30,7 +30,9 @@ Scott's calls on 2026-10-28:
 - [ ] `board-sync.sh` adds every open issue and pull request whatever its
       last-updated date, in a pass separate from the status mirror
 - [ ] The `factory status` mirror keeps its 2-day window
-- [ ] No GNU-only `date -d`; runs on macOS and Linux
+- [ ] No GNU-only `date -d` in the date call. Note this does not make the
+      script portable on its own: it needs bash 4+ for `declare -A` and
+      `${w^}`, so macOS's `/bin/bash` 3.2 cannot run it. Documented, not fixed.
 - [ ] `scripts/factory-flagged.sh` lists `priority: next` issues ordered
       P0-P3 then issue number, with priority, factory status and title
 - [ ] It exits 0 with a plain message when nothing is flagged

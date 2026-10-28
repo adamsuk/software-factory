@@ -21,7 +21,13 @@ PROJ=PVT_kwHOAYEAOs4Bo3vn FIELD=PVTSSF_lAHOAYEAOs4Bo3vnzhnV1ik
 declare -A OPT=([Triage]=cdd562ca [Ready]=84a24ea9 [Building]=ed952d58 [Gate]=9cfe6bd1 [Review]=befc9395 [Merge]=240a84ea [Release]=d53e0069 [Blocked]=c59dd1a6 [Done]=037f9c49)
 REPOS=(software-factory gh-factory activity-feed line adamsuk)
 
-# GNU date on the box, BSD date on a Mac. The old -d form made this Linux-only.
+# Needs bash 4 or newer for `declare -A` and `${w^}`. Those are runtime
+# features, so bash 3.2 parses this file without complaint and then fails on it:
+# macOS's /bin/bash is 3.2, while a Homebrew bash on PATH is fine. Run it with
+# the bash on PATH, not /bin/bash.
+#
+# GNU date on the box, BSD date on a Mac. The old -d form made the date call
+# Linux-only; the rest of the script's portability is the bash version above.
 since_date() {
   date -u -d '-2 days' +%F 2>/dev/null || date -u -v-2d +%F
 }
