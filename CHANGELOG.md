@@ -15,6 +15,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   because `scripts/run-work-order.sh` calls that CLI directly.
 - `scripts/test-adapters.sh` covers the adapter contract for all three
   providers with fake CLIs on `PATH`, and CI now lints `adapters/*/run.sh`.
+- [`audits/2026-10-28.md`](audits/2026-10-28.md): a Line audit scoped to this
+  repo alone, against guide v2026-10-27. 27 recommendations: 2 met, 13 partial,
+  12 missing. Its gaps are prioritised `P0` to `P3` under #134, one parent that
+  spans all nine stations. New `priority: P0`-`P3` and `audit-2026-10-28`
+  labels; #97 and #98 closed as duplicates and #15 reopened.
 - `scripts/station-post.sh` posts the factory trail for any provider: one
   triage comment, one `factory:*` label, one `factory/<issue>-<slug>` pull
   request, and one PASS / FIX / ESCALATE verdict. It refuses a second triage
