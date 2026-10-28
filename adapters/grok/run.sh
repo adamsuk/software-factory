@@ -9,6 +9,7 @@ die() { echo "grok-adapter: $2" >&2; exit "$1"; }
 role=""
 prompt_file=""
 work_order=""
+workdir=""
 push=0
 
 while [[ $# -gt 0 ]]; do
@@ -22,6 +23,9 @@ while [[ $# -gt 0 ]]; do
     --work-order)
       [[ $# -ge 2 ]] || die 2 "missing value for --work-order"
       work_order="$2"; shift 2 ;;
+    --workdir)
+      [[ $# -ge 2 ]] || die 2 "missing value for --workdir"
+      workdir="$2"; shift 2 ;;
     --issue|--repo)
       [[ $# -ge 2 ]] || die 2 "missing value for $1"
       shift 2 ;;
@@ -47,5 +51,9 @@ fi
 command -v grok >/dev/null 2>&1 || die 2 "grok CLI not found in PATH"
 grok --help 2>&1 | grep -- "prompt-file" >/dev/null \
   || die 3 "grok CLI in PATH does not support --prompt-file, needed for role '$role'"
+
+run_dir="${workdir:-$here}"
+[[ -d "$run_dir" ]] || die 2 "working directory does not exist: $run_dir"
+cd "$run_dir" || die 2 "cannot enter working directory: $run_dir"
 
 exec grok --prompt-file "$prompt_file" --rules "$(cat "$here/AGENTS.md")"

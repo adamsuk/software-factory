@@ -12,6 +12,7 @@ die() { echo "claudecode-adapter: $2" >&2; exit "$1"; }
 role=""
 prompt_file=""
 issue=""
+workdir=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -24,6 +25,9 @@ while [[ $# -gt 0 ]]; do
     --issue)
       [[ $# -ge 2 ]] || die 2 "missing value for --issue"
       issue="$2"; shift 2 ;;
+    --workdir)
+      [[ $# -ge 2 ]] || die 2 "missing value for --workdir"
+      workdir="$2"; shift 2 ;;
     --work-order|--repo)
       [[ $# -ge 2 ]] || die 2 "missing value for $1"
       shift 2 ;;
@@ -54,6 +58,14 @@ claude_supports --print || die 3 "claude CLI in PATH does not support --print, n
 
 args=(--print)
 
+# Which model a station runs on is a factory decision, not a local accident.
+# Default sonnet (Scott, 2026-10-28); FACTORY_MODEL overrides it. Probed, so an
+# older CLI without --model still runs rather than failing.
+model="${FACTORY_MODEL:-sonnet}"
+if [[ -n "$model" ]] && claude_supports --model; then
+  args+=(--model "$model")
+fi
+
 # grok gets AGENTS.md through --rules. The composed bundle already contains it,
 # so this is belt and braces on the providers that allow it.
 if claude_supports --append-system-prompt; then
@@ -72,7 +84,9 @@ else
   die 3 "claude CLI in PATH has no way to auto-approve tool use, needed for an unattended station"
 fi
 
-cd "$here" || die 2 "cannot enter repo root: $here"
+run_dir="${workdir:-$here}"
+[[ -d "$run_dir" ]] || die 2 "working directory does not exist: $run_dir"
+cd "$run_dir" || die 2 "cannot enter working directory: $run_dir"
 
 # The bundle is the prompt. The trailing instruction mirrors the other adapters.
 {

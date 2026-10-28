@@ -2,6 +2,9 @@ name: Lint
 
 on:
   pull_request:
+    # labeled/unlabeled so the Test assertions job re-runs when Scott adds or
+    # removes the approved-test-change override.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
     branches: [main]
 
@@ -15,3 +18,30 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: shellcheck --version && shellcheck scripts/*.sh adapters/*/run.sh
+
+  test-assertions:
+    name: Test assertions
+    # Pull requests only: there is no base to diff against on a push to main.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Fail on a weakened existing test assertion
+        env:
+          # Through the environment, not an inline expression: label names are
+          # attacker-controlled text and must never be interpolated into the
+          # shell (AGENTS.md section 1).
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          label=no
+          if printf '%s' "$LABELS" | grep -qF '"approved-test-change"'; then
+            label=yes
+          fi
+          # checkout used fetch-depth: 0, so history is complete; this just
+          # makes sure the base branch has a local remote-tracking ref.
+          git fetch --no-tags origin "+refs/heads/$BASE_REF:refs/remotes/origin/$BASE_REF"
+          scripts/check-test-assertions.sh \
+            --base "origin/$BASE_REF" --head HEAD --label-present "$label"
