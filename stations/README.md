@@ -23,18 +23,20 @@ and nothing enforced it (#142).
 | `research` | no | `--read-only` |
 | `reviewer` | no | `--read-only`, set by `foreman-orchestrate.sh review` |
 | `monitor` | no | `--read-only`; its scripts are read-only already |
-| `foreman` | no | writes only labels and comments, through `station-post.sh` |
-| `builder` | **yes** | the only role that changes files; `--read-only` is refused for it |
+| `foreman` | **yes** | writes the work order to `agents/work-orders/` (`agents/roles/foreman.md` step 3), so it runs in the repo |
+| `builder` | **yes** | changes the files a work order asks for; `--read-only` is refused for it |
 
-`scripts/station-run.sh` runs every role except `builder` in a throwaway `git
-clone` under `/tmp` with its `origin` removed, and deletes it afterwards. That
+`scripts/station-run.sh` runs the reading roles — `intake`, `research`,
+`reviewer`, `monitor` — in a throwaway `git clone` under `/tmp` with its `origin` removed, and deletes it afterwards. That
 is the default, not an opt-in: `--writable` is the deliberate way out. Only
 committed state is copied, so a station sees the head commit, not the caller's
 uncommitted changes.
 
 **What this does and does not stop.** It moves the working directory and removes
-the push target, so an agent writing relative paths has its edits thrown away
-and cannot push. It does **not** deny access to the original checkout: the
+the clone's `origin`, so an agent writing relative paths has its edits thrown
+away and has no configured push target. It is not a guarantee that nothing can
+be pushed: an agent that supplies a URL, or that writes into the original
+checkout by absolute path and pushes from there, still can. It does **not** deny access to the original checkout: the
 providers run with blanket approval (`claude --permission-mode
 bypassPermissions`, `opencode --auto`), and `station-run.sh` puts the work
 order's absolute path in the prompt, so a determined or careless agent can still

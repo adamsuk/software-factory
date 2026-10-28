@@ -117,6 +117,20 @@ cwd=$(grep '^cwd=' "$OUT" | cut -d= -f2-)
 [[ "$cwd" != "$root_dir" ]] || fail "intake ran in the real repo"
 pass
 
+tname="foreman is writable by default: it writes the work order"
+rm -f "$OUT"
+cat > "$BIN/opencode" << 'SAFE'
+#!/usr/bin/env bash
+if [[ "$*" == *--help* ]]; then printf '%s\n' "--auto --title --file"; exit 0; fi
+printf 'cwd=%s\n' "$PWD" > "$FAKE_OUT"
+exit 0
+SAFE
+chmod +x "$BIN/opencode"
+run_plain foreman /dev/null > /dev/null
+cwd=$(grep '^cwd=' "$OUT" | cut -d= -f2-)
+[[ "$cwd" == "$root_dir" ]] || fail "foreman must run in the repo to write agents/work-orders/, ran in $cwd"
+pass
+
 tname="--writable opts out deliberately"
 # A reporting-only provider for this one case: the default fake edits tracked
 # files, and --writable runs in the real repository, so using it here would
@@ -145,6 +159,11 @@ pass
 tname="an exported GIT_DIR cannot reach the real repo"
 probe=$work/probe
 rm -rf "$probe"; mkdir -p "$probe"
+# Stripped before the probe is built: an inherited GIT_DIR would make even
+# `git init` act on that repository instead (git-scm.com, git(1)). The
+# deliberate export below stays scoped to the run_plain call.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+  GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_CEILING_DIRECTORIES
 git -C "$probe" init -q -b main
 git -C "$probe" config user.email t@e.com
 git -C "$probe" config user.name t

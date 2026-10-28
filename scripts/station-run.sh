@@ -17,9 +17,10 @@ Options:
   --issue <n>         Issue number
   --repo <owner/repo> Repo context
   --dry-run           Print composed prompt bundle without invoking provider
-  --writable          Let the station change the real repo. Only meaningful for
-                      builder, which is writable anyway; everything else is
-                      read-only by default and this is the deliberate escape.
+  --writable          Let the station change the real repo. The reading roles
+                      (intake, research, reviewer, monitor) are read-only by
+                      default and this is the deliberate escape. builder and
+                      foreman write by design and are unaffected.
   --read-only         Run the station in a throwaway clone with no remote, so
                       file writes are discarded and there is nothing to push to.
                       Committed state only: uncommitted changes are not copied.
@@ -191,12 +192,17 @@ fi
 # `station-run.sh reviewer /dev/null` handed the real repository to the adapter,
 # and only `foreman-orchestrate.sh review` opted in. The boundary now applies to
 # direct callers, and `--writable` is the explicit way out.
+# Named list, not "everything except builder". CodeRabbit found on PR #149 that
+# "everything except builder" broke the foreman: it writes the work order to
+# agents/work-orders/ (agents/roles/foreman.md step 3), so a disposable clone
+# would take it away and the later gate run, which needs that file, would have
+# nothing to read.
+case "$role" in
+  intake|research|reviewer|monitor) reads_only=true ;;
+  *) reads_only=false ;;
+esac
 if [[ -z "$read_only" ]]; then
-  if [[ "$role" == "builder" ]]; then
-    read_only=false
-  else
-    read_only=true
-  fi
+  read_only=$reads_only
 fi
 
 workdir="$here"
