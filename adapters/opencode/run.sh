@@ -57,6 +57,13 @@ run_dir="${workdir:-$here}"
 [[ -d "$run_dir" ]] || die 2 "working directory does not exist: $run_dir"
 
 args=(run --auto --title "$title" --file "$prompt_file")
+
+# No default here on purpose: opencode names models provider/model#variant, so
+# the sonnet default that suits Claude Code is not a valid value for it. Passed
+# through only when FACTORY_MODEL is set deliberately.
+if [[ -n "${FACTORY_MODEL:-}" ]] && opencode_run_supports --model; then
+  args+=(--model "$FACTORY_MODEL")
+fi
 if opencode_run_supports --dir; then
   args+=(--dir "$run_dir")
 else

@@ -172,4 +172,44 @@ for provider in opencode grok claudecode; do
   pass
 done
 
+# --- FACTORY_MODEL: the station's model is a factory decision --------------
+tname="claudecode defaults to sonnet"
+rm -f "$MOCK/claude.argv"
+make_fake claude "--print --append-system-prompt --permission-mode --model"
+( unset FACTORY_MODEL; run_adapter claudecode --role reviewer --prompt "$prompt" ) >/dev/null
+assert_contains "$(argv_of claude)" "--model sonnet"
+pass
+
+tname="FACTORY_MODEL overrides the claudecode default"
+rm -f "$MOCK/claude.argv"
+make_fake claude "--print --append-system-prompt --permission-mode --model"
+FACTORY_MODEL=opus run_adapter claudecode --role reviewer --prompt "$prompt" >/dev/null
+got=$(argv_of claude)
+assert_contains "$got" "--model opus"
+assert_not_contains "$got" "--model sonnet"
+pass
+
+tname="claudecode still runs on a CLI with no --model"
+rm -f "$MOCK/claude.argv"
+make_fake claude "--print --append-system-prompt --permission-mode"
+run_adapter claudecode --role reviewer --prompt "$prompt" >/dev/null
+got=$(argv_of claude)
+assert_not_contains "$got" "--model"
+assert_contains "$got" "--print"
+pass
+
+tname="opencode defaults no model"
+rm -f "$MOCK/opencode.argv"
+make_fake opencode "--auto --title --file --model"
+( unset FACTORY_MODEL; run_adapter opencode --role reviewer --prompt "$prompt" ) >/dev/null
+assert_not_contains "$(argv_of opencode)" "--model"
+pass
+
+tname="FACTORY_MODEL reaches opencode when set"
+rm -f "$MOCK/opencode.argv"
+make_fake opencode "--auto --title --file --model"
+FACTORY_MODEL="anthropic/claude-sonnet-5" run_adapter opencode --role reviewer --prompt "$prompt" >/dev/null
+assert_contains "$(argv_of opencode)" "--model anthropic/claude-sonnet-5"
+pass
+
 echo "all adapter tests passed"

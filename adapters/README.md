@@ -42,6 +42,25 @@ three things went wrong: the CLI is missing, the CLI lacks a flag the role
 needs, or the arguments were wrong. `scripts/test-adapters.sh` covers that
 contract for all three providers with fake CLIs on `PATH`.
 
+## Choosing the model
+
+`FACTORY_MODEL` sets which model a station runs on, so the choice lives in the
+factory rather than in whatever each CLI happens to default to locally.
+
+| Provider | Default | Notes |
+| --- | --- | --- |
+| `claudecode` | `sonnet` | `--model` takes an alias (`sonnet`, `opus`, `fable`) or a full name |
+| `opencode` | none | Names models `provider/model#variant`, so a bare `sonnet` is invalid there. Passed through only when `FACTORY_MODEL` is set. |
+| `grok` | none | Its CLI exposes no model flag, so the variable is ignored |
+
+Deliberately not one value for every provider: the same string is not valid
+across these CLIs, and defaulting `opencode` to `sonnet` would break it. Each
+adapter probes for `--model` and runs without it rather than failing.
+
+```bash
+FACTORY_MODEL=opus ./scripts/station-run.sh --provider claudecode reviewer ctx.md
+```
+
 ## Role coverage
 
 `builder` runs only on grok, because `scripts/run-work-order.sh` invokes the
