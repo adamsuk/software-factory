@@ -44,7 +44,9 @@ required_check_names() {
 try:
     import yaml
 except Exception:
-    sys.exit(1)
+    # 3, not 1: a missing PyYAML is an environment problem, not a bad
+    # factory.yml. load_required turns this into its own message.
+    sys.exit(3)
 
 def fail():
     sys.exit(1)
@@ -135,11 +137,16 @@ load_factory() {
 }
 
 load_required() {
-  local parsed name
+  local parsed name rc
   # Command substitution, not a process substitution: a parser or startup
   # failure has to fail this assignment. A partial list is discarded.
-  parsed=$(printf '%s\n' "$factory_yml" | required_check_names) \
-    || die 7 "could not read factory.yml"
+  parsed=$(printf '%s\n' "$factory_yml" | required_check_names) && rc=0 || rc=$?
+  if [[ "$rc" -eq 3 ]]; then
+    die 7 "python3 cannot import yaml: install PyYAML (pip install -r requirements.txt). factory.yml itself was read fine."
+  fi
+  # Message unchanged on purpose: scripts/test-gate-issue.sh asserts it, and
+  # under AGENTS.md section 5 an existing assertion is not an agent's to edit.
+  [[ "$rc" -eq 0 ]] || die 7 "could not read factory.yml"
   required=()
   while IFS= read -r name || [[ -n "$name" ]]; do
     [[ -n "$name" ]] || continue

@@ -13,7 +13,7 @@ agents:
   # blocking CodeRabbit findings, plus PR Reviewer's review (AGENTS.md section 6).
   review_bot: coderabbit
   # The CI lint job (ShellCheck on the work-order runner).
-  test_command: shellcheck scripts/*.sh
+  test_command: shellcheck scripts/*.sh adapters/*/run.sh
 
 # Station 04 reads these names. agents.merge stays false until a ruleset
 # can enforce them.
