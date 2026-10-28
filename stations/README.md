@@ -80,6 +80,36 @@ credentials, so it could still write through the API — comment, label, or
 merge. Closing that needs a scoped token the agent owns (#7, #44). Until then
 the API side rests on the brief, not on a control.
 
+## 05 Review waits for the review bot first
+
+`foreman-orchestrate.sh review` runs `scripts/wait-for-review-bot.sh` before the
+reviewer role, because §10.4 has the independent review weigh CodeRabbit's
+comments and it cannot do that if CodeRabbit has not finished.
+
+It had not been waiting. Across #141, #143 and #146 CodeRabbit left **16 inline
+findings** and no verdict read any of them; four were real, and one had broken
+the pull request it was reviewing.
+
+The wait is satisfied when the bot has posted a review **or** a review comment
+for that exact commit. Both are checked, because neither is sufficient alone —
+on #149 CodeRabbit left comments on one head with no review record, and a review
+record on another with no comments.
+
+The bot's check is only a secondary signal, and only when the requested commit
+is the pull request's current head: `gh pr checks` always reports the head, so a
+terminal check says nothing about an older commit. The check alone is a poor
+proxy anyway — CodeRabbit sits `pending` for many minutes while already posting
+findings, and auto-pauses to `skipping` after enough commits, which never
+becomes terminal.
+
+A timeout is not fatal. The review still runs, and the reviewer says what it
+could and could not see. After §10.2's threshold the wait posts
+`@coderabbitai full review` once per head, never twice.
+
+`agents.review_bot: none` skips the wait entirely. A missing `factory.yml` is an
+error rather than a silent skip — defaulting to `none` there once made the script
+look like it was waiting while doing nothing.
+
 ## Design Principles
 
 - **Capability-based**: Roles describe what needs to be done, not how (no provider-specific tool calls)

@@ -7,6 +7,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `scripts/wait-for-review-bot.sh`, run by `foreman-orchestrate.sh review`
+  before the reviewer role, so the independent review can weigh the review
+  bot's comments as AGENTS.md §10.4 requires. It had not been waiting: across
+  #141, #143 and #146 CodeRabbit left 16 inline findings and no verdict read
+  any of them. Satisfied by a review **or** a review comment for the exact
+  commit, since neither is sufficient alone; the bot's check counts only when
+  the commit is the pull request's head. Nudges `@coderabbitai full review`
+  once per head per §10.2, and a timeout is not fatal. Covered by
+  `scripts/test-wait-for-review-bot.sh` (15 tests).
+
+### Added
+
 - `scripts/factory-flagged.sh` lists the issues flagged `priority: next` on the
   Software Factory board, ordered `priority: P0`-`P3` then issue number, so
   "pick up what's flagged" resolves to one read-only command. Covered by
