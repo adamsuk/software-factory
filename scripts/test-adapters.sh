@@ -120,6 +120,11 @@ run_adapter claudecode --role reviewer --prompt "$prompt" --issue 138 >/dev/null
 got=$(argv_of claude)
 assert_contains "$got" "--print"
 assert_contains "$got" "--permission-mode"
+# AGENTS.md is handed over as the system prompt: that is this CLI's equivalent
+# of grok's --rules, so a station without it would run without the rules.
+assert_contains "$got" "--append-system-prompt"
+assert_contains "$got" "AGENTS.md: shared rules for the software factory"
+assert_contains "$(cat "$MOCK/claude.stdin")" "station prompt body"
 pass
 
 tname="claudecode reports a missing CLI distinctly"
