@@ -5,7 +5,7 @@ issue_repo: adamsuk/software-factory
 title: "fix: close the four CodeRabbit findings from PR #143"
 branch: factory/148-coderabbit-findings
 base: main
-test_command: "shellcheck scripts/*.sh adapters/*/run.sh"
+test_command: "shellcheck scripts/*.sh adapters/*/run.sh && bash scripts/test-station-run.sh && bash scripts/test-check-test-assertions.sh && bash scripts/test-adapters.sh"
 setup_command: ""
 changelog: true
 merge_allowed: false
@@ -38,6 +38,19 @@ pushed after the merge. Close them.
 - scripts/check-test-assertions.sh
 - scripts/test-station-run.sh
 - stations/README.md
+
+## Note on the work order's own persistence
+
+CodeRabbit raised that a work order created by the foreman would be lost when a
+read-only station's clone is deleted. That premise is resolved here: the foreman
+is no longer a reading role, so `pick` writes the work order into the real
+repository and the later `gate` run finds it on disk (`gate-issue.sh` takes a
+path, not a ref).
+
+What remains is pre-existing and unchanged by this work: the work order is an
+uncommitted file, so it does not survive a new checkout or a different machine.
+`run-work-order.sh --push` commits to the target repository, not the work order
+here. Worth a decision of its own rather than a change smuggled into a fix.
 
 ## Out of scope
 
