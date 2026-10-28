@@ -85,6 +85,54 @@ environment. Shell lint requires `shellcheck` (`shellcheck scripts/*.sh`).
 
 Audits are read-only and never print secret values.
 
+## Working from the board
+
+The [Software Factory board](https://github.com/users/adamsuk/projects/2) is the
+place to work. `scripts/watcher/board-sync.sh` keeps it in step with the labels,
+one way only: **labels are the source of truth** (AGENTS.md §9), so nothing the
+board shows can overwrite them, and nothing can loop.
+
+It runs two passes for two different reasons. Membership has no date window, so
+every open issue and pull request reaches the board however long ago it was
+touched. The `factory status` mirror keeps a 2-day window, because a label that
+has not changed in two days needs no write.
+
+### Flagging work
+
+Add **`priority: next`** to an issue from the board's item pane (show Labels as
+a board field). More than one issue may carry it.
+
+It is additive on purpose. §9 allows exactly one `factory:*` label, so flagging
+with `factory:ready` would mean displacing an issue's real state — a
+`factory:blocked` ticket would stop looking blocked. `priority: next` sits
+alongside whatever status the issue already has.
+
+Then ask for the flagged work. Nothing is picked up unattended:
+
+```bash
+scripts/factory-flagged.sh
+```
+
+That lists the flagged issues in the order to work them — `priority: P0` first,
+then P1, P2, P3, unprioritised last, and by issue number within a priority. It
+is read-only and picks up nothing itself.
+
+Each flagged issue still goes through the stations
+([`stations/README.md`](stations/README.md)), and merging stays with Scott
+(`agents.merge: false`).
+
+### What the board needs
+
+`gh project` calls need the `project` scope, which a plain `repo` token does not
+carry:
+
+```bash
+gh auth refresh -s project
+```
+
+Without it `board-sync.sh` fails with `missing required scopes [read:project]`.
+`scripts/factory-flagged.sh` reads labels, not the board, so it works either way.
+
 ## Backlog labels
 
 | Label | Meaning |
@@ -100,7 +148,7 @@ Audits are read-only and never print secret values.
 | `quick win` / `big gain` | As the audit lists them under quick wins or biggest gains |
 | `decision` | Needs Scott's call before anyone acts |
 | `station` / `station: NN <name>` | Creates or runs one Line station (01 Backlog to 09 Return) |
-| `priority: next` | The one station ticket to build next |
+| `priority: next` | Flagged for pickup from the board. May be on several issues; work them in `priority: P0`-`P3` order with [`scripts/factory-flagged.sh`](scripts/factory-flagged.sh). Additive, so it never displaces a `factory:*` status. |
 | `priority: P0` / `P1` / `P2` / `P3` | Urgent, high, medium, low. Set by an audit; Scott re-ranks. |
 | `factory:triage`, `factory:ready`, `factory:building`, `factory:gate`, `factory:review`, `factory:merge`, `factory:release`, `factory:done`, `factory:blocked` | Exactly one status label at a time. Who sets each one is in [AGENTS.md section 9 (Status labels)](AGENTS.md#9-status-labels-43). |
 
