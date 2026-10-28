@@ -10,6 +10,7 @@ die() { echo "opencode-adapter: $2" >&2; exit "$1"; }
 role=""
 prompt_file=""
 issue=""
+workdir=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -22,6 +23,9 @@ while [[ $# -gt 0 ]]; do
     --issue)
       [[ $# -ge 2 ]] || die 2 "missing value for --issue"
       issue="$2"; shift 2 ;;
+    --workdir)
+      [[ $# -ge 2 ]] || die 2 "missing value for --workdir"
+      workdir="$2"; shift 2 ;;
     --work-order|--repo)
       [[ $# -ge 2 ]] || die 2 "missing value for $1"
       shift 2 ;;
@@ -47,11 +51,23 @@ opencode_run_supports() {
   opencode run --help 2>&1 | grep -- "$1" >/dev/null
 }
 
+# A read-only station is handed a throwaway clone; everything else runs in
+# the repo root. See stations/README.md, "Which roles may write".
+run_dir="${workdir:-$here}"
+[[ -d "$run_dir" ]] || die 2 "working directory does not exist: $run_dir"
+
 args=(run --auto --title "$title" --file "$prompt_file")
+
+# No default here on purpose: opencode names models provider/model#variant, so
+# the sonnet default that suits Claude Code is not a valid value for it. Passed
+# through only when FACTORY_MODEL is set deliberately.
+if [[ -n "${FACTORY_MODEL:-}" ]] && opencode_run_supports --model; then
+  args+=(--model "$FACTORY_MODEL")
+fi
 if opencode_run_supports --dir; then
-  args+=(--dir "$here")
+  args+=(--dir "$run_dir")
 else
-  cd "$here" || die 2 "cannot enter repo root: $here"
+  cd "$run_dir" || die 2 "cannot enter working directory: $run_dir"
 fi
 
 exec opencode "${args[@]}" \
