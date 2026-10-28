@@ -36,6 +36,12 @@ A clone and not a linked worktree on purpose: a worktree shares `.git/config`
 with the real repository, so removing the worktree's `origin` removes the
 repository's own remote. That happened while building #142.
 
+CodeRabbit is held off by `.coderabbit.yaml`, which disables `autofix`,
+`fix_ci`, `unit_tests` and `docstrings`. Its **autopilot** is not covered: that
+feature has no key in CodeRabbit's config schema, and its Autofix checkbox
+still appeared on PR #143 after CodeRabbit had read the new config. Turning it
+off is a dashboard setting (#142).
+
 This is the filesystem half only. The agent still runs with the caller's `gh`
 credentials, so it could still write through the API — comment, label, or
 merge. Closing that needs a scoped token the agent owns (#7, #44). Until then
