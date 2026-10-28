@@ -58,6 +58,14 @@ claude_supports --print || die 3 "claude CLI in PATH does not support --print, n
 
 args=(--print)
 
+# Which model a station runs on is a factory decision, not a local accident.
+# Default sonnet (Scott, 2026-10-28); FACTORY_MODEL overrides it. Probed, so an
+# older CLI without --model still runs rather than failing.
+model="${FACTORY_MODEL:-sonnet}"
+if [[ -n "$model" ]] && claude_supports --model; then
+  args+=(--model "$model")
+fi
+
 # grok gets AGENTS.md through --rules. The composed bundle already contains it,
 # so this is belt and braces on the providers that allow it.
 if claude_supports --append-system-prompt; then
