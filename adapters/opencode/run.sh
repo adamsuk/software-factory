@@ -51,7 +51,7 @@ opencode_run_supports() {
   opencode run --help 2>&1 | grep -- "$1" >/dev/null
 }
 
-# A read-only station is handed a throwaway worktree; everything else runs in
+# A read-only station is handed a throwaway clone; everything else runs in
 # the repo root. See stations/README.md, "Which roles may write".
 run_dir="${workdir:-$here}"
 [[ -d "$run_dir" ]] || die 2 "working directory does not exist: $run_dir"
