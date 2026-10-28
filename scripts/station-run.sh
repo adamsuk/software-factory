@@ -17,9 +17,11 @@ Options:
   --issue <n>         Issue number
   --repo <owner/repo> Repo context
   --dry-run           Print composed prompt bundle without invoking provider
-  --read-only         Run the station in a throwaway worktree with no remote, so
-                      file writes are discarded. For roles that must not change
-                      the repo (see stations/README.md, "Which roles may write").
+  --read-only         Run the station in a throwaway clone with no remote, so
+                      file writes are discarded and there is nothing to push to.
+                      Committed state only: uncommitted changes are not copied.
+                      For roles that must not change the repo (see
+                      stations/README.md, "Which roles may write").
   --help              Show this help
 EOF
   exit 2
@@ -175,25 +177,31 @@ fi
 # filesystem half of the boundary: the agent still holds the caller's gh
 # credentials, so API writes are not blocked here (#7, #44).
 workdir="$here"
-worktree=""
+sandbox=""
 cleanup_station() {
   local st=$?
-  if [[ -n "$worktree" ]]; then
-    git -C "$here" worktree remove --force "$worktree" > /dev/null 2>&1 || true
-    rm -rf "$(dirname "$worktree")"
-  fi
+  [[ -z "$sandbox" ]] || rm -rf "$sandbox"
   rm -rf "$bundle_dir"
   return "$st"
 }
 
 if $read_only; then
   [[ "$role" != "builder" ]] || die 2 "builder cannot run --read-only: it exists to change the repo"
-  worktree="$(mktemp -d /tmp/station-ro-XXXXXX)/wt"
-  git -C "$here" worktree add --detach -q "$worktree" HEAD \
-    || die 7 "could not create the read-only worktree"
-  git -C "$worktree" remote remove origin > /dev/null 2>&1 || true
-  workdir="$worktree"
-  echo "station-run: read-only worktree at $worktree (origin removed)" >&2
+  command -v git > /dev/null 2>&1 || die 2 "git not found in PATH"
+  head_sha=$(git -C "$here" rev-parse HEAD) || die 7 "could not read HEAD"
+  sandbox="$(mktemp -d /tmp/station-ro-XXXXXX)"
+  # A clone, not a worktree. A linked worktree shares .git/config with the real
+  # repository, so removing the worktree's origin removes the repository's own
+  # remote. That happened while building #142 and broke push until origin was
+  # added back. A clone has its own config, so dropping origin there is local.
+  git clone --quiet --local --no-hardlinks --no-checkout "$here" "$sandbox/repo" \
+    || die 7 "could not create the read-only clone"
+  git -C "$sandbox/repo" checkout --quiet --detach "$head_sha" \
+    || die 7 "could not check out $head_sha in the read-only clone"
+  git -C "$sandbox/repo" remote remove origin > /dev/null 2>&1 \
+    || die 7 "could not remove origin from the read-only clone"
+  workdir="$sandbox/repo"
+  echo "station-run: read-only clone of ${head_sha:0:7} at $workdir (no origin)" >&2
 fi
 
 # Not exec: the worktree has to be cleaned up after the adapter returns.
