@@ -42,7 +42,12 @@ merge_base=$(git merge-base "$base" "$head" 2>/dev/null) \
 
 # Only test scripts are protected here. CI config and lockfiles are covered by
 # CODEOWNERS and section 5 separately.
-mapfile -t changed < <(git diff --name-only "$merge_base" "$head" -- 'scripts/test-*.sh' || true)
+# No `|| true` here: CodeRabbit found on PR #143 that suppressing a diff failure
+# makes an empty result indistinguishable from "nothing changed", so a broken
+# comparison would pass the gate silently.
+changed_raw=$(git diff --name-only "$merge_base" "$head" -- 'scripts/test-*.sh') \
+  || die 7 "git diff failed comparing $merge_base..$head"
+mapfile -t changed < <(printf '%s' "$changed_raw" | grep -v '^$' || true)
 
 if [[ "${#changed[@]}" -eq 0 ]]; then
   echo "No test script changed between $merge_base and $head."
@@ -57,7 +62,11 @@ assertion_re='(assert_[a-z_]+|[[:space:]]fail[[:space:]]|\|\|[[:space:]]*fail|gr
 offending=()
 for f in "${changed[@]}"; do
   # Lines removed from the old version of this file, assertions only.
-  removed=$(git diff -U0 "$merge_base" "$head" -- "$f" \
+  # Same reason: the diff's own exit status is checked before anything filters
+  # it. Only the greps may legitimately find nothing.
+  diff_raw=$(git diff -U0 "$merge_base" "$head" -- "$f") \
+    || die 7 "git diff failed for $f"
+  removed=$(printf '%s\n' "$diff_raw" \
     | grep -E '^-' | grep -vE '^---' \
     | sed 's/^-//' \
     | grep -E "$assertion_re" || true)

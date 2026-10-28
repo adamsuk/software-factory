@@ -9,12 +9,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- `scripts/station-run.sh --read-only` runs a station in a detached worktree
-  with no `origin`, so file writes are discarded and there is nothing to push
-  to. `foreman-orchestrate.sh review` uses it; `builder` is refused it.
-  `stations/README.md` lists which roles may write. A clone, not a linked
-  worktree: a worktree shares `.git/config`, so dropping its origin drops the
-  repository's own remote. `scripts/test-station-run.sh` regression-tests that.
+- `scripts/station-run.sh` runs the reading roles (`intake`, `research`,
+  `reviewer`, `monitor`) in a throwaway clone by default rather than on request,
+  so writes under the station's working directory are discarded and a plain
+  `git push` fails. The clone keeps `origin`'s fetch URL so `gh` still works —
+  removing it blinded the reviewer (#149) — and breaks only the push URL.
+  `--writable` is the explicit way out; `foreman` and `builder` write by design.
+  A station given `--repo` gets `GH_REPO`, so an unqualified `gh` read cannot
+  inspect the wrong repository, and an inherited `remote.origin.pushurl` is
+  refused rather than silently providing a working push target.
+  It is not an OS boundary: the original checkout stays reachable by absolute
+  path, which `stations/README.md` states plainly and real isolation (#44) would
+  close.
 - `scripts/check-test-assertions.sh` fails a pull request that changes or
   removes an existing assertion in `scripts/test-*.sh`, overridable with the
   `approved-test-change` label, and runs as the `Test assertions` CI job.
