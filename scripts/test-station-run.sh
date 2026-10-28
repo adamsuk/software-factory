@@ -63,8 +63,12 @@ cwd=$(grep '^cwd=' "$OUT" | cut -d= -f2-)
 [[ "$cwd" != "$root_dir" ]] || fail "station ran in the real repo: $cwd"
 pass
 
-tname="the read-only clone has no origin"
-grep -q "^origin=.*No such remote" "$OUT" || fail "clone still has an origin: $(grep '^origin=' "$OUT")"
+tname="the read-only clone can still read its origin"
+# Deliberately not removed: gh needs the remote to infer the repository, or the
+# reviewer cannot read the pull request it is reviewing (#149).
+want_origin=$(git -C "$root_dir" remote get-url origin)
+grep -qxF "origin=$want_origin" "$OUT" \
+  || fail "clone's fetch URL is not the source repo's ($want_origin): $(grep '^origin=' "$OUT")"
 pass
 
 tname="a write inside it cannot be pushed"
@@ -80,6 +84,10 @@ pass
 # Regression: a linked worktree shares .git/config, so removing the worktree's
 # origin removed the real repository's remote. That broke push while building
 # #142. A clone keeps its own config.
+tname="the read-only clone cannot push"
+grep -qx "pushed=no" "$OUT" || fail "push was not refused"
+pass
+
 tname="the repo keeps its own origin afterwards"
 if [[ "$had_origin" == "yes" ]]; then
   git -C "$root_dir" remote get-url origin > /dev/null 2>&1 \
@@ -92,8 +100,102 @@ else
   echo "skip: $tname (this checkout has no origin to begin with)"
 fi
 
+# A global remote.origin.pushurl survives into the clone alongside the blocked
+# one, because pushurl is multi-valued, so git would push to it. Simulated
+# through GIT_CONFIG_GLOBAL so the real user config is never touched.
+tname="an inherited push URL is refused, not silently bypassed"
+fake_global=$work/gitconfig
+printf '[remote "origin"]\n\tpushurl = https://example.invalid/leak.git\n' > "$fake_global"
+out=$(GIT_CONFIG_GLOBAL="$fake_global" PATH="$BIN:$PATH" FACTORY_PROVIDER=opencode \
+  FAKE_OUT="$OUT" bash "$root_dir/scripts/station-run.sh" reviewer /dev/null 2>&1 || true)
+[[ "$out" == *"inherited push URL would bypass"* ]] \
+  || fail "expected a refusal, got [$out]"
+[[ "$out" == *"example.invalid/leak.git"* ]] || fail "refusal did not name the URL"
+pass
+
 tname="the sandbox is cleaned up"
 [[ ! -d "$cwd" ]] || fail "sandbox left behind at $cwd"
+pass
+
+# --- read-only is the default, not an opt-in (CodeRabbit, PR #143) ----------
+run_plain() {
+  PATH="$BIN:$PATH" FACTORY_PROVIDER=opencode FAKE_OUT="$OUT" \
+    bash "$root_dir/scripts/station-run.sh" "$@" 2>&1
+}
+
+tname="a non-builder role is read-only with no flag"
+rm -f "$OUT"
+run_plain reviewer /dev/null > /dev/null
+cwd=$(grep '^cwd=' "$OUT" | cut -d= -f2-)
+[[ "$cwd" != "$root_dir" ]] || fail "reviewer ran in the real repo without --read-only"
+# The sandbox is identified by its directory, not by a missing origin: the
+# clone keeps a readable fetch URL on purpose (#149).
+grep -qx "pushed=no" "$OUT" || fail "no sandbox: the push was not refused"
+pass
+
+tname="intake is read-only by default too"
+rm -f "$OUT"
+run_plain intake /dev/null > /dev/null
+cwd=$(grep '^cwd=' "$OUT" | cut -d= -f2-)
+[[ "$cwd" != "$root_dir" ]] || fail "intake ran in the real repo"
+pass
+
+tname="foreman is writable by default: it writes the work order"
+rm -f "$OUT"
+cat > "$BIN/opencode" << 'SAFE'
+#!/usr/bin/env bash
+if [[ "$*" == *--help* ]]; then printf '%s\n' "--auto --title --file"; exit 0; fi
+printf 'cwd=%s\n' "$PWD" > "$FAKE_OUT"
+exit 0
+SAFE
+chmod +x "$BIN/opencode"
+run_plain foreman /dev/null > /dev/null
+cwd=$(grep '^cwd=' "$OUT" | cut -d= -f2-)
+[[ "$cwd" == "$root_dir" ]] || fail "foreman must run in the repo to write agents/work-orders/, ran in $cwd"
+pass
+
+tname="--writable opts out deliberately"
+# A reporting-only provider for this one case: the default fake edits tracked
+# files, and --writable runs in the real repository, so using it here would
+# damage the checkout. It did exactly that once while this test was written.
+cat > "$BIN/opencode" << 'SAFE'
+#!/usr/bin/env bash
+if [[ "$*" == *--help* ]]; then printf '%s\n' "--auto --title --file"; exit 0; fi
+printf 'cwd=%s\n' "$PWD" > "$FAKE_OUT"
+exit 0
+SAFE
+chmod +x "$BIN/opencode"
+rm -f "$OUT"
+# Compared before and after, not against HEAD: the checkout may legitimately
+# have uncommitted edits while this suite runs.
+before=$(cksum < "$root_dir/scripts/station-run.sh")
+run_plain --writable reviewer /dev/null > /dev/null
+cwd=$(grep '^cwd=' "$OUT" | cut -d= -f2-)
+[[ "$cwd" == "$root_dir" ]] || fail "--writable should run in the repo, ran in $cwd"
+[[ "$(cksum < "$root_dir/scripts/station-run.sh")" == "$before" ]] \
+  || fail "the --writable case modified a tracked file"
+pass
+
+# --- an exported GIT_DIR must not redirect the sandbox's git calls -----------
+# Without unsetting it, `git -C sandbox remote remove origin` can act on the
+# caller's repository and strip the real remote.
+tname="an exported GIT_DIR cannot reach the real repo"
+probe=$work/probe
+rm -rf "$probe"; mkdir -p "$probe"
+# Stripped before the probe is built: an inherited GIT_DIR would make even
+# `git init` act on that repository instead (git-scm.com, git(1)). The
+# deliberate export below stays scoped to the run_plain call.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+  GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_CEILING_DIRECTORIES
+git -C "$probe" init -q -b main
+git -C "$probe" config user.email t@e.com
+git -C "$probe" config user.name t
+git -C "$probe" commit -q --allow-empty -m base
+git -C "$probe" remote add origin https://example.invalid/x.git
+rm -f "$OUT"
+GIT_DIR="$probe/.git" GIT_WORK_TREE="$probe" run_plain reviewer /dev/null > /dev/null
+git -C "$probe" remote get-url origin > /dev/null 2>&1 \
+  || fail "the station stripped the origin of the repo named by GIT_DIR"
 pass
 
 echo "all station-run read-only tests passed"

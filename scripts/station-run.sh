@@ -17,6 +17,10 @@ Options:
   --issue <n>         Issue number
   --repo <owner/repo> Repo context
   --dry-run           Print composed prompt bundle without invoking provider
+  --writable          Let the station change the real repo. The reading roles
+                      (intake, research, reviewer, monitor) are read-only by
+                      default and this is the deliberate escape. builder and
+                      foreman write by design and are unaffected.
   --read-only         Run the station in a throwaway clone with no remote, so
                       file writes are discarded and there is nothing to push to.
                       Committed state only: uncommitted changes are not copied.
@@ -29,7 +33,7 @@ EOF
 
 provider="${FACTORY_PROVIDER:-opencode}"
 dry_run=false
-read_only=false
+read_only=""   # empty: decide from the role. Only builder writes.
 work_order=""
 issue=""
 repo_ctx=""
@@ -55,6 +59,8 @@ while [[ $# -gt 0 ]]; do
       dry_run=true; shift;;
     --read-only)
       read_only=true; shift;;
+    --writable)
+      read_only=false; shift;;
     --help)
       usage;;
     -*)
@@ -172,10 +178,33 @@ if [[ ! -x "$adapter" ]]; then
   fi
 fi
 
-# A read-only station runs in a throwaway clone with its origin removed, so
-# an edit it makes is thrown away and it has nothing to push to. This is the
-# filesystem half of the boundary: the agent still holds the caller's gh
-# credentials, so API writes are not blocked here (#7, #44).
+# A read-only station runs in a throwaway clone with its origin removed, so an
+# edit it makes under its working directory is thrown away and it has nothing to
+# push to.
+#
+# This is weaker than a boundary, and stations/README.md says so. It does not
+# deny access to the original checkout: the providers run with blanket approval,
+# and the work order's absolute path is in the prompt, so an agent can still
+# write to the real tree by absolute path. Real isolation is #44. API writes are
+# not blocked either, since the agent holds the caller's gh credentials (#7).
+# Read-only is the default for every role that is not the builder. CodeRabbit
+# found this on PR #143: with read_only defaulting to false, a direct
+# `station-run.sh reviewer /dev/null` handed the real repository to the adapter,
+# and only `foreman-orchestrate.sh review` opted in. The boundary now applies to
+# direct callers, and `--writable` is the explicit way out.
+# Named list, not "everything except builder". CodeRabbit found on PR #149 that
+# "everything except builder" broke the foreman: it writes the work order to
+# agents/work-orders/ (agents/roles/foreman.md step 3), so a disposable clone
+# would take it away and the later gate run, which needs that file, would have
+# nothing to read.
+case "$role" in
+  intake|research|reviewer|monitor) reads_only=true ;;
+  *) reads_only=false ;;
+esac
+if [[ -z "$read_only" ]]; then
+  read_only=$reads_only
+fi
+
 workdir="$here"
 sandbox=""
 cleanup_station() {
@@ -185,9 +214,21 @@ cleanup_station() {
   return "$st"
 }
 
+# Installed before anything can create the sandbox: a die between the clone and
+# the end of the block would otherwise leave /tmp/station-ro-* behind, because
+# the earlier trap only removes the bundle.
+trap cleanup_station EXIT
+
 if $read_only; then
   [[ "$role" != "builder" ]] || die 2 "builder cannot run --read-only: it exists to change the repo"
   command -v git > /dev/null 2>&1 || die 2 "git not found in PATH"
+
+  # An exported GIT_DIR or GIT_WORK_TREE would make the git calls below act on
+  # the caller's repository instead of the clone, so `remote remove origin`
+  # could strip the real remote. That exact damage happened once already while
+  # building #142, by a different route.
+  unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+    GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_CEILING_DIRECTORIES
   head_sha=$(git -C "$here" rev-parse HEAD) || die 7 "could not read HEAD"
   sandbox="$(mktemp -d /tmp/station-ro-XXXXXX)"
   # A clone, not a worktree. A linked worktree shares .git/config with the real
@@ -198,13 +239,44 @@ if $read_only; then
     || die 7 "could not create the read-only clone"
   git -C "$sandbox/repo" checkout --quiet --detach "$head_sha" \
     || die 7 "could not check out $head_sha in the read-only clone"
-  git -C "$sandbox/repo" remote remove origin > /dev/null 2>&1 \
-    || die 7 "could not remove origin from the read-only clone"
+  # Keep origin's fetch URL and break only its push URL. Removing the remote
+  # outright blinded the reviewer: gh infers the repository from the remote, so
+  # from inside the sandbox it could not read the pull request, CI, or
+  # CodeRabbit's comments — which is exactly what AGENTS.md section 10.4 asks it
+  # to review against. Found by the reviewer on PR #149.
+  #
+  # This stops an accidental push, not a determined one: an agent can still push
+  # to an explicit URL. The boundary's real limits are in stations/README.md.
+  origin_url=$(git -C "$here" remote get-url origin 2>/dev/null || true)
+  if [[ -n "$origin_url" ]]; then
+    git -C "$sandbox/repo" remote set-url origin "$origin_url" > /dev/null 2>&1 \
+      || die 7 "could not set the read-only clone's fetch URL"
+  fi
+  # pushurl is multi-valued and inherits from global config, so a global
+  # remote.origin.pushurl survives alongside the blocked one and git pushes to
+  # both. Confirmed by experiment. Clear the local list, set the blocked URL,
+  # then verify it is the only one and refuse to run if it is not.
+  git -C "$sandbox/repo" config --unset-all remote.origin.pushurl > /dev/null 2>&1 || true
+  git -C "$sandbox/repo" remote set-url --push origin \
+    "no-push://blocked-by-read-only-station" > /dev/null 2>&1 \
+    || die 7 "could not block pushes from the read-only clone"
+  effective_push=$(git -C "$sandbox/repo" remote get-url --push --all origin 2>/dev/null \
+    | grep -v '^no-push://blocked-by-read-only-station$' || true)
+  if [[ -n "$effective_push" ]]; then
+    die 7 "inherited push URL would bypass the read-only station: ${effective_push//$'\n'/ }. Remove remote.origin.pushurl from your global git config."
+  fi
   workdir="$sandbox/repo"
-  echo "station-run: read-only clone of ${head_sha:0:7} at $workdir (no origin)" >&2
+  echo "station-run: read-only clone of ${head_sha:0:7} at $workdir (push blocked)" >&2
 fi
 
-# Not exec: the sandbox has to be cleaned up after the adapter returns.
-trap cleanup_station EXIT
+# A station reading another repository must not have unqualified gh calls fall
+# back to this checkout's origin. GH_REPO makes gh default to the repo the
+# station was given, which the adapters do not pass through.
+if [[ -n "${repo_ctx:-}" ]]; then
+  export GH_REPO="$repo_ctx"
+fi
+
+# Not exec: the sandbox has to be cleaned up after the adapter returns. The
+# trap is already installed above.
 "$adapter" --role "$role" --prompt "$prompt_bundle" --work-order "${work_order:-}" \
   --issue "${issue:-}" --repo "${repo_ctx:-}" --workdir "$workdir" "$@"

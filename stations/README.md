@@ -23,14 +23,47 @@ and nothing enforced it (#142).
 | `research` | no | `--read-only` |
 | `reviewer` | no | `--read-only`, set by `foreman-orchestrate.sh review` |
 | `monitor` | no | `--read-only`; its scripts are read-only already |
-| `foreman` | no | writes only labels and comments, through `station-post.sh` |
-| `builder` | **yes** | the only role that changes files; `--read-only` is refused for it |
+| `foreman` | **yes** | writes the work order to `agents/work-orders/` (`agents/roles/foreman.md` step 3), so it runs in the repo |
+| `builder` | **yes** | changes the files a work order asks for; `--read-only` is refused for it |
 
-`scripts/station-run.sh --read-only` runs the station in a throwaway `git
-clone` under `/tmp` with its `origin` removed, and deletes it afterwards. An
-edit the agent makes is thrown away, and it has nothing to push to. Only
-committed state is copied, so a station sees the head commit, not the caller's
-uncommitted changes.
+`scripts/station-run.sh` runs the reading roles — `intake`, `research`,
+`reviewer`, `monitor` — in a throwaway `git clone` under `/tmp`, and deletes it
+afterwards. That is the default, not an opt-in: `--writable` is the deliberate
+way out. Only committed state is copied, so a station sees the head commit, not
+the caller's uncommitted changes.
+
+The clone keeps `origin`'s fetch URL and has its **push** URL broken. Keeping
+the fetch URL is deliberate: removing the remote blinded the reviewer, because
+`gh` infers the repository from it, so inside the sandbox it could not read the
+pull request, its checks, or CodeRabbit's comments — the things §10.4 asks it to
+review against. It reviewed the local diff instead and said so (#149).
+
+A station given `--repo` also gets `GH_REPO` set to it, so an unqualified `gh`
+read inside the sandbox cannot fall back to this checkout's `origin` and inspect
+the wrong repository.
+
+A global `remote.origin.pushurl` would survive into the clone alongside the
+blocked one — `pushurl` is multi-valued, so git would push to both. The station
+checks the effective push URLs after setting the blocked one and refuses to run
+if any other remains, naming it.
+
+**What this does and does not stop.** It moves the working directory and breaks
+the clone's push URL, so an agent writing relative paths has its edits thrown
+away and a plain `git push` fails. It is not a guarantee that nothing can be
+pushed: an agent that supplies a URL, or that writes into the original checkout
+by absolute path and pushes from there, still can. It does **not** deny access to the original checkout: the
+providers run with blanket approval (`claude --permission-mode
+bypassPermissions`, `opencode --auto`), and `station-run.sh` puts the work
+order's absolute path in the prompt, so a determined or careless agent can still
+write to the real repository by absolute path. CodeRabbit raised this on PR #143
+and it is right.
+
+Calling it a boundary therefore overstates it. It is a default working directory
+plus a missing remote — enough for the failure actually seen (#141, an agent
+editing files under its cwd), not enough against an agent that addresses the
+checkout directly. A real boundary needs OS-level isolation: a container, or a
+filesystem namespace where the original tree is unreadable. That is the sandbox
+finding (#44), and it is not done.
 
 A clone and not a linked worktree on purpose: a worktree shares `.git/config`
 with the real repository, so removing the worktree's `origin` removes the
