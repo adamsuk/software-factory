@@ -7,6 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `adapters/claudecode/run.sh` implements the adapter interface for every
+  non-builder role: the station bundle goes in on stdin in print mode and
+  `AGENTS.md` is appended to the system prompt. `builder` still needs grok,
+  because `scripts/run-work-order.sh` calls that CLI directly.
+- `scripts/test-adapters.sh` covers the adapter contract for all three
+  providers with fake CLIs on `PATH`, and CI now lints `adapters/*/run.sh`.
 - `scripts/station-post.sh` posts the factory trail for any provider: one
   triage comment, one `factory:*` label, one `factory/<issue>-<slug>` pull
   request, and one PASS / FIX / ESCALATE verdict. It refuses a second triage
@@ -16,6 +22,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- `adapters/opencode/run.sh` no longer passes `--dir`, which opencode v2.2.0
+  rejects outright and which stopped every station on that provider. It probes
+  for the flag and enters the repo root itself when it is absent.
+- `adapters/grok/run.sh` separates a missing CLI from a CLI that lacks
+  `--prompt-file`; both previously reported the same message.
+- `scripts/gate-issue.sh` names a missing PyYAML instead of reporting
+  `could not read factory.yml`, and the `gh` minimum version (2.26, for
+  `gh pr checks --json`) is documented with the other prerequisites.
 - `scripts/station-post.sh` treats `Closes #N` on a non-factory branch as a
   duplicate pull request, and a retry still moves the label when the comment
   was posted but the label write did not land.

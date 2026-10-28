@@ -40,10 +40,12 @@ if [[ "$role" == "builder" ]]; then
 fi
 
 [[ -n "$prompt_file" && -f "$prompt_file" ]] || die 2 "missing prompt"
-if command -v grok >/dev/null 2>&1; then
-  if grok --help 2>&1 | grep -q "prompt-file"; then
-    exec grok --prompt-file "$prompt_file" --rules "$(cat "$here/AGENTS.md")"
-  fi
-fi
 
-die 2 "grok adapter: role '$role' not supported or grok CLI not available"
+# Three distinct failures, three distinct messages. The old single message
+# ("not supported or grok CLI not available") could not tell a missing binary
+# from a CLI that lacks the flag, which cost a run on #140.
+command -v grok >/dev/null 2>&1 || die 2 "grok CLI not found in PATH"
+grok --help 2>&1 | grep -q "prompt-file" \
+  || die 3 "grok CLI in PATH does not support --prompt-file, needed for role '$role'"
+
+exec grok --prompt-file "$prompt_file" --rules "$(cat "$here/AGENTS.md")"
