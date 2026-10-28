@@ -50,7 +50,12 @@ than the ticket proposed:
 - [ ] `stations/README.md` says which roles may write, and states plainly that
       the API half is not covered
 - [ ] `scripts/test-station-run.sh` proves the boundary holds and that the real
-      repository keeps its own `origin`
+      repository keeps its own `origin`, skipping that check when the checkout
+      never had one (it can run inside a read-only sandbox)
+- [ ] `FACTORY_MODEL` pins the station model, defaulting to `sonnet` for
+      claudecode. Added on Scott's instruction on 2026-10-28 once the `claude`
+      CLI was installed, so #142's review could run at all; #144 was folded in
+      here rather than left as a second pull request to merge first
 
 ## Likely files
 
