@@ -144,7 +144,9 @@ load_required() {
   if [[ "$rc" -eq 3 ]]; then
     die 7 "python3 cannot import yaml: install PyYAML (pip install -r requirements.txt). factory.yml itself was read fine."
   fi
-  [[ "$rc" -eq 0 ]] || die 7 "could not parse required_checks in factory.yml"
+  # Message unchanged on purpose: scripts/test-gate-issue.sh asserts it, and
+  # under AGENTS.md section 5 an existing assertion is not an agent's to edit.
+  [[ "$rc" -eq 0 ]] || die 7 "could not read factory.yml"
   required=()
   while IFS= read -r name || [[ -n "$name" ]]; do
     [[ -n "$name" ]] || continue
