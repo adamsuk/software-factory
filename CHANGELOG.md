@@ -5,6 +5,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `scripts/factory-flagged.sh` lists the issues flagged `priority: next` on the
+  Software Factory board, ordered `priority: P0`-`P3` then issue number, so
+  "pick up what's flagged" resolves to one read-only command. Covered by
+  `scripts/test-factory-flagged.sh`.
+
+### Fixed
+
+- `scripts/watcher/board-sync.sh` adds every open issue and pull request to the
+  board regardless of when it was last touched. It previously only considered
+  the last two days, so anything that went quiet before being added was never
+  added. The `factory status` mirror keeps that window. `date -d` replaced with
+  a portable form, so it no longer runs on Linux only.
+
 ## 2026-10-28
 
 ### Added
