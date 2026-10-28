@@ -40,6 +40,8 @@ jobs:
           if printf '%s' "$LABELS" | grep -qF '"approved-test-change"'; then
             label=yes
           fi
-          git fetch --no-tags --depth=0 origin "$BASE_REF"
+          # checkout used fetch-depth: 0, so history is complete; this just
+          # makes sure the base branch has a local remote-tracking ref.
+          git fetch --no-tags origin "+refs/heads/$BASE_REF:refs/remotes/origin/$BASE_REF"
           scripts/check-test-assertions.sh \
             --base "origin/$BASE_REF" --head HEAD --label-present "$label"
