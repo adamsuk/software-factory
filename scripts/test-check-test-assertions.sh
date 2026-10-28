@@ -4,6 +4,11 @@
 # outside it.
 set -euo pipefail
 
+# SC2016 off for this file: the single-quoted strings below are literal fixture
+# content written into throwaway test scripts. They must reach disk with their
+# $variables unexpanded, because the point is to assert on the text itself.
+# shellcheck disable=SC2016
+
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 check="$here/check-test-assertions.sh"
 work=$(mktemp -d)
