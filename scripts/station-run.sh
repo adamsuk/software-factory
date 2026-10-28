@@ -239,10 +239,24 @@ if $read_only; then
     || die 7 "could not create the read-only clone"
   git -C "$sandbox/repo" checkout --quiet --detach "$head_sha" \
     || die 7 "could not check out $head_sha in the read-only clone"
-  git -C "$sandbox/repo" remote remove origin > /dev/null 2>&1 \
-    || die 7 "could not remove origin from the read-only clone"
+  # Keep origin's fetch URL and break only its push URL. Removing the remote
+  # outright blinded the reviewer: gh infers the repository from the remote, so
+  # from inside the sandbox it could not read the pull request, CI, or
+  # CodeRabbit's comments — which is exactly what AGENTS.md section 10.4 asks it
+  # to review against. Found by the reviewer on PR #149.
+  #
+  # This stops an accidental push, not a determined one: an agent can still push
+  # to an explicit URL. The boundary's real limits are in stations/README.md.
+  origin_url=$(git -C "$here" remote get-url origin 2>/dev/null || true)
+  if [[ -n "$origin_url" ]]; then
+    git -C "$sandbox/repo" remote set-url origin "$origin_url" > /dev/null 2>&1 \
+      || die 7 "could not set the read-only clone's fetch URL"
+  fi
+  git -C "$sandbox/repo" remote set-url --push origin \
+    "no-push://blocked-by-read-only-station" > /dev/null 2>&1 \
+    || die 7 "could not block pushes from the read-only clone"
   workdir="$sandbox/repo"
-  echo "station-run: read-only clone of ${head_sha:0:7} at $workdir (no origin)" >&2
+  echo "station-run: read-only clone of ${head_sha:0:7} at $workdir (push blocked)" >&2
 fi
 
 # Not exec: the sandbox has to be cleaned up after the adapter returns. The

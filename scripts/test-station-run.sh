@@ -63,8 +63,10 @@ cwd=$(grep '^cwd=' "$OUT" | cut -d= -f2-)
 [[ "$cwd" != "$root_dir" ]] || fail "station ran in the real repo: $cwd"
 pass
 
-tname="the read-only clone has no origin"
-grep -q "^origin=.*No such remote" "$OUT" || fail "clone still has an origin: $(grep '^origin=' "$OUT")"
+tname="the read-only clone can still read its origin"
+# Deliberately not removed: gh needs the remote to infer the repository, or the
+# reviewer cannot read the pull request it is reviewing (#149).
+grep -q "^origin=https" "$OUT" || fail "clone lost its fetch URL: $(grep '^origin=' "$OUT")"
 pass
 
 tname="a write inside it cannot be pushed"
@@ -80,6 +82,10 @@ pass
 # Regression: a linked worktree shares .git/config, so removing the worktree's
 # origin removed the real repository's remote. That broke push while building
 # #142. A clone keeps its own config.
+tname="the read-only clone cannot push"
+grep -qx "pushed=no" "$OUT" || fail "push was not refused"
+pass
+
 tname="the repo keeps its own origin afterwards"
 if [[ "$had_origin" == "yes" ]]; then
   git -C "$root_dir" remote get-url origin > /dev/null 2>&1 \
@@ -107,7 +113,9 @@ rm -f "$OUT"
 run_plain reviewer /dev/null > /dev/null
 cwd=$(grep '^cwd=' "$OUT" | cut -d= -f2-)
 [[ "$cwd" != "$root_dir" ]] || fail "reviewer ran in the real repo without --read-only"
-grep -q "^origin=.*No such remote" "$OUT" || fail "no sandbox: origin still present"
+# The sandbox is identified by its directory, not by a missing origin: the
+# clone keeps a readable fetch URL on purpose (#149).
+grep -qx "pushed=no" "$OUT" || fail "no sandbox: the push was not refused"
 pass
 
 tname="intake is read-only by default too"
