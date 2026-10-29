@@ -75,21 +75,49 @@ role="$1"
 context_path="$2"
 shift 2
 
-# Validate role exists in canonical roles
-role_file="$here/agents/roles/${role}.md"
-[[ -f "$role_file" ]] || die 2 "unknown role: $role (missing $role_file)"
+# Prompts come from a promoted release tag, not the live tree, so a merge to
+# main is not an instant release of the factory's own behaviour (see
+# stations/README.md, "Promoting a release"). FACTORY_RELEASE_REF names the ref;
+# unset, it is the latest tag matching v*. With no tag at all (a bare or
+# shallow clone) the working tree is used, as before.
+release_ref="${FACTORY_RELEASE_REF:-}"
+if [[ -z "$release_ref" ]]; then
+  release_ref="$(git -C "$here" tag --list 'v*' --sort=-v:refname 2>/dev/null | head -n 1 || true)"
+elif ! git -C "$here" rev-parse --verify --quiet "${release_ref}^{commit}" > /dev/null; then
+  die 2 "FACTORY_RELEASE_REF '$release_ref' does not resolve to a commit"
+fi
 
-agents_md="$here/AGENTS.md"
-[[ -f "$agents_md" ]] || die 2 "missing $agents_md"
-[[ -f "$here/stations/github-writes.md" ]] || die 2 "missing stations/github-writes.md"
+# release_file <repo-relative path> <dest>: copy the file as of the release ref
+# (or from the working tree when there is none). A file the tag predates (a
+# third argument, "optional") falls back to the working tree with a warning;
+# any other file missing at the ref is an error.
+release_file() {
+  if [[ -n "$release_ref" ]] && git -C "$here" cat-file -e "${release_ref}:$1" 2> /dev/null; then
+    git -C "$here" show "${release_ref}:$1" > "$2"
+  elif [[ -n "$release_ref" && "${3:-}" != optional ]]; then
+    die 2 "missing $1 at release ref $release_ref"
+  else
+    [[ -z "$release_ref" ]] || echo "station-run: $1 not at $release_ref, using working tree" >&2
+    [[ -f "$here/$1" ]] || die 2 "missing $1"
+    cp "$here/$1" "$2"
+  fi
+}
+
+if [[ -n "$release_ref" ]]; then
+  git -C "$here" cat-file -e "${release_ref}:agents/roles/${role}.md" 2> /dev/null \
+    || die 2 "unknown role: $role (missing agents/roles/${role}.md at release ref $release_ref)"
+else
+  [[ -f "$here/agents/roles/${role}.md" ]] || die 2 "unknown role: $role (missing $here/agents/roles/${role}.md)"
+fi
 
 # Build context bundle
 bundle_dir="$(mktemp -d /tmp/station-bundle-XXXXXX)"
 trap 'rm -rf "$bundle_dir"' EXIT  # replaced by cleanup_station once a sandbox may exist
 
 # Copy canonical files
-cp "$agents_md" "$bundle_dir/AGENTS.md"
-cp "$role_file" "$bundle_dir/ROLE.md"
+release_file AGENTS.md "$bundle_dir/AGENTS.md"
+release_file "agents/roles/${role}.md" "$bundle_dir/ROLE.md"
+release_file stations/github-writes.md "$bundle_dir/GITHUB_WRITES.md" optional
 
 # Create context file with metadata
 {
@@ -148,7 +176,7 @@ prompt_bundle="$bundle_dir/PROMPT.md"
   echo
   echo "# GitHub writes"
   echo
-  cat "$here/stations/github-writes.md"
+  cat "$bundle_dir/GITHUB_WRITES.md"
   echo
   echo "</system>"
   echo

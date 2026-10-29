@@ -270,3 +270,17 @@ cwd=$(grep '^cwd=' "$OUT" | cut -d= -f2-)
 pass
 
 echo "all station-run read-only tests passed"
+
+tname="prompt is read from the release ref, not the working tree"
+rel=$work/rel
+git clone -q "$root_dir" "$rel" 2> /dev/null || cp -R "$root_dir" "$rel"
+cp "$root_dir/scripts/station-run.sh" "$rel/scripts/station-run.sh"
+git -C "$rel" add -A > /dev/null
+git -C "$rel" -c user.email=t@e.com -c user.name=t commit -q -m snapshot --allow-empty
+git -C "$rel" -c user.email=t@e.com -c user.name=t tag -f v9.9.9 HEAD > /dev/null
+echo "LIVE-ONLY-MARKER" >> "$rel/agents/roles/reviewer.md"
+out=$(bash "$rel/scripts/station-run.sh" --dry-run reviewer /dev/null 2>&1)
+[[ "$out" != *LIVE-ONLY-MARKER* ]] || fail "working-tree edit leaked into the prompt"
+out=$(FACTORY_RELEASE_REF=nonexistent-ref bash "$rel/scripts/station-run.sh" --dry-run reviewer /dev/null 2>&1 || true)
+[[ "$out" == *"does not resolve"* ]] || fail "bad FACTORY_RELEASE_REF not refused: [$out]"
+pass
