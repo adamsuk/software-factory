@@ -19,8 +19,8 @@ thing across providers, and treating it as one has cost two wrong conclusions
 | Provider | Non-builder roles | `builder` | What the builder actually does |
 | --- | --- | --- | --- |
 | `grok` | yes | yes | `adapters/grok/run.sh` execs `scripts/run-work-order.sh`: clones to the bench root, runs `setup_command` and `test_command`, squash-commits, pushes, opens the pull request and sets `factory:gate` |
-| `opencode` | yes | yes | runs the prompt against the working tree. No clone, no test run, no commit, no pull request, no label |
-| `claudecode` | yes | yes (since #158) | as `opencode`. Uses `${FACTORY_MODEL:-sonnet}` when the CLI supports `--model`, else the CLI's own default; the adapter probes rather than requiring it. Builder included either way |
+| `opencode` | yes | yes | runs the prompt in the working tree, or, when the work order's `repo:` names another repo, in a writable clone of it (#171). No test run, no test run, no commit, no pull request, no label |
+| `claudecode` | yes | yes (since #158) | as `opencode`, including the cross-repo clone. Uses `${FACTORY_MODEL:-sonnet}` when the CLI supports `--model`, else the CLI's own default; the adapter probes rather than requiring it. Builder included either way |
 
 So "the bench ran" means two different things. On `grok` it means the full
 station. On `opencode` and `claudecode` it means the edits exist in the tree and
@@ -29,7 +29,10 @@ the strength of a provider that cannot complete it.
 
 The grok builder clones into the bench root — `$FACTORY_WORKSPACE`, default
 `/workspace`, with a loud fallback when that is unusable (#154). The other two
-edit the checkout in place, so `scripts/station-run.sh`'s read-only/writable
+edit the checkout in place when the work order names this repo, and a clone
+(`/tmp/station-xr-*`, removed on exit, real push URL, `GH_REPO` set) when it
+names another. They still leave edits only: no commit, push or pull request.
+For reading roles, `scripts/station-run.sh`'s read-only/writable
 decision is the only thing standing between a reading role and the real repo.
 
 Until #158, `claudecode` refused `builder` outright, on the stated grounds that

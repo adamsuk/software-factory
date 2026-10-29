@@ -7,6 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- A writable `builder` on `opencode` or `claudecode` now runs in a clone of the
+  repo the work order's `repo:` names when that is not this repo, so a grok
+  billing halt no longer blocks every cross-repo ticket (#171). The clone keeps
+  a real push URL, exports `GH_REPO`, and is removed on exit; an in-repo work
+  order still runs in place. These builders still only leave edits: no commit,
+  push or pull request.
+
 - The `tests` job's failure path is verified, not assumed (#135). Every run of
   it had passed, so the branch that reports a red suite had never executed. A
   temporary `scripts/test-aaa-canary.sh` exiting 1 was added on a pull request
