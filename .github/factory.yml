@@ -13,12 +13,13 @@ agents:
   # blocking CodeRabbit findings, plus PR Reviewer's review (AGENTS.md section 6).
   review_bot: coderabbit
   # The CI lint job (ShellCheck on the work-order runner). Unchanged on purpose: the `tests` job
-  # (scripts/test-*.sh) is report-only until the failing suites are fixed (#135).
+  # (scripts/test-*.sh) runs and reports on every pull request, and passes on ubuntu-latest, but
+  # making it part of the gate is a separate change that needs its own review (#135, step 4).
   test_command: shellcheck scripts/*.sh adapters/*/run.sh
 
 # Station 04 reads these names. agents.merge stays false until a ruleset
-# can enforce them. `tests` is deliberately absent: it runs on every PR but is not required yet,
-# because some suites are red (#135). Add it once they pass.
+# can enforce them. `tests` is deliberately absent: it runs on every PR and passes on ubuntu-latest,
+# but requiring it is a separate change to the gate that needs its own review (#135, step 4).
 required_checks:
   - ShellCheck
   - changelog / changelog

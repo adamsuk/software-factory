@@ -49,6 +49,8 @@ jobs:
   tests:
     name: tests
     runs-on: ubuntu-latest
+    # Suites poll (test-wait-for-review-bot.sh); the whole job takes about 75 seconds.
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -58,7 +60,7 @@ jobs:
       - name: Install test dependencies
         # PyYAML: gate-issue.sh and review-issue.sh parse .github/factory.yml with it.
         # jq, GNU find and bash 5 already ship on ubuntu-latest.
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends python3-yaml jq
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends python3-yaml
       - name: Run every scripts/test-*.sh
         # No token is passed: the suites put a fake gh on PATH and must never reach the API.
         run: |
