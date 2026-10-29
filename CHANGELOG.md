@@ -40,6 +40,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   The download is bounded (`--max-time 60`, `--retry 3`, HTTPS and TLS 1.2
   only) and the job has `timeout-minutes: 5`, so a stalled transfer fails the
   gate instead of leaving it pending.
+- `scripts/test-factory-pr-metrics.sh`'s failure reporter no longer crashes on
+  its own `printf` (#165). `printf '--- stdout ---\n'` makes bash parse the
+  leading `---` as an option (`printf: --: invalid option`), which replaced the
+  captured output it was about to print. The five section headers now use
+  `printf '%s\n' '--- … ---'`. No other `scripts/test-*.sh` passes a format
+  string starting with `-`. No assertion changed.
 
 - `adapters/claudecode/run.sh` runs the `builder` role instead of refusing it
   (#158). The refusal said builder needs `scripts/run-work-order.sh`, which is

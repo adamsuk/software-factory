@@ -8,15 +8,15 @@ tname=startup
 fail() {
   printf 'FAIL (%s): %s\n' "$tname" "$*" >&2
   if [[ -n "${stdout_file:-}" && -f "$stdout_file" ]]; then
-    printf '--- stdout ---\n' >&2
+    printf '%s\n' '--- stdout ---' >&2
     cat "$stdout_file" >&2 || true
   fi
   if [[ -n "${stderr_file:-}" && -f "$stderr_file" ]]; then
-    printf '--- stderr ---\n' >&2
+    printf '%s\n' '--- stderr ---' >&2
     cat "$stderr_file" >&2 || true
   fi
   if [[ -n "${log:-}" && -f "$log" ]]; then
-    printf '--- gh log ---\n' >&2
+    printf '%s\n' '--- gh log ---' >&2
     cat "$log" >&2 || true
   fi
   exit 1
@@ -149,9 +149,9 @@ assert_empty() {
 
 assert_same() {
   if ! cmp -s "$1" "$2"; then
-    printf '--- expected ---\n' >&2
+    printf '%s\n' '--- expected ---' >&2
     cat "$2" >&2 || true
-    printf '--- got ---\n' >&2
+    printf '%s\n' '--- got ---' >&2
     cat "$1" >&2 || true
     fail "$3 mismatch"
   fi
@@ -716,5 +716,30 @@ assert_same "$stdout_file" "$expected_file" stdout
 write_all_call "$expected_log" "$default_repo" "$default_since"
 append_open_call "$expected_log" "$default_repo"
 assert_same "$log" "$expected_log" "gh log"
+
+# The reporter prints non-empty captured output and does not die on its own
+# printf. Drive fail() directly in a subshell with known captured content.
+tname=reporter-survives-output
+reporter_out=$root/reporter.out
+reporter_err=$root/reporter.err
+printf '%s\n' 'captured-stdout-line' > "$root/rep-stdout.txt"
+printf '%s\n' 'captured-stderr-line' > "$root/rep-stderr.txt"
+printf '%s\n' 'captured-log-line' > "$root/rep-log.txt"
+set +e
+(
+  stdout_file=$root/rep-stdout.txt
+  stderr_file=$root/rep-stderr.txt
+  log=$root/rep-log.txt
+  fail "deliberate reporter check"
+) > "$reporter_out" 2> "$reporter_err"
+reporter_status=$?
+set -e
+[[ "$reporter_status" -eq 1 ]] || fail "reporter exited $reporter_status, expected 1"
+for line in captured-stdout-line captured-stderr-line captured-log-line '--- stdout ---' '--- stderr ---' '--- gh log ---'; do
+  grep -F -q -- "$line" "$reporter_err" || fail "reporter output is missing [$line]"
+done
+if grep -E -q 'invalid option|usage: printf' "$reporter_err"; then
+  fail "reporter printed a printf usage error"
+fi
 
 printf '%s\n' "ok  factory-pr-metrics tests"
