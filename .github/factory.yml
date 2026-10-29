@@ -24,6 +24,8 @@ agents:
   # A green local test_command is therefore weaker evidence than a green `tests` check.
   test_command: shellcheck scripts/*.sh adapters/*/run.sh && bash scripts/test-adapters.sh && bash scripts/test-check-test-assertions.sh && bash scripts/test-factory-flagged.sh && bash scripts/test-run-work-order.sh && bash scripts/test-station-run.sh && bash scripts/test-wait-for-review-bot.sh
 
+# The ShellCheck check means shellcheck 0.11.0, pinned and checksum-verified in
+# .github/workflows/lint.yml (#155); install the same version locally (see README.md).
 # Station 04 (scripts/gate-issue.sh) reads these names. This tightens the factory's gate only:
 # GitHub enforces nothing until a ruleset exists (#112). agents.merge stays false until then.
 required_checks:
