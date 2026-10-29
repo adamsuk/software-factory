@@ -20,7 +20,7 @@ thing across providers, and treating it as one has cost two wrong conclusions
 | --- | --- | --- | --- |
 | `grok` | yes | yes | `adapters/grok/run.sh` execs `scripts/run-work-order.sh`: clones to the bench root, runs `setup_command` and `test_command`, squash-commits, pushes, opens the pull request and sets `factory:gate` |
 | `opencode` | yes | yes | runs the prompt against the working tree. No clone, no test run, no commit, no pull request, no label |
-| `claudecode` | yes | yes (since #158) | as `opencode`. Model is `${FACTORY_MODEL:-sonnet}`, builder included |
+| `claudecode` | yes | yes (since #158) | as `opencode`. Uses `${FACTORY_MODEL:-sonnet}` when the CLI supports `--model`, else the CLI's own default; the adapter probes rather than requiring it. Builder included either way |
 
 So "the bench ran" means two different things. On `grok` it means the full
 station. On `opencode` and `claudecode` it means the edits exist in the tree and
