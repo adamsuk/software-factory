@@ -45,3 +45,42 @@ jobs:
           git fetch --no-tags origin "+refs/heads/$BASE_REF:refs/remotes/origin/$BASE_REF"
           scripts/check-test-assertions.sh \
             --base "origin/$BASE_REF" --head HEAD --label-present "$label"
+
+  tests:
+    name: tests
+    runs-on: ubuntu-latest
+    # Suites poll (test-wait-for-review-bot.sh); the whole job takes about 75 seconds.
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install test dependencies
+        # PyYAML: gate-issue.sh and review-issue.sh parse .github/factory.yml with it.
+        # jq, GNU find and bash 5 already ship on ubuntu-latest.
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends python3-yaml
+      - name: Run every scripts/test-*.sh
+        # No token is passed: the suites put a fake gh on PATH and must never reach the API.
+        run: |
+          failed=()
+          {
+            echo '| Suite | Exit |'
+            echo '| --- | --- |'
+          } >> "$GITHUB_STEP_SUMMARY"
+          for suite in scripts/test-*.sh; do
+            echo "::group::$suite"
+            status=0
+            bash "$suite" || status=$?
+            echo "::endgroup::"
+            echo "$suite exited $status"
+            echo "| \`$suite\` | $status |" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$status" -ne 0 ]; then
+              failed+=("$suite")
+            fi
+          done
+          if [ "${#failed[@]}" -ne 0 ]; then
+            echo "::error::${#failed[@]} suite(s) failed: ${failed[*]}"
+            exit 1
+          fi

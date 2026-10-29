@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 2026-10-29
 
+### Added
+
+- A `tests` job in `.github/workflows/lint.yml` runs every `scripts/test-*.sh`
+  (found by glob) on pull requests and pushes to `main`, runs all suites even
+  when one fails, and lists each suite's exit status in the step summary
+  (#135). It is not in `required_checks` and `agents.test_command` is
+  unchanged: some suites are known red, and fixing them is a later step.
+
 ### Fixed
 
 - `adapters/claudecode/run.sh` runs the `builder` role instead of refusing it
