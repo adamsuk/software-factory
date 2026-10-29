@@ -31,6 +31,8 @@ choose_clone_root() {
   else
     root="/workspace"
   fi
+  # mktemp keeps a relative template relative, and main cd's into the clone.
+  [[ "$root" == /* ]] || root="$PWD/$root"
 
   if [[ -d "$root" && -w "$root" && -x "$root" ]]; then
     printf '%s\n' "$root"

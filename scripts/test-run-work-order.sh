@@ -1410,6 +1410,14 @@ unset FACTORY_WORKSPACE
 [[ "$dir_test" != "$here/"* ]] || fail "clone dir inside repo"
 rm -rf "$dir_test" || true
 
+tname="bench-clone-dir-relative-root-absolute"
+rel_base="$ROOT/rel-base"
+mkdir -p "$rel_base"
+dir_rel=$(cd "$rel_base" && FACTORY_WORKSPACE="rel-workspace" choose_clone_dir "acme/widgets" 123)
+[[ "$dir_rel" == /* ]] || fail "clone dir not absolute for relative root: $dir_rel"
+[[ "$dir_rel" == "$rel_base/rel-workspace/"* ]] || fail "relative root not resolved against cwd: $dir_rel"
+rm -rf "$dir_rel" || true
+
 PATH=$ORIG_PATH
 # Read by finish_commit / prepare_env in the sourced runner.
 : "$title" "$issue" "$base" "$tests"

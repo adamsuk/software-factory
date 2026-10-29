@@ -16,6 +16,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   model is `${FACTORY_MODEL:-sonnet}` when the Claude CLI supports `--model`,
   and the CLI's own default otherwise, since the adapter probes for the flag
   rather than requiring it; the builder is no exception either way.
+- `scripts/run-work-order.sh`: make the bench clone root configurable via
+  `FACTORY_WORKSPACE` (default `/workspace` unchanged), create missing roots
+  if possible, fall back to a temporary directory with a loud stderr message
+  naming the root and target, exit code 8 when neither root nor a temporary
+  directory is usable, and write `$dir.grok.json`, `$dir.bench.txt`, `$dir.venv`
+  beside the clone outside it. Documented in `stations/README.md` and
+  `agents/grok-build.md`. Covered by new cases in `scripts/test-run-work-order.sh`.
 - `stations/README.md` records which providers can run which roles, and that the
   grok builder clones, tests, commits, pushes and opens the pull request while
   the opencode and claudecode builders only leave edits in the tree. Calling
@@ -45,13 +52,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- `scripts/run-work-order.sh`: make the bench clone root configurable via
-  `FACTORY_WORKSPACE` (default `/workspace` unchanged), create missing roots
-  if possible, fall back to a temporary directory with a loud stderr message
-  naming the root and target, exit code 8 when neither root nor a temporary
-  directory is usable, and write `$dir.grok.json`, `$dir.bench.txt`, `$dir.venv`
-  beside the clone outside it. Documented in `stations/README.md` and
-  `agents/grok-build.md`. Covered by new cases in `scripts/test-run-work-order.sh`.
 - `scripts/watcher/board-sync.sh` adds every open issue and pull request to the
   board regardless of when it was last touched. It previously only considered
   the last two days, so anything that went quiet before being added was never
