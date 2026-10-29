@@ -10,7 +10,7 @@ setup_command: ""
 changelog: true
 merge_allowed: false
 review_bot: coderabbit
-attempt: 3
+attempt: 4
 created: 2026-10-29
 ---
 
@@ -168,3 +168,44 @@ added in attempt 1, which is permitted; do not touch any other existing
 assertion in any `scripts/test-*.sh`, or `scripts/check-test-assertions.sh` will
 fail the pull request. `shellcheck` 0.11.0 is now installed on the box, so run
 `shellcheck scripts/*.sh adapters/*/run.sh` before finishing.
+
+## Attempt 4 — two review findings, both verified
+
+Attempt 3's work is correct and stays. Checks on the head are green, so AGENTS.md
+§4's three-attempt cap does not apply: it governs the fix loop "when required
+checks go red". These are review findings on a green head.
+
+Both come from CodeRabbit on `d25d94a` and both were verified against the code
+before being passed on.
+
+1. **Major — resolve the bench root to an absolute path.** `mktemp -d` returns a
+   relative path when given a relative template:
+
+   ```
+   $ mktemp -d reltest/wo-XXXXXX
+   reltest/wo-bkjuCV
+   ```
+
+   So a relative `FACTORY_WORKSPACE` yields a relative `$dir`. `main` then does
+   `cd "$dir"`, and *after* that uses `--cwd "$dir"` and `> "$dir.grok.json"`,
+   which resolve against the new working directory and point somewhere wrong.
+   The bench would clone and then fail, or write its run log outside the place
+   every other step looks for it.
+
+   Make the chosen root absolute before the clone directory is created, so both
+   the default and an override are absolute. Cover it with a case that sets a
+   **relative** `FACTORY_WORKSPACE` and asserts the returned directory is
+   absolute.
+
+2. **Minor — the changelog entry is in the wrong section.** It sits under
+   `## [Unreleased]` at line 48. AGENTS.md:47 requires a dated
+   `## YYYY-MM-DD` (Europe/London) entry in the same pull request. `main`
+   already has a `## 2026-10-29` section with a `### Fixed` heading; move the
+   entry's existing content there, unchanged, and do not create a second dated
+   heading.
+
+   Note the `changelog / changelog` check passed on this pull request regardless.
+   That check only verifies the file was touched — see #160. Do not rely on it.
+
+Constraints unchanged. Keep `test_command` green and `shellcheck scripts/*.sh
+adapters/*/run.sh` clean. Change no assertion that exists on `main`.
