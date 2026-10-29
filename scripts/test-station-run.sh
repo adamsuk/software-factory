@@ -253,4 +253,20 @@ run_xr self > /dev/null
 [[ "$(grep '^cwd=' "$OUT" | cut -d= -f2-)" == "$root_dir" ]] || fail "did not run in place"
 pass
 
+tname="an exported GIT_DIR cannot flip a cross-repo run to in place"
+# No FACTORY_SELF_REPO: the origin lookup itself must ignore GIT_DIR. The probe
+# claims to be acme/widgets, so a redirected lookup would run in place here.
+xr_probe=$work/xr-probe; git init -q -b main "$xr_probe"
+git -C "$xr_probe" remote add origin https://github.com/acme/widgets.git
+rm -f "$OUT"
+before=$(tree_sum)
+msg=$(GIT_DIR="$xr_probe/.git" GIT_WORK_TREE="$xr_probe" PATH="$BIN:$PATH" \
+  FACTORY_PROVIDER=opencode FAKE_OUT="$OUT" FACTORY_CLONE_BASE="$xr_base" \
+  bash "$root_dir/scripts/station-run.sh" --work-order "$work/wo-xr.md" builder /dev/null 2>&1)
+cwd=$(grep '^cwd=' "$OUT" | cut -d= -f2-)
+[[ "$cwd" != "$root_dir"* && "$cwd" != "$xr_probe"* ]] || fail "ran in place: $cwd"
+[[ "$msg" == *"writable clone of acme/widgets at $cwd"* ]] || fail "no clone notice: $msg"
+[[ "$(tree_sum)" == "$before" ]] || fail "this repo's working tree changed"
+pass
+
 echo "all station-run read-only tests passed"

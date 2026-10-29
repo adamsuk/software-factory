@@ -275,6 +275,10 @@ fi
 # the read-only one on purpose: it must keep a real push URL, so it shares none
 # of that block's no-push wiring or its guard.
 if ! $read_only && [[ "$role" == "builder" && "$provider" != "grok" && -n "$work_order" ]]; then
+  # Before any git call: an exported GIT_DIR or GIT_COMMON_DIR would redirect the
+  # origin lookup below, and self_repo decides whether this runs in place.
+  unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+    GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_CEILING_DIRECTORIES
   # Only the front matter's repo line, not a later `repo:` in the body.
   target_repo=$(awk 'NR==1 && $0=="---"{fm=1;next} fm&&$0=="---"{exit} fm&&/^repo:/{sub(/^repo:[ \t]*/,"");gsub(/["\047 \r]/,"");print;exit}' "$work_order")
   self_repo="${FACTORY_SELF_REPO:-}"
@@ -286,8 +290,6 @@ if ! $read_only && [[ "$role" == "builder" && "$provider" != "grok" && -n "$work
     [[ "$target_repo" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] \
       || die 2 "work order repo is not owner/repo: $target_repo"
     command -v git > /dev/null 2>&1 || die 2 "git not found in PATH"
-    unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
-      GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_CEILING_DIRECTORIES
     sandbox="$(mktemp -d /tmp/station-xr-XXXXXX)"
     git clone --quiet "${FACTORY_CLONE_BASE:-https://github.com}/$target_repo" "$sandbox/repo" \
       || die 7 "could not clone $target_repo"
