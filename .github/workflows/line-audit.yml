@@ -1,0 +1,162 @@
+name: Line audit
+
+# Monthly re-audit against the Line guide (#21). Runs the read-only `auditor`
+# role through scripts/station-run.sh, compares the scorecard with the newest
+# file under audits/, and opens a pull request adding audits/YYYY-MM-DD.md when
+# something changed. Gaps appear as a list of issue CANDIDATES in the PR body;
+# nothing is filed. Scott decides which become work.
+#
+# NOT YET RUNNABLE. This workflow needs things a builder cannot provision. The
+# first step fails with the name of whichever is missing rather than skipping:
+#
+#   Secret    ANTHROPIC_API_KEY             API key for the `claudecode` provider
+#                                           (the only provider wired here).
+#   Variable  AUDITOR_GUIDE_URL             URL of the Line guide. It is not
+#                                           recorded in this repo, so it is not
+#                                           guessed.
+#   Variable  AUDITOR_GUIDE_VERSION         e.g. v2026-10-27, for the audit title.
+#   Variable  AUDITOR_CLI_VERSION           pinned version of the Claude Code CLI
+#                                           (npm @anthropic-ai/claude-code).
+#   Setting   Actions > General > "Allow GitHub Actions to create and approve
+#             pull requests" must be on. The token is the workflow's
+#             GITHUB_TOKEN, so the PR it opens does NOT trigger the Lint and
+#             Changelog checks; Scott closes and reopens it (or pushes) to run
+#             them, or supplies a PAT/App token, which is his call.
+#   Decision  Which provider and model run the auditor, and the monthly cost.
+#             FACTORY_MODEL is left unset, so the CLI default applies.
+#
+# Access the audits already list as missing is still missing and is not
+# attempted here: admin:org, Cloudflare Pages, Grok Bot agent configs, the
+# shared box, the CodeRabbit dashboard. Without them the auditor scores those
+# items unknown and says what would settle them.
+#
+# Reads prompts from the promoted release tag (station-run.sh, #136), so the
+# `auditor` role is only found once a v* tag containing agents/roles/auditor.md
+# exists. Until then this fails with "unknown role".
+
+on:
+  schedule:
+    - cron: "17 6 1 * *" # 06:17 UTC on the 1st
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: line-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: Line audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      GUIDE_URL: ${{ vars.AUDITOR_GUIDE_URL }}
+      GUIDE_VERSION: ${{ vars.AUDITOR_GUIDE_VERSION }}
+      CLI_VERSION: ${{ vars.AUDITOR_CLI_VERSION }}
+    steps:
+      - name: Check required secret and variables
+        run: |
+          missing=()
+          [ -n "$ANTHROPIC_API_KEY" ] || missing+=("secret ANTHROPIC_API_KEY")
+          [ -n "$GUIDE_URL" ] || missing+=("variable AUDITOR_GUIDE_URL")
+          [ -n "$GUIDE_VERSION" ] || missing+=("variable AUDITOR_GUIDE_VERSION")
+          [ -n "$CLI_VERSION" ] || missing+=("variable AUDITOR_CLI_VERSION")
+          if [ "${#missing[@]}" -ne 0 ]; then
+            echo "::error::Line audit cannot run. Missing: ${missing[*]}. See the comment at the top of this workflow."
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # station-run.sh resolves the release tag from history
+      - name: Install the Claude Code CLI
+        run: npm install -g "@anthropic-ai/claude-code@${CLI_VERSION}"
+      - name: Run the auditor (read-only)
+        run: |
+          set -euo pipefail
+          prev=$(ls audits/*.md | sort | tail -n 1)
+          context="$RUNNER_TEMP/context.md"
+          {
+            echo "Line guide: $GUIDE_URL"
+            echo "Guide version: $GUIDE_VERSION"
+            echo "Repo: $GITHUB_REPOSITORY"
+            echo "Run date (UTC): $(date -u +%F)"
+            echo "Previous audit: $prev"
+          } > "$context"
+          scripts/station-run.sh --read-only --provider claudecode \
+            --repo "$GITHUB_REPOSITORY" auditor "$context" \
+            > "$RUNNER_TEMP/auditor.out"
+          if grep -q '^AUDIT-BLOCKED:' "$RUNNER_TEMP/auditor.out"; then
+            echo "::error::$(grep -m1 '^AUDIT-BLOCKED:' "$RUNNER_TEMP/auditor.out")"
+            exit 1
+          fi
+      - name: Split the audit from the issue candidates
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/auditor.out"
+          grep -qx '<!-- audit:begin -->' "$out" && grep -qx '<!-- audit:end -->' "$out" \
+            || { echo "::error::auditor output has no audit:begin/audit:end markers"; exit 1; }
+          sed -n '/^<!-- audit:begin -->$/,/^<!-- audit:end -->$/p' "$out" \
+            | sed '1d;$d' > "$RUNNER_TEMP/new-audit.md"
+          sed -n '/^<!-- audit:end -->$/,$p' "$out" | sed '1d' > "$RUNNER_TEMP/candidates.md"
+          grep -q '^## (a) Scorecard' "$RUNNER_TEMP/new-audit.md" \
+            || { echo "::error::audit has no '## (a) Scorecard' section"; exit 1; }
+      - name: Compare with the latest audit
+        id: diff
+        run: |
+          set -euo pipefail
+          prev=$(ls audits/*.md | sort | tail -n 1)
+          # Only the scorecard decides "something to record"; the title, headline
+          # and prose change every run.
+          card() { sed -n '/^## (a) Scorecard/,/^## (b)/p' "$1" | sed '$d'; }
+          if diff -q <(card "$prev") <(card "$RUNNER_TEMP/new-audit.md") > /dev/null; then
+            echo "changed=no" >> "$GITHUB_OUTPUT"
+            echo "Scorecard unchanged since $prev; no pull request."
+          else
+            echo "changed=yes" >> "$GITHUB_OUTPUT"
+            diff <(card "$prev") <(card "$RUNNER_TEMP/new-audit.md") > "$RUNNER_TEMP/scorecard.diff" || true
+          fi
+      - name: Open the pull request
+        if: steps.diff.outputs.changed == 'yes'
+        run: |
+          set -euo pipefail
+          date=$(date -u +%F)
+          branch="factory/audit-$date"
+          file="audits/$date.md"
+          if gh pr list --head "$branch" --state open --json number --jq '.[0].number' | grep -q .; then
+            echo "A pull request for $branch is already open."
+            exit 0
+          fi
+          cp "$RUNNER_TEMP/new-audit.md" "$file"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add "$file"
+          git commit -m "docs: Line audit $date (#21)"
+          git push origin "$branch"
+          {
+            echo "Monthly Line re-audit, recorded as \`$file\`. Refs #21."
+            echo
+            echo "The scorecard differs from the previous audit. Changed rows (\`<\` previous, \`>\` new):"
+            echo
+            echo '```diff'
+            head -c 20000 "$RUNNER_TEMP/scorecard.diff"
+            echo '```'
+            echo
+            echo "## Issue candidates"
+            echo
+            echo "Proposed by the auditor. **None has been filed**; Scott decides which become work."
+            echo
+            cat "$RUNNER_TEMP/candidates.md"
+            echo
+            echo "---"
+            echo "Review needed: this PR adds a file under \`audits/\` only, but the workflow that produced it is itself protected (AGENTS.md section 5)."
+          } > "$RUNNER_TEMP/pr-body.md"
+          gh pr create --base main --head "$branch" \
+            --title "docs: Line audit $date (#21)" --label skip-changelog --body-file "$RUNNER_TEMP/pr-body.md"

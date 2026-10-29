@@ -18,7 +18,7 @@ Options:
   --repo <owner/repo> Repo context
   --dry-run           Print composed prompt bundle without invoking provider
   --writable          Let the station change the real repo. The reading roles
-                      (intake, research, reviewer, monitor) are read-only by
+                      (intake, research, reviewer, monitor, auditor) are read-only by
                       default and this is the deliberate escape. builder and
                       foreman write by design and are unaffected.
   --read-only         Run the station in a throwaway clone with no remote, so
@@ -226,7 +226,7 @@ fi
 # would take it away and the later gate run, which needs that file, would have
 # nothing to read.
 case "$role" in
-  intake|research|reviewer|monitor) reads_only=true ;;
+  intake|research|reviewer|monitor|auditor) reads_only=true ;;
   *) reads_only=false ;;
 esac
 if [[ -z "$read_only" ]]; then
