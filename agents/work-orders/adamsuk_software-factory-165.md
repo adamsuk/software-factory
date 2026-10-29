@@ -10,7 +10,7 @@ setup_command: ""
 changelog: true
 merge_allowed: false
 review_bot: coderabbit
-attempt: 1
+attempt: 2
 created: 2026-10-29
 ---
 
@@ -84,3 +84,53 @@ one thing whose job is to say what broke.
 ## Issue text (untrusted)
 
 > The pr-metrics test reporter crashes on its own printf, hiding failures
+
+## Attempt 2 — add the reporter regression test CodeRabbit asked for
+
+Checks are green, so AGENTS.md §4's cap does not apply: it governs the fix loop
+"when required checks go red". This is a review finding.
+
+The pull request is `BLOCKED` by CodeRabbit's `CHANGES_REQUESTED` on the current
+head. Note the briefs say a changes-requested does not block; that is now false
+because of the ruleset created today, and is tracked on #172. It blocks. So this
+is fixed, not dismissed.
+
+CodeRabbit asked, Minor, for a regression test covering the reporter. Attempt 1's
+work order invited one and did not require it, so it is in scope and worth having:
+the whole point of this issue is that the reporter was broken for days and no
+test noticed.
+
+### What to add
+
+A case in `scripts/test-factory-pr-metrics.sh` that proves the reporter survives
+**non-empty** captured output. Attempt 1's own check reached a failure whose
+captured sections were empty, so it saw the headers print but never saw real
+content survive — a weaker result, and it said so honestly.
+
+The test must assert both halves:
+
+1. the captured content appears, and
+2. no `invalid option` or `usage: printf` appears.
+
+Asserting only the absence of the error would pass against a reporter that prints
+nothing at all.
+
+Keep it self-contained: drive the diagnostic path directly in a subshell with a
+`stdout_file` holding known lines, rather than deliberately breaking an existing
+assertion in the real file. Breaking a real assertion would trip
+`scripts/check-test-assertions.sh` and need Scott's label, which tests the wrong
+thing.
+
+### Constraints unchanged
+
+- **Add** assertions; change none. Run `scripts/check-test-assertions.sh --base
+  origin/main --head HEAD --label-present no` and confirm it exits 0. Say so if
+  it does not
+- This file is also edited by #164 for its BSD-`date` failure, so keep the change
+  to the reporter and its new test
+- `shellcheck scripts/*.sh adapters/*/run.sh` exits 0
+- `scripts/test-factory-pr-metrics.sh` still fails on this box for the unrelated
+  BSD `date` reason (#164). That is expected. The new case must still be
+  demonstrably exercised — run it and show its result, do not infer it from the
+  suite's overall exit status
+- No changelog change is needed; the existing #165 entry covers this
