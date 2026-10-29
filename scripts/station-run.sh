@@ -311,12 +311,10 @@ fi
 
 # Not exec: the read-only sandbox has to be cleaned up after the adapter
 # returns. The trap is already installed above.
-adapter_rc=0
 "$adapter" --role "$role" --prompt "$prompt_bundle" --work-order "${work_order:-}" \
-  --issue "${issue:-}" --repo "${repo_ctx:-}" --workdir "$workdir" "$@" || adapter_rc=$?
-if [[ "$adapter_rc" -eq 0 && -n "$xr_sandbox" ]]; then
+  --issue "${issue:-}" --repo "${repo_ctx:-}" --workdir "$workdir" "$@" || exit $?
+if [[ -n "$xr_sandbox" ]]; then
   # Deliberately not deleted by station-run.sh on any path: whoever reads this
   # line owns the clone and must remove it when done.
   echo "station-run: writable-clone-path $workdir"
 fi
-exit "$adapter_rc"
