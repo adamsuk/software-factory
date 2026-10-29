@@ -68,7 +68,10 @@ scripts/review-issue.sh /path/to/work-order.md
 Use the same activated environment for `bash scripts/test-review-issue.sh`;
 the tests use a fake `gh` and do not contact GitHub. The work-order runner's
 automatic Python setup also installs `requirements.txt` into its virtual
-environment. Shell lint requires `shellcheck` (`shellcheck scripts/*.sh`).
+environment. Shell lint requires `shellcheck` **0.11.0**, the version CI pins in
+`.github/workflows/lint.yml` (`shellcheck scripts/*.sh adapters/*/run.sh`).
+Install it from the [official release](https://github.com/koalaman/shellcheck/releases/tag/v0.11.0)
+(or `brew install shellcheck` if it gives 0.11.0) and check `shellcheck --version`.
 
 ## Audits
 

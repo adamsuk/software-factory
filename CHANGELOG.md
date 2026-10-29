@@ -31,6 +31,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- CI pins ShellCheck to 0.11.0 (#155). The `ShellCheck` job ran whatever
+  version `ubuntu-latest` shipped, so the gate's strictness could change with no
+  commit here. It now downloads the official 0.11.0 release, verifies its SHA256
+  before running it, and fails on a mismatch rather than falling back to the
+  image's copy. The version is set in one place in `lint.yml`; `factory.yml` and
+  the README say which version is meant.
+  The download is bounded (`--max-time 60`, `--retry 3`, HTTPS and TLS 1.2
+  only) and the job has `timeout-minutes: 5`, so a stalled transfer fails the
+  gate instead of leaving it pending.
 - `scripts/test-factory-pr-metrics.sh`'s failure reporter no longer crashes on
   its own `printf` (#165). `printf '--- stdout ---\n'` makes bash parse the
   leading `---` as an option (`printf: --: invalid option`), which replaced the
