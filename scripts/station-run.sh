@@ -16,12 +16,15 @@ die() { echo "station-run: $2" >&2; exit "$1"; }
 snapshot_paths=(scripts adapters AGENTS.md agents/roles stations/github-writes.md)
 tree_sum() {
   (cd "$1" && for p in "${snapshot_paths[@]}"; do
-    [[ -e "$p" ]] && find "$p" -type f -exec cksum {} +
+    if [[ -e "$p" ]]; then
+      find "$p" -type f -exec cksum {} +
+    fi
   done | LC_ALL=C sort -k3 | cksum)
 }
 
 if [[ -z "${FACTORY_SNAPSHOT_DIR:-}" ]]; then
   snap="$(mktemp -d /tmp/station-snap-XXXXXX)"
+  trap 'rm -rf "$snap"' EXIT
   for p in "${snapshot_paths[@]}"; do
     if [[ -e "$here/$p" ]]; then
       mkdir -p "$snap/$(dirname "$p")"
@@ -40,6 +43,8 @@ here="${FACTORY_REAL_ROOT:?}"
 snapshot_sum="${FACTORY_SNAPSHOT_SUM:-}"
 # Not inherited: a nested station-run must make its own snapshot, not delete ours.
 unset FACTORY_SNAPSHOT_DIR FACTORY_REAL_ROOT FACTORY_SNAPSHOT_SUM
+# Registered before any validation, so an early die still removes the snapshot.
+trap 'rm -rf "$script_root"' EXIT
 echo "station-run: running from snapshot $script_root" >&2
 
 usage() {
