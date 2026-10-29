@@ -5,6 +5,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 2026-10-29
 
+### Added
+
+- Monthly `Line audit` workflow and a read-only `auditor` role (#21). The
+  workflow runs the role through `station-run.sh --read-only`, compares the
+  scorecard with the newest `audits/*.md`, and opens a pull request with the new
+  audit when it changed, listing gaps as issue candidates without filing them.
+  It cannot run until a person provides the secret, variables and release tag
+  named at the top of `.github/workflows/line-audit.yml`.
+
 ### Fixed
 
 - `station-run.sh` no longer deletes a writable cross-repo builder's clone on
