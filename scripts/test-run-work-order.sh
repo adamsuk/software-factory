@@ -1347,6 +1347,77 @@ if printf '%s\n' "$main_src" | grep -Eq '^[[:space:]]*gh[[:space:]]+pr([[:space:
   fail "main calls gh pr"
 fi
 
+# --- bench clone root --------------------------------------------------------
+
+tname="bench-clone-root-default"
+unset FACTORY_WORKSPACE
+if [[ -d /workspace && -w /workspace && -x /workspace ]]; then
+  root_default=$(choose_clone_root)
+  assert_eq "$root_default" "/workspace"
+else
+  err_file=$ROOT/default-workspace.err
+  root_default=$(choose_clone_root 2>"$err_file")
+  [[ "$root_default" != "/workspace" ]] || fail "should fall back when /workspace unusable"
+  grep -Fq "clone root unusable: /workspace" "$err_file" || fail "missing fallback message: $(cat "$err_file")"
+  grep -Fq "falling back to $root_default" "$err_file" || fail "missing fallback target: $(cat "$err_file")"
+fi
+
+tname="bench-clone-root-explicit"
+export FACTORY_WORKSPACE="$ROOT/override-workspace"
+mkdir -p "$FACTORY_WORKSPACE"
+root_explicit=$(choose_clone_root)
+assert_eq "$root_explicit" "$FACTORY_WORKSPACE"
+unset FACTORY_WORKSPACE
+
+tname="bench-clone-root-create-missing"
+export FACTORY_WORKSPACE="$ROOT/new-workspace-dir"
+[[ ! -e "$FACTORY_WORKSPACE" ]] || fail "test dir should not exist"
+root_created=$(choose_clone_root)
+assert_eq "$root_created" "$FACTORY_WORKSPACE"
+[[ -d "$FACTORY_WORKSPACE" ]] || fail "missing root was not created"
+[[ -w "$FACTORY_WORKSPACE" ]] || fail "created root not writable"
+unset FACTORY_WORKSPACE
+
+tname="bench-clone-root-fallback-nonwritable"
+export FACTORY_WORKSPACE="$ROOT/bad-workspace"
+mkdir -p "$FACTORY_WORKSPACE"
+chmod 555 "$FACTORY_WORKSPACE" || fail "chmod failed"
+err_file=$ROOT/bad-workspace.err
+root_fb=$(FACTORY_WORKSPACE="$FACTORY_WORKSPACE" choose_clone_root 2>"$err_file")
+[[ "$root_fb" != "$FACTORY_WORKSPACE" ]] || fail "did not fall back from non-writable root"
+[[ -d "$root_fb" && -w "$root_fb" ]] || fail "fallback root not usable"
+grep -Fq "clone root unusable: $FACTORY_WORKSPACE" "$err_file" || fail "missing fallback message: $(cat "$err_file")"
+grep -Fq "falling back to $root_fb" "$err_file" || fail "missing fallback target: $(cat "$err_file")"
+chmod 755 "$FACTORY_WORKSPACE" || true
+unset FACTORY_WORKSPACE
+
+tname="bench-clone-root-main-no-literal-workspace"
+main_src=$(declare -f main)
+if printf '%s\n' "$main_src" | grep -Fq '/workspace'; then
+  fail "main still contains the literal /workspace"
+fi
+
+tname="bench-clone-root-main-calls-helper"
+printf '%s\n' "$main_src" | grep -Fq 'choose_clone_dir' || fail "main does not call choose_clone_dir"
+
+tname="bench-clone-dir-uses-helper"
+export FACTORY_WORKSPACE="$ROOT/dir-workspace"
+mkdir -p "$FACTORY_WORKSPACE"
+dir_test=$(choose_clone_dir "acme/widgets" 123)
+[[ "$dir_test" == "$FACTORY_WORKSPACE"/* ]] || fail "clone dir not under FACTORY_WORKSPACE: $dir_test"
+unset FACTORY_WORKSPACE
+[[ "$dir_test" == */wo-acme_widgets-123-* ]] || fail "clone dir naming wrong: $dir_test"
+[[ "$dir_test" != "$here/"* ]] || fail "clone dir inside repo"
+rm -rf "$dir_test" || true
+
+tname="bench-clone-dir-relative-root-absolute"
+rel_base="$ROOT/rel-base"
+mkdir -p "$rel_base"
+dir_rel=$(cd "$rel_base" && FACTORY_WORKSPACE="rel-workspace" choose_clone_dir "acme/widgets" 123)
+[[ "$dir_rel" == /* ]] || fail "clone dir not absolute for relative root: $dir_rel"
+[[ "$dir_rel" == "$rel_base/rel-workspace/"* ]] || fail "relative root not resolved against cwd: $dir_rel"
+rm -rf "$dir_rel" || true
+
 PATH=$ORIG_PATH
 # Read by finish_commit / prepare_env in the sourced runner.
 : "$title" "$issue" "$base" "$tests"

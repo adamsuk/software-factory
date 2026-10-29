@@ -6,6 +6,8 @@
 # Exit codes: 0 ready (pushed with --push), 2 usage or bad work order,
 # 3 Grok Build failed or made no change, 4 protected path touched or setup
 # changed a tracked file or moved HEAD, 5 tests failed, 6 setup failed.
+# 7: gh issue view, the factory:gate label edit, or a pull request gh call failed.
+# 8: unusable clone root (FACTORY_WORKSPACE or fallback) and no temporary directory usable.
 # Before test_command, prepare the target environment: the work order's
 # setup_command, else agents.setup_command from origin/$base:.github/factory.yml
 # (never the working tree), else a Python venv (declared dev/test extras) or a
@@ -15,9 +17,50 @@
 # On --push this script opens or updates the pull request and never merges.
 set -euo pipefail
 
-# Exit 7: gh issue view, the factory:gate label edit, or a pull request gh call failed.
 setup_env=()
 die() { echo "run-work-order: $2" >&2; exit "$1"; }
+
+# Choose the bench clone root. FACTORY_WORKSPACE chooses the root; unset keeps
+# /workspace as the default. Create missing roots if possible; fall back to a
+# temporary directory on failure with a loud stderr message. Exit 8 if neither
+# is usable.
+choose_clone_root() {
+  local root fallback_dir
+  if [[ -n "${FACTORY_WORKSPACE:-}" ]]; then
+    root="$FACTORY_WORKSPACE"
+  else
+    root="/workspace"
+  fi
+  # mktemp keeps a relative template relative, and main cd's into the clone.
+  [[ "$root" == /* ]] || root="$PWD/$root"
+
+  if [[ -d "$root" && -w "$root" && -x "$root" ]]; then
+    printf '%s\n' "$root"
+    return 0
+  fi
+
+  if [[ ! -e "$root" ]]; then
+    if mkdir -p "$root" 2>/dev/null && [[ -d "$root" && -w "$root" && -x "$root" ]]; then
+      printf '%s\n' "$root"
+      return 0
+    fi
+  fi
+
+  fallback_dir=$(mktemp -d 2>/dev/null) || die 8 "clone root unusable: $root and no temporary directory available"
+  echo "run-work-order: clone root unusable: $root; falling back to $fallback_dir" >&2
+  printf '%s\n' "$fallback_dir"
+  return 0
+}
+
+# Create the clone directory under a chosen root.
+choose_clone_dir() {
+  local root repo issue dir
+  root=$(choose_clone_root) || return $?
+  repo="$1"
+  issue="$2"
+  dir=$(mktemp -d "${root%/}/wo-${repo/\//_}-$issue-XXXXXX" 2>/dev/null) || die 8 "could not create a clone directory under $root"
+  printf '%s\n' "$dir"
+}
 
 # Front matter value: the text after `key:` up to a `#` comment, with one matching
 # pair of surrounding quotes (' or ") stripped. Inner or unmatched quotes stay.
@@ -493,7 +536,7 @@ main() {
   [[ -n "$tests" ]] || die 2 "test_command is required"
   [[ -n "$title" ]] || die 2 "title is required"
 
-  dir=$(mktemp -d "/workspace/wo-${repo/\//_}-$issue-XXXXXX")
+  dir=$(choose_clone_dir "$repo" "$issue")
   echo "run-work-order: $repo#$issue in $dir"
   gh repo clone "$repo" "$dir" -- --quiet
   cd "$dir" || die 2 "cannot enter $dir"

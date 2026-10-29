@@ -145,6 +145,20 @@ could and could not see. After §10.2's threshold the wait posts
 error rather than a silent skip — defaulting to `none` there once made the script
 look like it was waiting while doing nothing.
 
+## Bench clone location
+
+Station 03 Bench (`scripts/run-work-order.sh`) clones the target repo into a
+bench workspace. By default it uses `/workspace` (the documented setup). Set
+`FACTORY_WORKSPACE` to choose a different root. If the root does not exist it
+will be created if possible; if it cannot be created or is not writable the
+script falls back to a temporary directory and prints which root it fell back
+from and which it is using on stderr (the paths in the run log must match).
+If neither the root nor a temporary directory is usable, the script exits with
+code 8 naming the root.
+
+To move the bench clone, export `FACTORY_WORKSPACE=/path/with/write/access`
+before running the bench (or ensure `/workspace` exists and is writable).
+
 ## Design Principles
 
 - **Capability-based**: Roles describe what needs to be done, not how (no provider-specific tool calls)
