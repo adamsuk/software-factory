@@ -1,6 +1,19 @@
 # factory-managed: maintained by https://github.com/adamsuk/gh-factory. Remove this line to take ownership.
 version: 2
 updates:
+- package-ecosystem: pip
+  directories:
+  - /
+  schedule:
+    interval: weekly
+  versioning-strategy: increase-if-necessary
+  labels:
+  - dependencies
+  groups:
+    minor-and-patch:
+      update-types:
+      - minor
+      - patch
 - package-ecosystem: github-actions
   directories:
   - /
