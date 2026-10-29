@@ -8,15 +8,15 @@ tname=startup
 fail() {
   printf 'FAIL (%s): %s\n' "$tname" "$*" >&2
   if [[ -n "${stdout_file:-}" && -f "$stdout_file" ]]; then
-    printf '--- stdout ---\n' >&2
+    printf '%s\n' '--- stdout ---' >&2
     cat "$stdout_file" >&2 || true
   fi
   if [[ -n "${stderr_file:-}" && -f "$stderr_file" ]]; then
-    printf '--- stderr ---\n' >&2
+    printf '%s\n' '--- stderr ---' >&2
     cat "$stderr_file" >&2 || true
   fi
   if [[ -n "${log:-}" && -f "$log" ]]; then
-    printf '--- gh log ---\n' >&2
+    printf '%s\n' '--- gh log ---' >&2
     cat "$log" >&2 || true
   fi
   exit 1
@@ -149,9 +149,9 @@ assert_empty() {
 
 assert_same() {
   if ! cmp -s "$1" "$2"; then
-    printf '--- expected ---\n' >&2
+    printf '%s\n' '--- expected ---' >&2
     cat "$2" >&2 || true
-    printf '--- got ---\n' >&2
+    printf '%s\n' '--- got ---' >&2
     cat "$1" >&2 || true
     fail "$3 mismatch"
   fi
