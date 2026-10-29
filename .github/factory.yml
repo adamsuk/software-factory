@@ -12,11 +12,13 @@ agents:
   # CodeRabbit reviews PRs here (it reviewed #32; it hadn't on #29 to #31), so a merge also needs no
   # blocking CodeRabbit findings, plus PR Reviewer's review (AGENTS.md section 6).
   review_bot: coderabbit
-  # The CI lint job (ShellCheck on the work-order runner).
+  # The CI lint job (ShellCheck on the work-order runner). Unchanged on purpose: the `tests` job
+  # (scripts/test-*.sh) is report-only until the failing suites are fixed (#135).
   test_command: shellcheck scripts/*.sh adapters/*/run.sh
 
 # Station 04 reads these names. agents.merge stays false until a ruleset
-# can enforce them.
+# can enforce them. `tests` is deliberately absent: it runs on every PR but is not required yet,
+# because some suites are red (#135). Add it once they pass.
 required_checks:
   - ShellCheck
   - changelog / changelog
