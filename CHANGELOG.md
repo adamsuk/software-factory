@@ -7,6 +7,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- The `tests` job's failure path is verified, not assumed (#135). Every run of
+  it had passed, so the branch that reports a red suite had never executed. A
+  temporary `scripts/test-aaa-canary.sh` exiting 1 was added on a pull request
+  and removed again; it proved three things that had been asserted and never
+  observed: the job's **glob** picks up a suite that did not exist when the job
+  was written, a failing suite **fails the job**, and — because the canary sorts
+  first — the loop **continues past a failure**, with all twelve real suites
+  still running and reporting after it. The `factory-main` ruleset reported
+  `BLOCKED` while it was red, which is also the first evidence that the ruleset
+  created for #112 refuses a merge. A first attempt named the canary `zzz`,
+  which sorted last and so could not show the third property at all.
+
 - A `tests` job in `.github/workflows/lint.yml` runs every `scripts/test-*.sh`
   (found by glob) on pull requests and pushes to `main`, runs all suites even
   when one fails, and lists each suite's exit status in the step summary
