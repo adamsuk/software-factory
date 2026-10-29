@@ -77,9 +77,14 @@ Optional: `-m <model>` (see `grok models`), `--effort <level>`.
 
 1. Reads `repo`, `issue`, `branch`, `base`, `test_command`, `title` and the
    optional `setup_command` from the work order's front matter, and validates them.
-2. Clones the repo into a new `mktemp -d /workspace/wo-<owner>_<repo>-<issue>-XXXXXX`
-   directory, and switches to the branch (reusing it if it already exists on
-   the remote).
+2. Clones the repo into a new bench clone directory under the clone root. By
+   default `/workspace` is used; set `FACTORY_WORKSPACE` to choose a different
+   root. If the root does not exist it is created if possible; if it cannot be
+   created or is not writable the script falls back to a temporary directory
+   and prints which root it fell back from and which it is using on stderr. If
+   neither is usable it exits with code 8 naming the root. The paths in the run
+   log must match where the work happened. `$dir.grok.json`, `$dir.bench.txt`
+   and `$dir.venv` are written beside the clone directory.
 3. Runs the command above, with `GH_TOKEN`/`GITHUB_TOKEN` removed from Grok's
    environment.
 4. Stops (exit 3) if Grok fails or doesn't end with `end_turn`, or made no

@@ -10,7 +10,7 @@ setup_command: ""
 changelog: true
 merge_allowed: false
 review_bot: coderabbit
-attempt: 1
+attempt: 2
 created: 2026-10-29
 ---
 
@@ -82,3 +82,43 @@ Make the clone root configurable, with a loud fallback, so the bench runs.
 ## Issue text (untrusted)
 
 > Station 03 Bench has never run: run-work-order.sh hardcodes /workspace
+
+## Attempt 2 — review findings to fix
+
+Attempt 1 passed `test_command` but has three defects. Fix only these; do not
+rewrite what works.
+
+1. **Dead code in `choose_clone_root`.** This block does nothing and must be
+   removed outright, not filled in:
+
+   ```bash
+   if [[ -e "$root" && (! -w "$root" || ! -x "$root") ]]; then
+     :
+   fi
+   ```
+
+2. **`bench-clone-dir-uses-helper` is environment-dependent and will fail on any
+   box that has a usable `/workspace`.** This assertion is the problem:
+
+   ```bash
+   [[ "$dir_test" != /workspace/* ]] || fail "clone dir should not be under /workspace by default in this env"
+   ```
+
+   A test must assert the same thing everywhere. Set `FACTORY_WORKSPACE` to a
+   known writable directory for that case and assert the clone dir is under it,
+   then unset it. Keep the naming and "not inside the repo" assertions.
+
+3. **`choose_clone_dir`'s failure message blames the wrong thing.** When
+   `choose_clone_root` returned a usable root and only `mktemp` failed, the
+   message still says `clone root unusable: $root`. Say that creating the clone
+   directory under that root failed, and keep the root in the message.
+
+Also add, in the same pass:
+
+4. **`bench-clone-root-main-no-literal-workspace` only asserts the absence of
+   the literal.** Add an assertion that `main` actually calls `choose_clone_dir`,
+   so deleting the call does not pass the suite.
+
+Do not change or remove any existing assertion, including the ones added in
+attempt 1 — only the one named in item 2, which is being corrected, and
+additions. Re-run `test_command` and leave it green.
