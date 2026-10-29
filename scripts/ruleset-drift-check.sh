@@ -37,10 +37,12 @@ jq -e '[.[] | select(.enrolled)] | length > 0' "$plan" > /dev/null || {
   exit 2
 }
 
-# Does a read-only token see bypass_actors? Probe the first ruleset of each repo.
+# Does a read-only token see bypass_actors? Probe the factory-managed ruleset by name
+# (not the first in the list: `rulesets` also lists inherited org rulesets and any other
+# repo-specific ones, and write access can differ per ruleset).
 bypass_hidden() {
   local repo=$1 id
-  id=$(gh api "repos/$repo/rulesets" --jq '.[0].id // empty' 2> /dev/null) || return 0
+  id=$(gh api "repos/$repo/rulesets" --jq '.[] | select(.name == "factory-main") | .id' 2> /dev/null) || return 0
   [[ -n "$id" ]] || return 1
   gh api "repos/$repo/rulesets/$id" --jq 'has("bypass_actors")' 2> /dev/null | grep -qx true && return 1
   return 0

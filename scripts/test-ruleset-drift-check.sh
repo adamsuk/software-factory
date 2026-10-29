@@ -21,10 +21,23 @@ cat > "$BIN/gh" << 'FAKE'
 #!/usr/bin/env bash
 # `gh api` is the script's read-only probe for whether bypass_actors is visible; it is
 # logged apart from the plan calls. A ruleset shows bypass_actors unless hide_bypass exists.
+# The rulesets listing below has an unrelated ruleset first (id 5) and factory-main second
+# (id 1): real jq runs against it here, so a selector that just grabbed the first entry
+# would probe the wrong ruleset and fail this test, not pass it by coincidence.
 if [[ "$1" == "api" ]]; then
-  printf '%s\n' "$*" >> "$MOCK_GH/api_calls"
-  case "$2" in
-    */rulesets) echo 1 ;;
+  path=$2
+  jqf=""
+  shift 2
+  while [[ $# -gt 0 ]]; do
+    [[ "$1" == "--jq" ]] && jqf=$2
+    shift
+  done
+  printf '%s %s --jq %s\n' api "$path" "$jqf" >> "$MOCK_GH/api_calls"
+  case "$path" in
+    */rulesets)
+      printf '%s' '[{"id":5,"name":"other-ruleset"},{"id":1,"name":"factory-main"}]' \
+        | jq -r "$jqf"
+      ;;
     */rulesets/1) [[ -e "$MOCK_GH/hide_bypass" ]] && echo false || echo true ;;
     *) exit 9 ;;
   esac
