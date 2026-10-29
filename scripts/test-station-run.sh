@@ -123,6 +123,15 @@ run_plain() {
     bash "$root_dir/scripts/station-run.sh" "$@" 2>&1
 }
 
+tname="auditor is read-only with no flag"
+rm -f "$OUT"
+# HEAD, not the latest v* tag: the tag predates agents/roles/auditor.md.
+FACTORY_RELEASE_REF=HEAD run_plain auditor /dev/null > /dev/null
+cwd=$(grep '^cwd=' "$OUT" | cut -d= -f2-)
+[[ "$cwd" != "$root_dir" ]] || fail "auditor ran in the real repo without --read-only"
+grep -qx "pushed=no" "$OUT" || fail "no sandbox: the push was not refused"
+pass
+
 tname="a non-builder role is read-only with no flag"
 rm -f "$OUT"
 run_plain reviewer /dev/null > /dev/null
