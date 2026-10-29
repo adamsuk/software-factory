@@ -3,6 +3,24 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-10-29
+
+### Fixed
+
+- `adapters/claudecode/run.sh` runs the `builder` role instead of refusing it
+  (#158). The refusal said builder needs `scripts/run-work-order.sh`, which is
+  reached only from `adapters/grok/run.sh`; `adapters/opencode/run.sh` has no
+  builder case at all and runs it as a prompted agent. The premise was false, so
+  the builder had one provider and no fallback — which bit on #154 when an
+  opencode attempt stalled for 15 minutes and produced an identical diff. The
+  model is `${FACTORY_MODEL:-sonnet}` when the Claude CLI supports `--model`,
+  and the CLI's own default otherwise, since the adapter probes for the flag
+  rather than requiring it; the builder is no exception either way.
+- `stations/README.md` records which providers can run which roles, and that the
+  grok builder clones, tests, commits, pushes and opens the pull request while
+  the opencode and claudecode builders only leave edits in the tree. Calling
+  both "the builder station" hid that one does a fraction of the job.
+
 ## [Unreleased]
 
 ### Added

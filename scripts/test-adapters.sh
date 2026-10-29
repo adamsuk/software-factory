@@ -105,11 +105,26 @@ assert_contains "$out" "does not support --prompt-file"
 assert_not_contains "$out" "not found in PATH"
 pass
 
-# --- claudecode: implemented, and refuses builder for a stated reason ------
-tname="claudecode refuses the builder role with a reason"
+# --- claudecode: implemented, builder included ------------------------------
+# This replaces an assertion that claudecode REFUSED builder. The refusal was
+# based on a false premise -- that builder requires scripts/run-work-order.sh,
+# which is the grok path only -- so the behaviour it pinned was wrong (#158).
+tname="claudecode runs the builder role"
+rm -f "$MOCK/claude.argv"
 make_fake claude "--print --append-system-prompt --permission-mode"
-out=$(run_adapter claudecode --role builder --prompt "$prompt" || true)
-assert_contains "$out" "builder is not supported on claudecode"
+run_adapter claudecode --role builder --prompt "$prompt" --issue 154 >/dev/null
+[[ -f "$MOCK/claude.argv" ]] || fail "claude was never invoked for builder"
+got=$(argv_of claude)
+assert_contains "$got" "--print"
+assert_contains "$got" "--permission-mode"
+assert_contains "$got" "--append-system-prompt"
+pass
+
+tname="claudecode does not refuse the builder role"
+make_fake claude "--print --append-system-prompt --permission-mode"
+out=$(run_adapter claudecode --role builder --prompt "$prompt" 2>&1 || true)
+assert_not_contains "$out" "builder is not supported on claudecode"
+assert_not_contains "$out" "run-work-order.sh calls the grok CLI directly"
 pass
 
 tname="claudecode runs a non-builder role in print mode"

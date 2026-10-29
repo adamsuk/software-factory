@@ -10,6 +10,33 @@ Stations are provider-agnostic implementations of factory roles. The canonical d
 4. **Orchestration** (`scripts/foreman-orchestrate.sh`) - Starts a station. It does not pick an issue or merge.
 5. **GitHub trail** (`scripts/station-post.sh`, `stations/github-writes.md`) - The comment and the single `factory:*` label a person sees on the issue. Every provider uses it. The Grok watcher keeps its own poster.
 
+## Which providers can run which roles
+
+Every adapter takes the same composed bundle, but the `builder` role is not one
+thing across providers, and treating it as one has cost two wrong conclusions
+(#154, #158).
+
+| Provider | Non-builder roles | `builder` | What the builder actually does |
+| --- | --- | --- | --- |
+| `grok` | yes | yes | `adapters/grok/run.sh` execs `scripts/run-work-order.sh`: clones to the bench root, runs `setup_command` and `test_command`, squash-commits, pushes, opens the pull request and sets `factory:gate` |
+| `opencode` | yes | yes | runs the prompt against the working tree. No clone, no test run, no commit, no pull request, no label |
+| `claudecode` | yes | yes (since #158) | as `opencode`. Uses `${FACTORY_MODEL:-sonnet}` when the CLI supports `--model`, else the CLI's own default; the adapter probes rather than requiring it. Builder included either way |
+
+So "the bench ran" means two different things. On `grok` it means the full
+station. On `opencode` and `claudecode` it means the edits exist in the tree and
+every step after the build is still owed. Do not report a station as complete on
+the strength of a provider that cannot complete it.
+
+The grok builder clones into the bench root — `$FACTORY_WORKSPACE`, default
+`/workspace`, with a loud fallback when that is unusable (#154). The other two
+edit the checkout in place, so `scripts/station-run.sh`'s read-only/writable
+decision is the only thing standing between a reading role and the real repo.
+
+Until #158, `claudecode` refused `builder` outright, on the stated grounds that
+builder requires `run-work-order.sh`. That was false — `run-work-order.sh` is
+reached only from the grok adapter — and it meant the one role that writes code
+had a single provider with no fallback.
+
 ## Which roles may write
 
 A station that reads must not be able to write. On 2026-10-28 the reviewer
