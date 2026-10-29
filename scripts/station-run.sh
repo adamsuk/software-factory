@@ -269,6 +269,34 @@ if $read_only; then
   echo "station-run: read-only clone of ${head_sha:0:7} at $workdir (push blocked)" >&2
 fi
 
+# A writable builder on opencode or claudecode builds in a clone of the repo the
+# work order names (#171). grok does its own clone in run-work-order.sh, and a
+# work order naming this repo keeps running in place. This path is separate from
+# the read-only one on purpose: it must keep a real push URL, so it shares none
+# of that block's no-push wiring or its guard.
+if ! $read_only && [[ "$role" == "builder" && "$provider" != "grok" && -n "$work_order" ]]; then
+  # Only the front matter's repo line, not a later `repo:` in the body.
+  target_repo=$(awk 'NR==1 && $0=="---"{fm=1;next} fm&&$0=="---"{exit} fm&&/^repo:/{sub(/^repo:[ \t]*/,"");gsub(/["\047 \r]/,"");print;exit}' "$work_order")
+  self_repo="${FACTORY_SELF_REPO:-}"
+  if [[ -z "$self_repo" ]]; then
+    self_repo=$(git -C "$here" remote get-url origin 2>/dev/null \
+      | sed -E 's#(\.git)?/?$##; s#^.*[:/]([^/:]+/[^/:]+)$#\1#' || true)
+  fi
+  if [[ -n "$target_repo" && "$target_repo" != "$self_repo" ]]; then
+    [[ "$target_repo" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] \
+      || die 2 "work order repo is not owner/repo: $target_repo"
+    command -v git > /dev/null 2>&1 || die 2 "git not found in PATH"
+    unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+      GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_CEILING_DIRECTORIES
+    sandbox="$(mktemp -d /tmp/station-xr-XXXXXX)"
+    git clone --quiet "${FACTORY_CLONE_BASE:-https://github.com}/$target_repo" "$sandbox/repo" \
+      || die 7 "could not clone $target_repo"
+    workdir="$sandbox/repo"
+    repo_ctx="$target_repo"
+    echo "station-run: writable clone of $target_repo at $workdir" >&2
+  fi
+fi
+
 # A station reading another repository must not have unqualified gh calls fall
 # back to this checkout's origin. GH_REPO makes gh default to the repo the
 # station was given, which the adapters do not pass through.

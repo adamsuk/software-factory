@@ -198,4 +198,59 @@ git -C "$probe" remote get-url origin > /dev/null 2>&1 \
   || fail "the station stripped the origin of the repo named by GIT_DIR"
 pass
 
+# --- a writable builder on a non-grok provider builds cross-repo (#171) ------
+# Offline: FACTORY_CLONE_BASE points at a local fixture, not GitHub. The
+# reporting-only fake never edits, commits or pushes; the real tree is
+# checksummed before and after.
+xr_base=$work/xr; mkdir -p "$xr_base/acme"
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+  GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_CEILING_DIRECTORIES
+git init -q -b main "$xr_base/acme/widgets"
+git -C "$xr_base/acme/widgets" -c user.email=t@e.com -c user.name=t \
+  commit -q --allow-empty -m base
+cat > "$BIN/opencode" << 'SAFE'
+#!/usr/bin/env bash
+if [[ "$*" == *--help* ]]; then printf '%s\n' "--auto --title --file"; exit 0; fi
+{
+  echo "cwd=$PWD"
+  echo "gh_repo=${GH_REPO:-}"
+  echo "push=$(git remote get-url --push --all origin 2>&1 | tr '\n' ' ')"
+  echo "exists=yes"
+} > "$FAKE_OUT"
+exit 0
+SAFE
+chmod +x "$BIN/opencode"
+mkwo() { printf -- '---\nrepo: %s\nissue: 1\n---\nbody\nrepo: other/ignored\n' "$1" > "$work/wo-$2.md"; }
+run_xr() {
+  PATH="$BIN:$PATH" FACTORY_PROVIDER=opencode FAKE_OUT="$OUT" \
+    FACTORY_SELF_REPO=adamsuk/software-factory FACTORY_CLONE_BASE="$xr_base" \
+    bash "$root_dir/scripts/station-run.sh" --work-order "$work/wo-$1.md" builder /dev/null 2>&1
+}
+tree_sum() { (cd "$root_dir" && git ls-files -z | xargs -0 cksum | cksum; git rev-parse HEAD); }
+
+tname="a cross-repo builder runs in a clone with a real push URL"
+mkwo acme/widgets xr
+rm -f "$OUT"
+before=$(tree_sum)
+msg=$(run_xr xr)
+cwd=$(grep '^cwd=' "$OUT" | cut -d= -f2-)
+[[ "$cwd" != "$root_dir"* ]] || fail "ran inside this checkout: $cwd"
+[[ "$msg" == *"writable clone of acme/widgets at $cwd"* ]] || fail "no directory notice: $msg"
+grep -qx "gh_repo=acme/widgets" "$OUT" || fail "GH_REPO not exported"
+grep -q "no-push://" "$OUT" && fail "inherited the no-push placeholder"
+grep -q "push=$xr_base/acme/widgets " "$OUT" || fail "push URL is not the real remote: $(grep ^push= "$OUT")"
+[[ "$(tree_sum)" == "$before" ]] || fail "this repo's working tree changed"
+pass
+
+tname="the cross-repo clone is removed on exit"
+[[ ! -e "$cwd" ]] || fail "clone left behind at $cwd"
+pass
+
+tname="a work order naming this repo still runs in place"
+mkwo adamsuk/software-factory self
+rm -f "$OUT"
+run_xr self > /dev/null
+[[ "$(grep '^cwd=' "$OUT" | cut -d= -f2-)" == "$root_dir" ]] || fail "did not run in place"
+pass
+
 echo "all station-run read-only tests passed"
