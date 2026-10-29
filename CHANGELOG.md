@@ -7,6 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- `station-run.sh` re-execs from a private snapshot of its scripts, adapters
+  and prompts, so a builder that rewrites them mid-run can no longer make the
+  running bash resume at a stale offset and run a fragment (#174). The run
+  says so on stderr if those files changed in the working tree, and the exit
+  trap removes the snapshot.
+
 - `station-run.sh` no longer deletes a writable cross-repo builder's clone on
   exit (#177). The read-only and cross-repo clones shared one variable, so the
   exit trap destroyed committed work. Now only the read-only clone is removed;

@@ -295,3 +295,41 @@ out=$(bash "$rel/scripts/station-run.sh" --dry-run reviewer /dev/null 2>&1)
 out=$(FACTORY_RELEASE_REF=nonexistent-ref bash "$rel/scripts/station-run.sh" --dry-run reviewer /dev/null 2>&1 || true)
 [[ "$out" == *"does not resolve"* ]] || fail "bad FACTORY_RELEASE_REF not refused: [$out]"
 pass
+
+# --- a run survives its own scripts being rewritten mid-run (#174) -----------
+tname="rewriting station-run.sh and the adapter mid-run does not disturb the run"
+fx=$work/fixture
+mkdir -p "$fx/agents" "$fx/stations"
+cp -R "$root_dir/scripts" "$root_dir/adapters" "$fx/"
+cp "$root_dir/AGENTS.md" "$fx/AGENTS.md"
+cp -R "$root_dir/agents/roles" "$fx/agents/roles"
+cp "$root_dir/stations/github-writes.md" "$fx/stations/" 2> /dev/null || true
+cat > "$BIN/opencode" << 'FAKE'
+#!/usr/bin/env bash
+if [[ "$*" == *--help* ]]; then printf '%s\n' "--auto --title --file"; exit 0; fi
+# Insert lines near the top of the running scripts, shifting every later byte
+# offset, as a builder editing them would.
+for f in scripts/station-run.sh adapters/opencode/run.sh; do
+  sed -i.bak '2i\
+echo CLOBBERED-FRAGMENT >&2; false; false; false
+' "$f"
+done
+echo ran > "$FAKE_OUT"
+exit 0
+FAKE
+chmod +x "$BIN/opencode"
+rc=0
+out=$(cd "$fx" && PATH="$BIN:$PATH" FACTORY_PROVIDER=opencode FAKE_OUT="$OUT" \
+  bash "$fx/scripts/station-run.sh" --writable reviewer /dev/null 2>&1) || rc=$?
+[[ "$rc" -eq 0 ]] || fail "run failed ($rc): $out"
+[[ -s "$OUT" ]] || fail "provider never ran: $out"
+[[ "$out" != *CLOBBERED-FRAGMENT* && "$out" != *"command not found"* && "$out" != *"syntax error"* ]] \
+  || fail "the edited script was executed: $out"
+grep -q CLOBBERED-FRAGMENT "$fx/scripts/station-run.sh" || fail "the edit never landed, so this proves nothing"
+[[ "$out" == *"execution path"*"changed in the working tree during this run"* ]] \
+  || fail "no notice that the scripts changed: $out"
+snap=$(sed -n 's/^station-run: running from snapshot //p' <<< "$out")
+[[ -n "$snap" && ! -e "$snap" ]] || fail "snapshot not cleaned up: [$snap]"
+pass
+
+echo "all station-run snapshot tests passed"

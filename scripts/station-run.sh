@@ -8,6 +8,40 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 die() { echo "station-run: $2" >&2; exit "$1"; }
 
+# Files the run executes or reads from the tree. bash reads a script
+# incrementally, so a builder that rewrites station-run.sh or an adapter while
+# it runs makes the live process resume at a stale offset and run a fragment
+# (seen building #171 and #136). The run therefore re-execs from a private
+# snapshot of these paths and never reads them from the working tree again.
+snapshot_paths=(scripts adapters AGENTS.md agents/roles stations/github-writes.md)
+tree_sum() {
+  (cd "$1" && for p in "${snapshot_paths[@]}"; do
+    [[ -e "$p" ]] && find "$p" -type f -exec cksum {} +
+  done | LC_ALL=C sort -k3 | cksum)
+}
+
+if [[ -z "${FACTORY_SNAPSHOT_DIR:-}" ]]; then
+  snap="$(mktemp -d /tmp/station-snap-XXXXXX)"
+  for p in "${snapshot_paths[@]}"; do
+    if [[ -e "$here/$p" ]]; then
+      mkdir -p "$snap/$(dirname "$p")"
+      cp -R "$here/$p" "$snap/$p" || { rm -rf "$snap"; die 7 "could not snapshot $p"; }
+    fi
+  done
+  export FACTORY_SNAPSHOT_DIR="$snap" FACTORY_REAL_ROOT="$here"
+  FACTORY_SNAPSHOT_SUM="$(tree_sum "$snap")"
+  export FACTORY_SNAPSHOT_SUM
+  exec bash "$snap/scripts/station-run.sh" "$@"
+fi
+# Re-exec'd copy: scripts and prompts come from the snapshot, git and the
+# working tree from the real checkout.
+script_root="$FACTORY_SNAPSHOT_DIR"
+here="${FACTORY_REAL_ROOT:?}"
+snapshot_sum="${FACTORY_SNAPSHOT_SUM:-}"
+# Not inherited: a nested station-run must make its own snapshot, not delete ours.
+unset FACTORY_SNAPSHOT_DIR FACTORY_REAL_ROOT FACTORY_SNAPSHOT_SUM
+echo "station-run: running from snapshot $script_root" >&2
+
 usage() {
   cat >&2 << 'EOF'
 Usage: scripts/station-run.sh [options] <role> <context>
@@ -98,8 +132,8 @@ release_file() {
     die 2 "missing $1 at release ref $release_ref"
   else
     [[ -z "$release_ref" ]] || echo "station-run: $1 not at $release_ref, using working tree" >&2
-    [[ -f "$here/$1" ]] || die 2 "missing $1"
-    cp "$here/$1" "$2"
+    [[ -f "$script_root/$1" ]] || die 2 "missing $1"
+    cp "$script_root/$1" "$2"
   fi
 }
 
@@ -107,12 +141,12 @@ if [[ -n "$release_ref" ]]; then
   git -C "$here" cat-file -e "${release_ref}:agents/roles/${role}.md" 2> /dev/null \
     || die 2 "unknown role: $role (missing agents/roles/${role}.md at release ref $release_ref)"
 else
-  [[ -f "$here/agents/roles/${role}.md" ]] || die 2 "unknown role: $role (missing $here/agents/roles/${role}.md)"
+  [[ -f "$script_root/agents/roles/${role}.md" ]] || die 2 "unknown role: $role (missing $here/agents/roles/${role}.md)"
 fi
 
 # Build context bundle
 bundle_dir="$(mktemp -d /tmp/station-bundle-XXXXXX)"
-trap 'rm -rf "$bundle_dir"' EXIT  # replaced by cleanup_station once a sandbox may exist
+trap 'rm -rf "$bundle_dir" "$script_root"' EXIT  # replaced by cleanup_station once a sandbox may exist
 
 # Copy canonical files
 release_file AGENTS.md "$bundle_dir/AGENTS.md"
@@ -197,10 +231,10 @@ if $dry_run; then
 fi
 
 # Invoke adapter
-adapter="$here/adapters/$provider/run.sh"
+adapter="$script_root/adapters/$provider/run.sh"
 if [[ ! -x "$adapter" ]]; then
   # Try to find adapter
-  adapter="$here/adapters/$provider/run"
+  adapter="$script_root/adapters/$provider/run"
   if [[ ! -x "$adapter" ]]; then
     die 2 "no adapter found for provider '$provider' at $here/adapters/$provider/run.sh"
   fi
@@ -242,6 +276,11 @@ cleanup_station() {
   # work and is never deleted here.
   [[ -z "$ro_sandbox" ]] || rm -rf "$ro_sandbox"
   rm -rf "$bundle_dir"
+  # The snapshot made the run immune to this, but say so rather than stay silent.
+  if [[ -n "$snapshot_sum" && "$(tree_sum "$here")" != "$snapshot_sum" ]]; then
+    echo "station-run: the execution path (scripts, adapters, prompts) changed in the working tree during this run; the run used its start-of-run snapshot" >&2
+  fi
+  rm -rf "$script_root"
   return "$st"
 }
 
