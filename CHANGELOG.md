@@ -5,6 +5,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 2026-10-29
 
+### Added
+
+- Monthly `Line audit` workflow and a read-only `auditor` role (#21). The
+  workflow runs the role through `station-run.sh --read-only`, compares the
+  scorecard with the newest `audits/*.md`, and opens a pull request with the new
+  audit when it changed, listing gaps as issue candidates without filing them.
+  It cannot run until a person provides the secret, variables and release tag
+  named at the top of `.github/workflows/line-audit.yml`.
+
 ### Fixed
 
 - `station-run.sh` no longer deletes a writable cross-repo builder's clone on
@@ -24,6 +33,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   gh-factory (exit 3), `bypass_actors` that cannot be verified because GitHub shows it only
   to write access (reported, exit 0, never "matches"), and a plan with no enrolled repos
   (exit 2, since nothing was checked).
+- `scripts/review-bot-metrics.sh` reports CodeRabbit review threads on recent
+  closed or merged PRs per repo (total, resolved, open, acceptance rate), so
+  "re-test when the model changes" has a baseline (adamsuk/software-factory#26).
+  Read-only; `--repo OWNER/REPO` or `--all`, `--limit N` (default 20).
 - Stations read `AGENTS.md`, the role brief and `stations/github-writes.md`
   from a promoted release tag instead of the live tree (#136).
   `FACTORY_RELEASE_REF` overrides it; the default is the latest `v*` tag

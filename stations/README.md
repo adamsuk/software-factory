@@ -53,11 +53,12 @@ and nothing enforced it (#142).
 | `research` | no | `--read-only` |
 | `reviewer` | no | `--read-only`, set by `foreman-orchestrate.sh review` |
 | `monitor` | no | `--read-only`; its scripts are read-only already |
+| `auditor` | no | `--read-only`; prints the audit and the `Line audit` workflow records it |
 | `foreman` | **yes** | writes the work order to `agents/work-orders/` (`agents/roles/foreman.md` step 3), so it runs in the repo |
 | `builder` | **yes** | changes the files a work order asks for; `--read-only` is refused for it |
 
 `scripts/station-run.sh` runs the reading roles — `intake`, `research`,
-`reviewer`, `monitor` — in a throwaway `git clone` under `/tmp`, and deletes it
+`reviewer`, `monitor`, `auditor` — in a throwaway `git clone` under `/tmp`, and deletes it
 afterwards. That is the default, not an opt-in: `--writable` is the deliberate
 way out. Only committed state is copied, so a station sees the head commit, not
 the caller's uncommitted changes.
