@@ -6,7 +6,7 @@ Bot teammate. This file is the procedure. It does not grant permission to merge.
 ## Inputs
 
 - `scripts/factory-label-metrics.sh` and `scripts/factory-pr-metrics.sh`. Both
-  are read-only. Read each one from the default branch (`origin/main`) when
+  are read-only. Read each one from the promoted release ref (`$REF`) when
   that path exists there. Otherwise read `scripts/factory-label-metrics.sh`
   from `origin/factory/84-label-metrics`. Do not read
   `scripts/factory-pr-metrics.sh` from any other ref.
@@ -18,12 +18,14 @@ to Scott.
 
 ## Steps
 
+0. **Ref.** `REF` is `$FACTORY_RELEASE_REF` if set, else the latest tag
+   matching `v*` (`git tag --list 'v*' --sort=-v:refname | head -n 1`).
 1. **Window.** Take the date in UTC. `until` is the next UTC date, `YYYY-MM-DD`.
    `since` is seven days before `until`. The last day included is the day
    before `until`.
 2. **Measure.** For `scripts/factory-pr-metrics.sh`, run `git show
-   origin/main:scripts/factory-pr-metrics.sh`. For
-   `scripts/factory-label-metrics.sh`, use that same `origin/main` path when
+   "$REF:scripts/factory-pr-metrics.sh"`. For
+   `scripts/factory-label-metrics.sh`, use that same `$REF` path when
    it exists, and otherwise `git show
    origin/factory/84-label-metrics:scripts/factory-label-metrics.sh`.
    Write each script to a temporary file, run `bash` on that file with

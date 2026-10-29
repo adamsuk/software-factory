@@ -15,6 +15,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Stations read `AGENTS.md`, the role brief and `stations/github-writes.md`
+  from a promoted release tag instead of the live tree (#136).
+  `FACTORY_RELEASE_REF` overrides it; the default is the latest `v*` tag
+  (`v0.1.0` today), and with no tag the working tree is used. The monitor role
+  reads its scripts from the same ref instead of `origin/main`. The promotion
+  step is in `stations/README.md`.
+
 - A writable `builder` on `opencode` or `claudecode` now runs in a clone of the
   repo the work order's `repo:` names when that is not this repo, so a grok
   billing halt no longer blocks every cross-repo ticket (#171). The clone keeps

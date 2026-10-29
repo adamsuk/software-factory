@@ -148,6 +148,22 @@ could and could not see. After §10.2's threshold the wait posts
 error rather than a silent skip — defaulting to `none` there once made the script
 look like it was waiting while doing nothing.
 
+## Promoting a release
+
+Stations read `AGENTS.md`, `agents/roles/<role>.md` and
+`stations/github-writes.md` from a promoted tag, not from the live tree, so a
+merge to `main` does not change agent behaviour until a person promotes it.
+`scripts/station-run.sh` and the monitor role resolve the ref as
+`FACTORY_RELEASE_REF` if set, else the latest tag matching `v*` (today
+`v0.1.0`). With no tag at all it falls back to the working tree.
+
+To promote: review what changed since the current tag
+(`git log --oneline v0.1.0..origin/main`), then tag the reviewed commit with the
+next version and push it (`git tag v0.2.0 <sha> && git push origin v0.2.0`).
+To roll back, point `FACTORY_RELEASE_REF` at the earlier tag, or delete the
+newer tag (`git push origin :refs/tags/v0.2.0`). To try an unpromoted change,
+set `FACTORY_RELEASE_REF` to a branch or sha for one run.
+
 ## Bench clone location
 
 Station 03 Bench (`scripts/run-work-order.sh`) clones the target repo into a
