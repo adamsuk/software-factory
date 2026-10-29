@@ -10,7 +10,7 @@ setup_command: ""
 changelog: true
 merge_allowed: false
 review_bot: coderabbit
-attempt: 1
+attempt: 2
 created: 2026-10-29
 ---
 
@@ -90,3 +90,34 @@ CI runs linux x86_64.
 ## Issue text (untrusted)
 
 > Pin shellcheck to 0.11.0 in CI so the gate and the factory box agree
+
+## Attempt 2 — three findings on the download step
+
+Checks are green, so AGENTS.md §4's cap does not apply: it governs the fix loop
+"when required checks go red". These are review findings. The pull request is
+`BLOCKED` by CodeRabbit's `CHANGES_REQUESTED` on the current head `cfa04f6`,
+which the ruleset created today correctly enforces — so this must be fixed, not
+dismissed.
+
+1. **CodeRabbit, Minor — bound the transfer.** `curl` has no `--max-time`, so a
+   download that connects and then stalls waits until the job's timeout, leaving
+   the ShellCheck gate pending until someone cancels the run. Add a finite
+   `--max-time`.
+
+2. **The ShellCheck job has no `timeout-minutes` at all.** #135 added one to the
+   `tests` job and this job never got one, so the stall above would sit for the
+   six-hour default. Add a bound with real headroom: the job takes about 15
+   seconds, so a few minutes is generous. Fixing only `--max-time` leaves the
+   job unbounded for every other reason.
+
+3. **Harden the download, disclosed as a nit in the pull request body.** Add
+   `--proto '=https' --tlsv1.2` so the request cannot be downgraded, and a small
+   `--retry` so a transient network error does not fail the gate outright. Keep
+   `-fsSL`.
+
+Do not weaken the digest check: it must still run before extraction and still
+fail the job on mismatch with no fallback to the image's `shellcheck`. Leave the
+single-place `SHELLCHECK_VERSION` and its paired digest as they are.
+
+Nothing else changes. `shellcheck scripts/*.sh adapters/*/run.sh` stays clean and
+the twelve suites stay green.
