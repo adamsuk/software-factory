@@ -206,10 +206,13 @@ if [[ -z "$read_only" ]]; then
 fi
 
 workdir="$here"
-sandbox=""
+ro_sandbox=""
+xr_sandbox=""
 cleanup_station() {
   local st=$?
-  [[ -z "$sandbox" ]] || rm -rf "$sandbox"
+  # Only the read-only clone: the writable cross-repo clone holds the builder's
+  # work and is never deleted here.
+  [[ -z "$ro_sandbox" ]] || rm -rf "$ro_sandbox"
   rm -rf "$bundle_dir"
   return "$st"
 }
@@ -230,14 +233,14 @@ if $read_only; then
   unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
     GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_CEILING_DIRECTORIES
   head_sha=$(git -C "$here" rev-parse HEAD) || die 7 "could not read HEAD"
-  sandbox="$(mktemp -d /tmp/station-ro-XXXXXX)"
+  ro_sandbox="$(mktemp -d /tmp/station-ro-XXXXXX)"
   # A clone, not a worktree. A linked worktree shares .git/config with the real
   # repository, so removing the worktree's origin removes the repository's own
   # remote. That happened while building #142 and broke push until origin was
   # added back. A clone has its own config, so dropping origin there is local.
-  git clone --quiet --local --no-hardlinks --no-checkout "$here" "$sandbox/repo" \
+  git clone --quiet --local --no-hardlinks --no-checkout "$here" "$ro_sandbox/repo" \
     || die 7 "could not create the read-only clone"
-  git -C "$sandbox/repo" checkout --quiet --detach "$head_sha" \
+  git -C "$ro_sandbox/repo" checkout --quiet --detach "$head_sha" \
     || die 7 "could not check out $head_sha in the read-only clone"
   # Keep origin's fetch URL and break only its push URL. Removing the remote
   # outright blinded the reviewer: gh infers the repository from the remote, so
@@ -249,23 +252,23 @@ if $read_only; then
   # to an explicit URL. The boundary's real limits are in stations/README.md.
   origin_url=$(git -C "$here" remote get-url origin 2>/dev/null || true)
   if [[ -n "$origin_url" ]]; then
-    git -C "$sandbox/repo" remote set-url origin "$origin_url" > /dev/null 2>&1 \
+    git -C "$ro_sandbox/repo" remote set-url origin "$origin_url" > /dev/null 2>&1 \
       || die 7 "could not set the read-only clone's fetch URL"
   fi
   # pushurl is multi-valued and inherits from global config, so a global
   # remote.origin.pushurl survives alongside the blocked one and git pushes to
   # both. Confirmed by experiment. Clear the local list, set the blocked URL,
   # then verify it is the only one and refuse to run if it is not.
-  git -C "$sandbox/repo" config --unset-all remote.origin.pushurl > /dev/null 2>&1 || true
-  git -C "$sandbox/repo" remote set-url --push origin \
+  git -C "$ro_sandbox/repo" config --unset-all remote.origin.pushurl > /dev/null 2>&1 || true
+  git -C "$ro_sandbox/repo" remote set-url --push origin \
     "no-push://blocked-by-read-only-station" > /dev/null 2>&1 \
     || die 7 "could not block pushes from the read-only clone"
-  effective_push=$(git -C "$sandbox/repo" remote get-url --push --all origin 2>/dev/null \
+  effective_push=$(git -C "$ro_sandbox/repo" remote get-url --push --all origin 2>/dev/null \
     | grep -v '^no-push://blocked-by-read-only-station$' || true)
   if [[ -n "$effective_push" ]]; then
     die 7 "inherited push URL would bypass the read-only station: ${effective_push//$'\n'/ }. Remove remote.origin.pushurl from your global git config."
   fi
-  workdir="$sandbox/repo"
+  workdir="$ro_sandbox/repo"
   echo "station-run: read-only clone of ${head_sha:0:7} at $workdir (push blocked)" >&2
 fi
 
@@ -290,10 +293,10 @@ if ! $read_only && [[ "$role" == "builder" && "$provider" != "grok" && -n "$work
     [[ "$target_repo" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] \
       || die 2 "work order repo is not owner/repo: $target_repo"
     command -v git > /dev/null 2>&1 || die 2 "git not found in PATH"
-    sandbox="$(mktemp -d /tmp/station-xr-XXXXXX)"
-    git clone --quiet "${FACTORY_CLONE_BASE:-https://github.com}/$target_repo" "$sandbox/repo" \
+    xr_sandbox="$(mktemp -d /tmp/station-xr-XXXXXX)"
+    git clone --quiet "${FACTORY_CLONE_BASE:-https://github.com}/$target_repo" "$xr_sandbox/repo" \
       || die 7 "could not clone $target_repo"
-    workdir="$sandbox/repo"
+    workdir="$xr_sandbox/repo"
     repo_ctx="$target_repo"
     echo "station-run: writable clone of $target_repo at $workdir" >&2
   fi
@@ -306,7 +309,14 @@ if [[ -n "${repo_ctx:-}" ]]; then
   export GH_REPO="$repo_ctx"
 fi
 
-# Not exec: the sandbox has to be cleaned up after the adapter returns. The
-# trap is already installed above.
+# Not exec: the read-only sandbox has to be cleaned up after the adapter
+# returns. The trap is already installed above.
+adapter_rc=0
 "$adapter" --role "$role" --prompt "$prompt_bundle" --work-order "${work_order:-}" \
-  --issue "${issue:-}" --repo "${repo_ctx:-}" --workdir "$workdir" "$@"
+  --issue "${issue:-}" --repo "${repo_ctx:-}" --workdir "$workdir" "$@" || adapter_rc=$?
+if [[ "$adapter_rc" -eq 0 && -n "$xr_sandbox" ]]; then
+  # Deliberately not deleted by station-run.sh on any path: whoever reads this
+  # line owns the clone and must remove it when done.
+  echo "station-run: writable-clone-path $workdir"
+fi
+exit "$adapter_rc"

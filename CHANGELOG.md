@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 2026-10-29
 
+### Fixed
+
+- `station-run.sh` no longer deletes a writable cross-repo builder's clone on
+  exit (#177). The read-only and cross-repo clones shared one variable, so the
+  exit trap destroyed committed work. Now only the read-only clone is removed;
+  the writable clone's path is printed as the final stdout line
+  `station-run: writable-clone-path <path>`, and the reader deletes it.
+
 ### Added
 
 - A writable `builder` on `opencode` or `claudecode` now runs in a clone of the
