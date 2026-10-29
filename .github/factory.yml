@@ -12,14 +12,21 @@ agents:
   # CodeRabbit reviews PRs here (it reviewed #32; it hadn't on #29 to #31), so a merge also needs no
   # blocking CodeRabbit findings, plus PR Reviewer's review (AGENTS.md section 6).
   review_bot: coderabbit
-  # The CI lint job (ShellCheck on the work-order runner). Unchanged on purpose: the `tests` job
-  # (scripts/test-*.sh) runs and reports on every pull request, and passes on ubuntu-latest, but
-  # making it part of the gate is a separate change that needs its own review (#135, step 4).
-  test_command: shellcheck scripts/*.sh adapters/*/run.sh
+  # Runs on the factory box, so it is a SUBSET of what the `tests` CI job runs (every
+  # scripts/test-*.sh on ubuntu-latest). Six suites pass in CI but fail on the box for
+  # environment reasons, so they are left out here (#164 tracks closing the gap):
+  #   test-watcher-tree.sh          find -printf is GNU-only; the box has bfs
+  #   test-station-post.sh          jq 1.6 mis-tokenises `label` in {name: $label}
+  #   test-gate-issue.sh            PyYAML not importable by the box's python3
+  #   test-review-issue.sh          same
+  #   test-factory-pr-metrics.sh    BSD date vs GNU date
+  #   test-factory-label-metrics.sh same class, undiagnosed
+  # A green local test_command is therefore weaker evidence than a green `tests` check.
+  test_command: shellcheck scripts/*.sh adapters/*/run.sh && bash scripts/test-adapters.sh && bash scripts/test-check-test-assertions.sh && bash scripts/test-factory-flagged.sh && bash scripts/test-run-work-order.sh && bash scripts/test-station-run.sh && bash scripts/test-wait-for-review-bot.sh
 
-# Station 04 reads these names. agents.merge stays false until a ruleset
-# can enforce them. `tests` is deliberately absent: it runs on every PR and passes on ubuntu-latest,
-# but requiring it is a separate change to the gate that needs its own review (#135, step 4).
+# Station 04 (scripts/gate-issue.sh) reads these names. This tightens the factory's gate only:
+# GitHub enforces nothing until a ruleset exists (#112). agents.merge stays false until then.
 required_checks:
   - ShellCheck
   - changelog / changelog
+  - tests
