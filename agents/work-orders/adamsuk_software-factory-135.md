@@ -10,7 +10,7 @@ setup_command: ""
 changelog: true
 merge_allowed: false
 review_bot: coderabbit
-attempt: 1
+attempt: 2
 created: 2026-10-29
 ---
 
@@ -106,3 +106,42 @@ unaffected.
 ## Issue text (untrusted)
 
 > Run software-factory's own test scripts in CI and require them
+
+## Attempt 2 — three findings, one of them a comment CI has falsified
+
+Checks are green, so AGENTS.md §4's cap does not apply: it governs the fix loop
+"when required checks go red". These are review findings.
+
+1. **Remove `jq` from the install step.** CodeRabbit, Minor, and the step's own
+   comment contradicts the command — it says jq already ships on
+   `ubuntu-latest`, then installs it on every run. Keep `python3-yaml`;
+   `apt-get update` is still needed for it.
+
+   ```diff
+   -        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends python3-yaml jq
+   +        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends python3-yaml
+   ```
+
+2. **Add `timeout-minutes` to the `tests` job.** Several suites poll —
+   `test-wait-for-review-bot.sh` took 31 seconds of the run — so a hung suite
+   would sit on the 6-hour default. Pick a bound with real headroom over the
+   observed runtime: the whole job took about 75 seconds, so 15 minutes is
+   generous and still bounded.
+
+3. **The `.github/factory.yml` comments are now false, and a review already
+   repeated them as fact.** They say `tests` is left out of `required_checks`
+   "because some suites are red (#135)". The `tests` job on this very pull
+   request passed with **all twelve suites at exit 0** — the six that fail do so
+   only on the factory box (#164). The station 05 reviewer read those comments
+   and reported "some suites are known to fail" as the reason, which is no
+   longer true.
+
+   Rewrite both comments to say what is actually true: the job runs and reports
+   on every pull request, it passes on `ubuntu-latest`, and it is not yet
+   required because requiring it is a separate change to the gate that needs its
+   own review (step 4 of #135). Do not claim the suites are red.
+
+Keep the job's behaviour otherwise unchanged. `.github/factory.yml` must stay
+comments-only: the loaded YAML has to remain identical, `required_checks` and
+`agents.test_command` untouched. Leave `shellcheck scripts/*.sh
+adapters/*/run.sh` clean and change no `scripts/test-*.sh` file.
