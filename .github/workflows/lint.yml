@@ -17,7 +17,30 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: shellcheck --version && shellcheck scripts/*.sh adapters/*/run.sh
+      - name: Install ShellCheck (pinned, checksum-verified)
+        env:
+          # The one place the version lives; a bump is this line plus the digest below.
+          SHELLCHECK_VERSION: "0.11.0"
+          # SHA256 of shellcheck-v<version>.linux.x86_64.tar.gz from the official release.
+          SHELLCHECK_SHA256: b7af85e41cc99489dcc21d66c6d5f3685138f06d34651e6d34b42ec6d54fe6f6
+        run: |
+          set -euo pipefail
+          archive="shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.gz"
+          dir="$RUNNER_TEMP/shellcheck"
+          mkdir -p "$dir"
+          curl -fsSL -o "$dir/$archive" \
+            "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/${archive}"
+          actual="$(sha256sum "$dir/$archive" | cut -d' ' -f1)"
+          if [ "$actual" != "$SHELLCHECK_SHA256" ]; then
+            echo "::error::ShellCheck digest mismatch for $archive: expected $SHELLCHECK_SHA256, got $actual. Refusing to run it."
+            exit 1
+          fi
+          tar -xzf "$dir/$archive" -C "$dir"
+          echo "$dir/shellcheck-v${SHELLCHECK_VERSION}" >> "$GITHUB_PATH"
+      - name: Lint
+        run: |
+          shellcheck --version
+          shellcheck scripts/*.sh adapters/*/run.sh
 
   test-assertions:
     name: Test assertions

@@ -31,6 +31,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- CI pins ShellCheck to 0.11.0 (#155). The `ShellCheck` job ran whatever
+  version `ubuntu-latest` shipped, so the gate's strictness could change with no
+  commit here. It now downloads the official 0.11.0 release, verifies its SHA256
+  before running it, and fails on a mismatch rather than falling back to the
+  image's copy. The version is set in one place in `lint.yml`; `factory.yml` and
+  the README say which version is meant.
+
 - `adapters/claudecode/run.sh` runs the `builder` role instead of refusing it
   (#158). The refusal said builder needs `scripts/run-work-order.sh`, which is
   reached only from `adapters/grok/run.sh`; `adapters/opencode/run.sh` has no
