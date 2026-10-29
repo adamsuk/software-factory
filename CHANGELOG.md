@@ -15,6 +15,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `scripts/review-bot-metrics.sh` reports CodeRabbit review threads on recent
+  closed or merged PRs per repo (total, resolved, open, acceptance rate), so
+  "re-test when the model changes" has a baseline (adamsuk/software-factory#26).
+  Read-only; `--repo OWNER/REPO` or `--all`, `--limit N` (default 20).
 - Stations read `AGENTS.md`, the role brief and `stations/github-writes.md`
   from a promoted release tag instead of the live tree (#136).
   `FACTORY_RELEASE_REF` overrides it; the default is the latest `v*` tag
