@@ -1,0 +1,27 @@
+name: Ruleset drift
+
+# Weekly, and on demand. Fails the job when an enrolled repo's enforced ruleset
+# differs from its factory.yml (required_checks, bypass_actors). Read-only.
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ruleset-drift:
+    name: Ruleset drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check rulesets against factory.yml
+        env:
+          # Needs a read-only token that can see every enrolled repo (including private ones);
+          # the default GITHUB_TOKEN only sees this repo.
+          GH_TOKEN: ${{ secrets.FACTORY_READ_TOKEN }}
+        run: |
+          gh extension install adamsuk/gh-factory
+          bash scripts/ruleset-drift-check.sh

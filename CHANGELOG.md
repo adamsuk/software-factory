@@ -15,6 +15,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `scripts/ruleset-drift-check.sh` and a weekly `ruleset-drift.yml` workflow (#157). It
+  runs the read-only `gh factory plan --json` and fails the job (exit 1) naming each
+  repo whose enforced ruleset differs from `factory.yml` on `required_status_checks` or
+  `bypass_actors`. The workflow needs a `FACTORY_READ_TOKEN` secret that can read every
+  enrolled repo.
 - Stations read `AGENTS.md`, the role brief and `stations/github-writes.md`
   from a promoted release tag instead of the live tree (#136).
   `FACTORY_RELEASE_REF` overrides it; the default is the latest `v*` tag
