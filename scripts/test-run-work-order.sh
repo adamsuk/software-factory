@@ -1397,11 +1397,17 @@ if printf '%s\n' "$main_src" | grep -Fq '/workspace'; then
   fail "main still contains the literal /workspace"
 fi
 
+tname="bench-clone-root-main-calls-helper"
+printf '%s\n' "$main_src" | grep -Fq 'choose_clone_dir' || fail "main does not call choose_clone_dir"
+
 tname="bench-clone-dir-uses-helper"
+export FACTORY_WORKSPACE="$ROOT/dir-workspace"
+mkdir -p "$FACTORY_WORKSPACE"
 dir_test=$(choose_clone_dir "acme/widgets" 123)
+[[ "$dir_test" == "$FACTORY_WORKSPACE"/* ]] || fail "clone dir not under FACTORY_WORKSPACE: $dir_test"
+unset FACTORY_WORKSPACE
 [[ "$dir_test" == */wo-acme_widgets-123-* ]] || fail "clone dir naming wrong: $dir_test"
 [[ "$dir_test" != "$here/"* ]] || fail "clone dir inside repo"
-[[ "$dir_test" != /workspace/* ]] || fail "clone dir should not be under /workspace by default in this env"
 rm -rf "$dir_test" || true
 
 PATH=$ORIG_PATH

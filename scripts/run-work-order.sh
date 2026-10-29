@@ -44,10 +44,6 @@ choose_clone_root() {
     fi
   fi
 
-  if [[ -e "$root" && (! -w "$root" || ! -x "$root") ]]; then
-    :
-  fi
-
   fallback_dir=$(mktemp -d 2>/dev/null) || die 8 "clone root unusable: $root and no temporary directory available"
   echo "run-work-order: clone root unusable: $root; falling back to $fallback_dir" >&2
   printf '%s\n' "$fallback_dir"
@@ -60,7 +56,7 @@ choose_clone_dir() {
   root=$(choose_clone_root) || return $?
   repo="$1"
   issue="$2"
-  dir=$(mktemp -d "${root%/}/wo-${repo/\//_}-$issue-XXXXXX" 2>/dev/null) || die 8 "clone root unusable: $root"
+  dir=$(mktemp -d "${root%/}/wo-${repo/\//_}-$issue-XXXXXX" 2>/dev/null) || die 8 "could not create a clone directory under $root"
   printf '%s\n' "$dir"
 }
 
