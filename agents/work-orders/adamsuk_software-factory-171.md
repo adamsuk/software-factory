@@ -10,7 +10,7 @@ setup_command: ""
 changelog: true
 merge_allowed: false
 review_bot: coderabbit
-attempt: 1
+attempt: 2
 created: 2026-10-29
 ---
 
@@ -119,3 +119,58 @@ repo.
 ## Issue text (untrusted)
 
 > Only the grok provider can build in another repo, so its billing halts every cross-repo ticket
+
+## Attempt 2 — the GIT_DIR unset is in the wrong place
+
+CodeRabbit, Minor by its grading, but it is a **write-boundary** bug and should be
+read as more than that. Verified against the code before passing it on.
+
+```
+282:    self_repo=$(git -C "$here" remote get-url origin 2>/dev/null ...)   # lookup
+289:    unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE ...                      # unset, after
+```
+
+An exported `GIT_DIR`, `GIT_WORK_TREE` or `GIT_COMMON_DIR` redirects that
+`git remote get-url origin` call, so `self_repo` can come back as some other
+repository. `self_repo` is what decides whether the station clones the target or
+**runs in place against the real working tree**. Get it wrong and a cross-repo
+work order edits this repo, which is precisely the boundary #142 and #148 exist
+to hold.
+
+Attempt 1's own work order listed this trap:
+
+> `GIT_DIR`, `GIT_WORK_TREE` and friends are unset before cloning in the existing
+> path for a reason — an exported `GIT_DIR` could otherwise reach the real repo.
+
+The unset was added, just after the thing it needed to protect.
+
+### Fix
+
+Move the `unset` so it runs **before** the `origin` lookup, and before reading
+the work order's front matter. The read-only path at line 230 already does this
+in the right order; match it.
+
+### Also add a test
+
+`scripts/test-station-run.sh` already proves an exported `GIT_DIR` cannot reach
+the real repo on the read-only path. Add the equivalent for this path: export a
+`GIT_DIR` pointing at a different repository, run a **cross-repo** work order,
+and assert that the decision and the clone are unaffected and this repo's tree is
+untouched. Without that, the fix is a one-line move with nothing holding it in
+place — and the trap was already named once and still missed.
+
+### Unchanged
+
+Everything else in attempt 1 stands. Keep the clone-not-worktree choice, the real
+push URL, the checksum assertion on this repo's tree, the reporting-only fake
+provider and the local fixture clone. `shellcheck` stays clean; add assertions
+only, change none; confirm `scripts/check-test-assertions.sh --base origin/main
+--head HEAD --label-present no` exits 0.
+
+### Note for the builder
+
+This work order edits `scripts/station-run.sh`, the script the station is
+executing. That corrupted the tail of attempt 1's run and made its self-reported
+test results untrusted (#174). Report what you changed and let the verification
+happen in a fresh process; do not rely on a suite result produced after you have
+rewritten that file.
