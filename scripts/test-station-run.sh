@@ -242,8 +242,19 @@ grep -q "push=$xr_base/acme/widgets " "$OUT" || fail "push URL is not the real r
 [[ "$(tree_sum)" == "$before" ]] || fail "this repo's working tree changed"
 pass
 
-tname="the cross-repo clone is removed on exit"
-[[ ! -e "$cwd" ]] || fail "clone left behind at $cwd"
+# Changed deliberately (#177): this used to assert the clone was removed on exit,
+# which destroyed a writable builder's committed work before anyone could read it.
+tname="the cross-repo clone survives exit and its path is printed on stdout"
+rm -f "$OUT"
+out_stdout=$(PATH="$BIN:$PATH" FACTORY_PROVIDER=opencode FAKE_OUT="$OUT" \
+  FACTORY_SELF_REPO=adamsuk/software-factory FACTORY_CLONE_BASE="$xr_base" \
+  bash "$root_dir/scripts/station-run.sh" --work-order "$work/wo-xr.md" builder /dev/null 2> /dev/null)
+cwd=$(grep '^cwd=' "$OUT" | cut -d= -f2-)
+[[ "$(printf '%s\n' "$out_stdout" | tail -n1)" == "station-run: writable-clone-path $cwd" ]] \
+  || fail "last stdout line is not the clone path line: $out_stdout"
+[[ -d "$cwd/.git" ]] || fail "clone missing after exit: $cwd"
+git -C "$cwd" -c user.email=t@e.com -c user.name=t commit -q --allow-empty -m work
+rm -rf "$(dirname "$cwd")"
 pass
 
 tname="a work order naming this repo still runs in place"
