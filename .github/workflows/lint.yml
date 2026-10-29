@@ -15,6 +15,8 @@ jobs:
   shellcheck:
     name: ShellCheck
     runs-on: ubuntu-latest
+    # The job takes about 15 seconds; this is headroom, not an expectation.
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install ShellCheck (pinned, checksum-verified)
@@ -28,7 +30,7 @@ jobs:
           archive="shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.gz"
           dir="$RUNNER_TEMP/shellcheck"
           mkdir -p "$dir"
-          curl -fsSL -o "$dir/$archive" \
+          curl -fsSL --proto '=https' --tlsv1.2 --retry 3 --max-time 60 -o "$dir/$archive" \
             "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/${archive}"
           actual="$(sha256sum "$dir/$archive" | cut -d' ' -f1)"
           if [ "$actual" != "$SHELLCHECK_SHA256" ]; then

@@ -37,6 +37,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   before running it, and fails on a mismatch rather than falling back to the
   image's copy. The version is set in one place in `lint.yml`; `factory.yml` and
   the README say which version is meant.
+  The download is bounded (`--max-time 60`, `--retry 3`, HTTPS and TLS 1.2
+  only) and the job has `timeout-minutes: 5`, so a stalled transfer fails the
+  gate instead of leaving it pending.
 
 - `adapters/claudecode/run.sh` runs the `builder` role instead of refusing it
   (#158). The refusal said builder needs `scripts/run-work-order.sh`, which is
