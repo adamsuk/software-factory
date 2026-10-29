@@ -10,7 +10,7 @@ setup_command: ""
 changelog: true
 merge_allowed: false
 review_bot: coderabbit
-attempt: 2
+attempt: 3
 created: 2026-10-29
 ---
 
@@ -122,3 +122,49 @@ Also add, in the same pass:
 Do not change or remove any existing assertion, including the ones added in
 attempt 1 — only the one named in item 2, which is being corrected, and
 additions. Re-run `test_command` and leave it green.
+
+## Attempt 3 — provider changed to claudecode/sonnet
+
+Attempt 1 (opencode) produced the working fix now committed on this branch and
+passed `test_command`. Attempt 2 (opencode) ran 15 minutes and produced a
+byte-identical diff — no change at all — so the three review findings below are
+still outstanding. #158 removed the claudecode builder refusal (merged as
+`60778d5`), so this attempt runs on claudecode with `FACTORY_MODEL=sonnet`.
+
+The branch already contains attempt 1's work. **Do not rewrite it.** Fix only
+these, then leave `test_command` green.
+
+1. **Remove the dead block in `choose_clone_root`.** It does nothing and must be
+   deleted, not filled in:
+
+   ```bash
+   if [[ -e "$root" && (! -w "$root" || ! -x "$root") ]]; then
+     :
+   fi
+   ```
+
+2. **`bench-clone-dir-uses-helper` is environment-dependent** and fails on any
+   box that has a usable `/workspace`. This line is the problem:
+
+   ```bash
+   [[ "$dir_test" != /workspace/* ]] || fail "clone dir should not be under /workspace by default in this env"
+   ```
+
+   A test must assert the same thing everywhere. Set `FACTORY_WORKSPACE` to a
+   known writable directory for that case and assert the clone dir is under it,
+   then unset it. Keep the naming and "not inside the repo" assertions.
+
+3. **`choose_clone_dir`'s failure message blames the wrong thing.** When
+   `choose_clone_root` returned a usable root and only `mktemp` failed, it still
+   says `clone root unusable: $root`. Say that creating the clone directory under
+   that root failed, and keep the root in the message.
+
+4. **Add an assertion that `main` calls `choose_clone_dir`**, so deleting the
+   call does not pass the suite. `bench-clone-root-main-no-literal-workspace`
+   only checks that the literal `/workspace` is absent.
+
+Constraints unchanged from above. In particular: item 2 corrects an assertion
+added in attempt 1, which is permitted; do not touch any other existing
+assertion in any `scripts/test-*.sh`, or `scripts/check-test-assertions.sh` will
+fail the pull request. `shellcheck` 0.11.0 is now installed on the box, so run
+`shellcheck scripts/*.sh adapters/*/run.sh` before finishing.
