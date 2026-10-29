@@ -149,6 +149,18 @@ could and could not see. After §10.2's threshold the wait posts
 error rather than a silent skip — defaulting to `none` there once made the script
 look like it was waiting while doing nothing.
 
+## Self-edits during a run
+
+bash reads a script incrementally. A builder that rewrites `station-run.sh` or
+an adapter while it executes makes the live process resume at a stale byte
+offset and run a fragment as a command (seen building #171 and #136, exit 0
+with the error only on stderr). So `station-run.sh` first copies `scripts/`,
+`adapters/`, `AGENTS.md`, `agents/roles/` and `stations/github-writes.md` to
+`/tmp/station-snap-*` and re-execs from the copy; git and the work tree still
+point at the real checkout. At exit it compares the real files with the
+snapshot and prints a notice if they changed, then removes the snapshot.
+Factory scripts can therefore be changed by the ticket that runs them.
+
 ## Promoting a release
 
 Stations read `AGENTS.md`, `agents/roles/<role>.md` and

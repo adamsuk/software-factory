@@ -304,3 +304,61 @@ out=$(bash "$rel/scripts/station-run.sh" --dry-run reviewer /dev/null 2>&1)
 out=$(FACTORY_RELEASE_REF=nonexistent-ref bash "$rel/scripts/station-run.sh" --dry-run reviewer /dev/null 2>&1 || true)
 [[ "$out" == *"does not resolve"* ]] || fail "bad FACTORY_RELEASE_REF not refused: [$out]"
 pass
+
+# --- a run survives its own scripts being rewritten mid-run (#174) -----------
+tname="rewriting station-run.sh and the adapter mid-run does not disturb a read-only run"
+fx=$work/fixture
+mkdir -p "$fx/agents" "$fx/stations"
+cp -R "$root_dir/scripts" "$root_dir/adapters" "$fx/"
+cp "$root_dir/AGENTS.md" "$fx/AGENTS.md"
+cp -R "$root_dir/agents/roles" "$fx/agents/roles"
+cp "$root_dir/stations/github-writes.md" "$fx/stations/" 2> /dev/null || true
+# A read-only run clones the checkout, so the fixture must be a git repo.
+git -C "$fx" init -q
+git -C "$fx" add -A > /dev/null
+git -C "$fx" -c user.email=t@e.com -c user.name=t commit -q -m fixture
+cat > "$BIN/opencode" << 'FAKE'
+#!/usr/bin/env bash
+if [[ "$*" == *--help* ]]; then printf '%s\n' "--auto --title --file"; exit 0; fi
+# The read-only sandbox must exist while the provider runs.
+echo "sandbox=$PWD" > "$FAKE_SANDBOX"
+# Insert lines near the top of the running scripts, shifting every later byte
+# offset, as a builder editing them would. The sandbox is read-only, so edit the
+# fixture through its absolute path.
+for f in "$FIXTURE"/scripts/station-run.sh "$FIXTURE"/adapters/opencode/run.sh; do
+  sed -i.bak '2i\
+echo CLOBBERED-FRAGMENT >&2; false; false; false
+' "$f"
+done
+echo ran > "$FAKE_OUT"
+exit 0
+FAKE
+chmod +x "$BIN/opencode"
+rc=0
+out=$(cd "$fx" && PATH="$BIN:$PATH" FACTORY_PROVIDER=opencode FAKE_OUT="$OUT" \
+  FIXTURE="$fx" FAKE_SANDBOX="$work/sandbox-path" \
+  bash "$fx/scripts/station-run.sh" reviewer /dev/null 2>&1) || rc=$?
+[[ "$rc" -eq 0 ]] || fail "run failed ($rc): $out"
+[[ -s "$OUT" ]] || fail "provider never ran: $out"
+[[ "$out" != *CLOBBERED-FRAGMENT* && "$out" != *"command not found"* && "$out" != *"syntax error"* ]] \
+  || fail "the edited script was executed: $out"
+grep -q CLOBBERED-FRAGMENT "$fx/scripts/station-run.sh" || fail "the edit never landed, so this proves nothing"
+[[ "$out" == *"execution path"*"changed in the working tree during this run"* ]] \
+  || fail "no notice that the scripts changed: $out"
+sandbox=$(sed -n 's/^sandbox=//p' "$work/sandbox-path" 2> /dev/null)
+[[ "$sandbox" == /tmp/station-ro-* || "$sandbox" == */station-ro-*/* ]] \
+  || fail "the run was not in a read-only sandbox: [$sandbox]"
+sandbox_root=${sandbox%%/repo*}
+[[ ! -e "$sandbox_root" ]] || fail "read-only sandbox not removed: $sandbox_root"
+snap=$(sed -n 's/^station-run: running from snapshot //p' <<< "$out")
+[[ -n "$snap" && ! -e "$snap" ]] || fail "snapshot not cleaned up: [$snap]"
+pass
+
+tname="the snapshot is removed when validation fails early"
+out=$(bash "$root_dir/scripts/station-run.sh" --no-such-flag 2>&1 || true)
+snap=$(sed -n 's/^station-run: running from snapshot //p' <<< "$out")
+[[ -n "$snap" ]] || fail "never re-exec'd: $out"
+[[ ! -e "$snap" ]] || fail "early exit leaked the snapshot: $snap"
+pass
+
+echo "all station-run snapshot tests passed"
