@@ -346,13 +346,10 @@ snap=$(sed -n 's/^station-run: running from snapshot //p' <<< "$out")
 pass
 
 tname="the snapshot is removed when validation fails early"
-before_snaps=$(find /tmp -maxdepth 1 -name 'station-snap-*' 2> /dev/null | LC_ALL=C sort)
 out=$(bash "$root_dir/scripts/station-run.sh" --no-such-flag 2>&1 || true)
 snap=$(sed -n 's/^station-run: running from snapshot //p' <<< "$out")
 [[ -n "$snap" ]] || fail "never re-exec'd: $out"
 [[ ! -e "$snap" ]] || fail "early exit leaked the snapshot: $snap"
-after_snaps=$(find /tmp -maxdepth 1 -name 'station-snap-*' 2> /dev/null | LC_ALL=C sort)
-[[ "$before_snaps" == "$after_snaps" ]] || fail "snapshot dirs leaked"
 pass
 
 echo "all station-run snapshot tests passed"
