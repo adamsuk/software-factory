@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# TEMPORARY. Proves two things about the `tests` job added by #135 that nothing
+# TEMPORARY. Named aaa so the glob runs it FIRST: a canary that sorts last
+# cannot show that later suites still run after one fails. Proves two things about the `tests` job added by #135 that nothing
 # had ever tested, then is removed in the next commit of the same pull request:
 #
 #   1. the job's glob picks up a suite that did not exist when the job was
