@@ -39,12 +39,19 @@ done
 [[ -n "$prompt_file" && -f "$prompt_file" ]] || die 2 "missing prompt"
 [[ "$prompt_file" == /* ]] || prompt_file="$PWD/$prompt_file"
 
-# The builder role is not available on this provider yet: scripts/run-work-order.sh
-# invokes the grok CLI directly, so it is not provider-agnostic. Every other
-# station role runs from the composed bundle and works here.
-if [[ "$role" == "builder" ]]; then
-  die 3 "builder is not supported on claudecode: scripts/run-work-order.sh calls the grok CLI directly"
-fi
+# Every role, builder included, runs from the composed bundle against the working
+# tree; scripts/station-run.sh decides whether that tree is the real repo or a
+# throwaway clone, and it already treats builder as writable.
+#
+# An earlier version refused builder here, on the grounds that
+# scripts/run-work-order.sh calls the grok CLI directly. That reason was false:
+# run-work-order.sh is reached only from adapters/grok/run.sh. The opencode
+# adapter has no builder case at all and runs it as a prompted agent, which is
+# what this adapter now does too (#158).
+#
+# The two builder paths are not equivalent and that is worth knowing: the grok
+# builder clones, tests, squash-commits, pushes and opens the pull request, while
+# this one only runs the prompt and leaves its edits in the tree.
 
 command -v claude >/dev/null 2>&1 || die 2 "claude CLI not found in PATH"
 
