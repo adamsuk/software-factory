@@ -24,21 +24,29 @@ cat > "$BIN/gh" << 'FAKE'
 # The rulesets listing below has an unrelated ruleset first (id 5) and factory-main second
 # (id 1): real jq runs against it here, so a selector that just grabbed the first entry
 # would probe the wrong ruleset and fail this test, not pass it by coincidence.
+# MOCK_GH/dup_inherited adds a same-named inherited (org-level) ruleset ahead of it, id 2.
 if [[ "$1" == "api" ]]; then
-  path=$2
-  jqf=""
-  shift 2
+  shift
+  path="" jqf="" paginate=0
   while [[ $# -gt 0 ]]; do
-    [[ "$1" == "--jq" ]] && jqf=$2
-    shift
+    case "$1" in
+      --jq) jqf=$2; shift 2 ;;
+      --paginate) paginate=1; shift ;;
+      -*) shift ;;
+      *) path=$1; shift ;;
+    esac
   done
-  printf '%s %s --jq %s\n' api "$path" "$jqf" >> "$MOCK_GH/api_calls"
+  printf '%s%s --jq %s\n' "$path" "$([[ $paginate -eq 1 ]] && echo ' --paginate')" "$jqf" >> "$MOCK_GH/api_calls"
   case "$path" in
     */rulesets)
-      printf '%s' '[{"id":5,"name":"other-ruleset"},{"id":1,"name":"factory-main"}]' \
-        | jq -r "$jqf"
+      list='[{"id":5,"name":"other-ruleset"},{"id":1,"name":"factory-main"}]'
+      [[ -e "$MOCK_GH/dup_inherited" ]] && list='[{"id":5,"name":"other-ruleset"},{"id":2,"name":"factory-main","source_type":"Organization"},{"id":1,"name":"factory-main"}]'
+      printf '%s' "$list" | jq -r "$jqf"
       ;;
     */rulesets/1) [[ -e "$MOCK_GH/hide_bypass" ]] && echo false || echo true ;;
+    # The inherited duplicate (id 2) always shows bypass_actors, unlike id 1 above, so
+    # probing the wrong one is a detectably different (wrong) outcome, not a coincidence.
+    */rulesets/2) echo true ;;
     *) exit 9 ;;
   esac
   exit 0
@@ -132,6 +140,22 @@ rc=0; out=$(run) || rc=$?
 [[ "$out" == *"o/g: required_status_checks differs"* && "$out" == *"o/g: bypass_actors cannot be verified"* ]] || fail "got [$out]"
 [[ "$out" != *"o/g: bypass_actors differs"* ]] || fail "confirmed drift from a hidden field: [$out]"
 rm -f "$work/hide_bypass"
+pass
+
+tname="the rulesets lookup paginates"
+set_plan '[{"repo":"o/h","enrolled":true,"changes":[]}]'
+run > /dev/null
+grep -q -- '--paginate' "$work/api_calls" || fail "rulesets lookup did not paginate: $(cat "$work/api_calls")"
+pass
+
+tname="an inherited ruleset of the same name is excluded, not just the first match"
+touch "$work/dup_inherited" "$work/hide_bypass"
+set_plan '[{"repo":"o/i","enrolled":true,"changes":[]}]'
+rc=0; out=$(run) || rc=$?
+[[ $rc -eq 0 ]] || fail "expected exit 0, got $rc"
+[[ "$out" == *"o/i: bypass_actors cannot be verified"* ]] \
+  || fail "the inherited duplicate broke the probe instead of being excluded: [$out]"
+rm -f "$work/dup_inherited" "$work/hide_bypass"
 pass
 
 tname="the probe only issues plain read-only api GETs"
