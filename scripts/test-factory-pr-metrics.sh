@@ -717,4 +717,29 @@ write_all_call "$expected_log" "$default_repo" "$default_since"
 append_open_call "$expected_log" "$default_repo"
 assert_same "$log" "$expected_log" "gh log"
 
+# The reporter prints non-empty captured output and does not die on its own
+# printf. Drive fail() directly in a subshell with known captured content.
+tname=reporter-survives-output
+reporter_out=$root/reporter.out
+reporter_err=$root/reporter.err
+printf '%s\n' 'captured-stdout-line' > "$root/rep-stdout.txt"
+printf '%s\n' 'captured-stderr-line' > "$root/rep-stderr.txt"
+printf '%s\n' 'captured-log-line' > "$root/rep-log.txt"
+set +e
+(
+  stdout_file=$root/rep-stdout.txt
+  stderr_file=$root/rep-stderr.txt
+  log=$root/rep-log.txt
+  fail "deliberate reporter check"
+) > "$reporter_out" 2> "$reporter_err"
+reporter_status=$?
+set -e
+[[ "$reporter_status" -eq 1 ]] || fail "reporter exited $reporter_status, expected 1"
+for line in captured-stdout-line captured-stderr-line captured-log-line '--- stdout ---' '--- stderr ---' '--- gh log ---'; do
+  grep -F -q -- "$line" "$reporter_err" || fail "reporter output is missing [$line]"
+done
+if grep -E -q 'invalid option|usage: printf' "$reporter_err"; then
+  fail "reporter printed a printf usage error"
+fi
+
 printf '%s\n' "ok  factory-pr-metrics tests"
