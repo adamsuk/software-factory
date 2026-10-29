@@ -32,6 +32,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `scripts/ruleset-drift-check.sh` and a weekly `ruleset-drift.yml` workflow (#157). It
+  runs the read-only `gh factory plan --json` and fails the job (exit 1) naming each
+  repo whose enforced ruleset differs from `factory.yml` on `required_status_checks` or
+  `bypass_actors`. The workflow needs a read-only `FACTORY_READ_TOKEN` secret that can read
+  every enrolled repo, and passes `--owner adamsuk --owner touchlineHQ` explicitly. The
+  output keeps four outcomes apart: confirmed drift (exit 1), rulesets `unavailable` to
+  gh-factory (exit 3), `bypass_actors` that cannot be verified because GitHub shows it only
+  to write access (reported, exit 0, never "matches"), and a plan with no enrolled repos
+  (exit 2, since nothing was checked).
 - `scripts/review-bot-metrics.sh` reports CodeRabbit review threads on recent
   closed or merged PRs per repo (total, resolved, open, acceptance rate), so
   "re-test when the model changes" has a baseline (adamsuk/software-factory#26).
