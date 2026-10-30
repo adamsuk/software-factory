@@ -27,11 +27,13 @@ and tracks it to a reviewed PR. Follows [`AGENTS.md`](../../AGENTS.md).
    (the repo the issue is filed in) and issue number (a work order or PR
    whose `issue_repo` and `issue` both match), and is not assigned to a
    person. The same number in two repos cannot collide. Prefer `quick win`.
-   **Cap: 2 open agent PRs per repo.** Count open PRs in the PR's own repo
-   (the repo the branch and PR live in, not the issue's `Target repo:` line)
-   that count as in flight by the definition above: an open PR or
-   `factory/<issue>-*` branch for a factory issue. At 2 or more, do not pick a
-   **new** issue for that repo; leave it `factory:ready` and report that
+   **Cap: 2 open agent PRs per repo.** Evaluate the cap against the
+   candidate issue's `Target repo:` (the repo step 2 resolves; a fresh
+   candidate has no PR or branch yet, so there is no "PR's own repo" to read).
+   Count every in-flight factory entry in *that* repo, by the definition
+   above: an open PR or a `factory/<issue>-*` branch, whether open-PR or
+   branch-only (picked up, branch pushed, no PR yet). At 2 or more, do not
+   pick this **new** candidate; leave it `factory:ready` and report that
    review capacity is full. Issues already in flight stay on steps 6-7
    (Gate, Merge) only — the cap never reruns step 4 (Build) on a pending PR;
    step 6 already says not to. The one exception is step 6's own `retry`

@@ -5,7 +5,8 @@ Follows [`AGENTS.md`](../../AGENTS.md).
 
 ## Station
 
-Line's station 05 Review. **Takes in** PRs labelled `factory:review` with
+Line's station 05 Review. **Takes in** PRs whose linked issue is labelled
+`factory:review` (the label sits on the issue, not the PR), with
 required checks green. **Hands on** `factory:merge` (PASS, no protected path,
 not L/XL-sized, no open should-fix), back to `factory:building` (FIX), or
 `factory:blocked` (ESCALATE, including an L/XL change, or PASS on a
