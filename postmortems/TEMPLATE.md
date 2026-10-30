@@ -1,6 +1,6 @@
-# Postmortem: <short title> (<YYYY-MM-DD>)
+# Postmortem: [short title] (`YYYY-MM-DD`)
 
-**Status:** draft | reviewed · **Owner:** <name> · **Severity:** <low | medium | high>
+**Status:** draft | reviewed · **Owner:** [name] · **Severity:** low | medium | high
 
 ## What happened
 
@@ -30,7 +30,7 @@ design gap is named.
 
 | Action | Owner | Issue |
 | --- | --- | --- |
-| A check, test or rule change that would have caught this | <name> | #<n> |
+| A check, test or rule change that would have caught this | [name] | #[n] |
 
 ## Lessons
 

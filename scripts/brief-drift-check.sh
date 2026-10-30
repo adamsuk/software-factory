@@ -35,7 +35,7 @@ while read -r code; do
   if ! grep -qE "(die|exit) $code( |\$)" "$wrapper"; then
     report "agents/grok-build.md documents exit $code but scripts/run-work-order.sh never uses it"
   fi
-done < <(printf '%s\n' "$section" | grep -oiE 'exit( code)? [0-9]+' | grep -oE '[0-9]+$' | sort -un)
+done < <(printf '%s\n' "$section" | grep -oiE 'exits?( with)?( code)? [0-9]+' | grep -oE '[0-9]+$' | sort -un)
 
 while read -r flag; do
   [[ -n "$flag" ]] || continue
@@ -46,19 +46,23 @@ done < <(printf '%s\n' "$section" | grep -E 'run-work-order\.sh' | grep -oE '\-\
 
 # --- 2. label names -----------------------------------------------------------
 shopt -s nullglob
-files=("$root/AGENTS.md" "$root"/agents/*.md "$root"/agents/roles/*.md)
+files=("$root/AGENTS.md" "$root/stations/README.md" "$root"/agents/*.md "$root"/agents/roles/*.md)
 for f in "${files[@]}"; do
+  [[ -f "$f" ]] || continue
   while read -r label; do
     [[ -n "$label" ]] || continue
     known=no
     for c in "${CANONICAL_LABELS[@]}"; do [[ "$label" == "$c" ]] && known=yes; done
     [[ $known == yes ]] || report "${f#"$root"/} names $label, which is not one of the nine canonical labels"
-  done < <(grep -oE 'factory:[a-z]+' "$f" | sort -u)
+  done < <(grep -oE 'factory:[A-Za-z0-9][A-Za-z0-9-]*' "$f" | sort -u)
 done
 
-# AGENTS.md section 9 must still list every canonical label.
+# AGENTS.md section 9 must still list every canonical label, in section 9
+# itself -- a label surviving elsewhere in the file must not hide a deleted
+# row in the actual table.
+section9=$(awk '/^## 9\./ { on = 1; next } /^## / { on = 0 } on' "$root/AGENTS.md")
 for c in "${CANONICAL_LABELS[@]}"; do
-  grep -qF "\`$c\`" "$root/AGENTS.md" || report "AGENTS.md does not list canonical label $c"
+  printf '%s\n' "$section9" | grep -qF "\`$c\`" || report "AGENTS.md section 9 does not list canonical label $c"
 done
 
 if [[ $drift -eq 0 ]]; then echo "brief-drift-check: briefs match the script and labels"; fi
