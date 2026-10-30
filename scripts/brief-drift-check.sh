@@ -37,12 +37,14 @@ while read -r code; do
   fi
 done < <(printf '%s\n' "$section" | grep -oiE 'exits?( with)?( code)? [0-9]+' | grep -oE '[0-9]+$' | sort -un)
 
+invocation=$(printf '%s\n' "$section" | sed -n '/run-work-order\.sh/,/^$/p')
+
 while read -r flag; do
   [[ -n "$flag" ]] || continue
   if ! grep -qF -- "\"$flag\"" "$wrapper"; then
     report "agents/grok-build.md documents flag $flag but scripts/run-work-order.sh does not parse it"
   fi
-done < <(printf '%s\n' "$section" | grep -E 'run-work-order\.sh' | grep -oE '\-\-[a-z][a-z-]*' | sort -u)
+done < <(printf '%s\n' "$invocation" | grep -oE '\-\-[a-z][a-z0-9_-]*' | sort -u)
 
 # --- 2. label names -----------------------------------------------------------
 shopt -s nullglob

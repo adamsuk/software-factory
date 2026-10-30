@@ -44,6 +44,24 @@ status=0; out=$(bash "$script" "$r") || status=$?
 grep -qF -- '--nonsense' <<< "$out" || fail "output does not name --nonsense: $out"
 pass
 
+tname="catches an unsupported flag documented on a separate line from the command"
+r=$(fresh_root flag-newline)
+sed 's/^\(.*run-work-order.sh\) \[--push\] /\1\
+    [--nonsense] [--push] /' "$r/agents/grok-build.md" > "$r/b" && mv "$r/b" "$r/agents/grok-build.md"
+grep -qF -- '    [--nonsense]' "$r/agents/grok-build.md" || fail "fixture edit did not apply"
+status=0; out=$(bash "$script" "$r") || status=$?
+[[ $status -eq 1 ]] || fail "expected exit 1, got $status: $out"
+grep -qF -- '--nonsense' <<< "$out" || fail "output does not name --nonsense: $out"
+pass
+
+tname="does not truncate a digit-suffixed flag to a supported prefix"
+r=$(fresh_root flag-digits)
+sed 's/run-work-order.sh \[--push\]/run-work-order.sh [--push2]/' "$r/agents/grok-build.md" > "$r/b" && mv "$r/b" "$r/agents/grok-build.md"
+status=0; out=$(bash "$script" "$r") || status=$?
+[[ $status -eq 1 ]] || fail "expected exit 1, got $status: $out"
+grep -qF -- '--push2' <<< "$out" || fail "--push2 was truncated or accepted: $out"
+pass
+
 tname="fails on a role brief naming a non-canonical label"
 r=$(fresh_root label)
 printf '\nMove the issue to factory:shipped when done.\n' >> "$r/agents/roles/builder.md"
