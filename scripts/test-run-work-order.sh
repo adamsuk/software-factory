@@ -1440,6 +1440,44 @@ tests_line=$(printf '%s\n' "$main_src" | grep -F 'diff-filter=MDR')
 [[ "$tests_line" == *"grep -v '^agents/work-orders/'"* ]] \
   || fail "existing-test check does not exclude agents/work-orders/: $tests_line"
 
+tname="grok-token-scrub"
+# Prove Grok Build is started without GH_TOKEN/GITHUB_TOKEN. main() needs a
+# real clone, gh and grok, so take the grok invocation out of main's source
+# (from the `env -u` line to the line ending in the redirect), run exactly
+# that text against a mock grok that records its environment, and leave both
+# tokens set in the calling shell.
+grok_cmd=$(printf '%s\n' "$main_src" | awk '/env -u GH_TOKEN/ {on=1} on {print} on && />/ {exit}')
+[[ "$grok_cmd" == *"grok --no-auto-update"* ]] || fail "could not extract the grok invocation from main"
+[[ "$grok_cmd" == *"-u GH_TOKEN"* && "$grok_cmd" == *"-u GITHUB_TOKEN"* ]] \
+  || fail "grok invocation does not unset both tokens: $grok_cmd"
+# No `export GH_TOKEN`-style re-exports or env assignments anywhere in main or
+# in the setup_env path that could put a token back into Grok's command.
+[[ "$main_src" != *"export GH_TOKEN"* && "$main_src" != *"export GITHUB_TOKEN"* ]] \
+  || fail "main re-exports a token"
+scrub_dir=$ROOT/scrub
+mkdir -p "$scrub_dir/bin"
+cat > "$scrub_dir/bin/grok" <<'MOCK'
+#!/usr/bin/env bash
+env > "$GROK_ENV_DUMP"
+MOCK
+chmod +x "$scrub_dir/bin/grok"
+GROK_ENV_DUMP=$scrub_dir/env.txt
+export GROK_ENV_DUMP
+(
+  export GH_TOKEN=sentinel-gh-token GITHUB_TOKEN=sentinel-github-token
+  export PATH="$scrub_dir/bin:$ORIG_PATH"
+  dir=$scrub_dir/clone order=/dev/null rules=/dev/null
+  eval "$grok_cmd"
+  true
+) || fail "mock grok invocation failed"
+[[ -s "$scrub_dir/env.txt" ]] || fail "mock grok did not run"
+if grep -qE '^(GH_TOKEN|GITHUB_TOKEN)=' "$scrub_dir/env.txt"; then
+  fail "GH_TOKEN or GITHUB_TOKEN reached Grok's environment"
+fi
+! grep -qE 'sentinel-gh-token|sentinel-github-token' "$scrub_dir/env.txt" \
+  || fail "token value leaked into Grok's environment"
+unset GROK_ENV_DUMP
+
 PATH=$ORIG_PATH
 # Read by finish_commit / prepare_env in the sourced runner.
 : "$title" "$issue" "$base" "$tests"
