@@ -169,7 +169,7 @@ Labels record state; they never grant permission. A merge still needs every
    - **Dependabot/lockfile-only PRs get no automatic fix.**
 4. **CodeRabbit isn't the arbitrator.** Each PR head gets a CodeRabbit review (any state), then **one independent Grok Build review** of the diff, the acceptance criteria, CI and CodeRabbit's comments. The Grok Build reviewer's verdict is **PASS**, **FIX** or **ESCALATE**. 
    - A PR is **ready only** when CI is green **and** the verdict on the current head is **PASS**.
-   - **CodeRabbit changes-requested alone doesn't block.** 
+   - **A bot's `CHANGES_REQUESTED` on the current head blocks a merge where a ruleset enforces the `pull_request` rule** (the `factory-main` ruleset; the enrolled repos are those `gh factory plan` lists as enrolled, which `scripts/ruleset-drift-check.sh` checks against each repo's `factory.yml`). The remedy is to fix the finding or have Scott dismiss it. Where no ruleset enforces it, the review does not create a GitHub ruleset block; for `agents.review_bot: coderabbit`, §6 still requires no outstanding `changes requested` before merge. The reviewer states the PR's observed `mergeStateStatus` for the head (see `agents/roles/reviewer.md`).
    - **CodeRabbit approval alone isn't enough.**
    - **PASS on a non-protected PR** merges under the standing permission (§6).
    - **PASS on a protected PR** goes to **Scott**.

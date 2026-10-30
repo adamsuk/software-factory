@@ -14,6 +14,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   lives in `scripts/protected-paths.sh`, used by `run-work-order.sh` and named
   in the reviewer brief for the `--protected` call.
 
+### Fixed
+
+- `AGENTS.md` §10.4 and the reviewer brief no longer say changes-requested
+  "alone doesn't block". A bot's `CHANGES_REQUESTED` on the current head
+  blocks a merge where the `factory-main` ruleset enforces the `pull_request`
+  rule; verdicts must now state the observed `mergeStateStatus` (#172).
+
 ## 2026-10-29
 
 ### Added
