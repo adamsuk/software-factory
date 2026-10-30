@@ -80,6 +80,14 @@ touch those.
   proving the old default behavior (no flag given) is unchanged for both
   FIX and a non-FIX verdict.
 
+**Known box gap, not introduced here:** `scripts/test-station-post.sh`
+fails on this machine's `jq` 1.6, which mis-tokenises `{name: $label}` —
+the same pre-existing issue `.github/factory.yml`'s own `test_command`
+already excludes it for (#164). This work order's `test_command` still
+names it, since CI's `tests` job runs it correctly; verify it there, or
+on a box with a newer `jq`, not by trusting a local run that fails on
+this one for an unrelated reason.
+
 ## Out of scope
 
 - Real serialization/atomic reservation for concurrent Pick runs (see
