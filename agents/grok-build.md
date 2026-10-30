@@ -91,7 +91,8 @@ Optional: `-m <model>` (see `grok models`), `--effort <level>`.
    change. Grok Build often commits by itself, so its commits and any leftover
    changes become one commit on top of the starting revision, titled
    `<title> (#<issue>)` (commits already on a reused remote branch stay put).
-   Stops (exit 4) if the change touches a protected path (AGENTS.md §5).
+   Stops (exit 4) if the change touches a protected path (AGENTS.md §5; `scripts/protected-paths.sh`, which
+   leaves `agents/work-orders/` alone).
 5. Prepares the test environment (#34): the work order's `setup_command`, else
    `agents.setup_command` from `.github/factory.yml` on `origin/<base>`, else
    auto-detect: a Python venv at `<clone>.venv`, outside the clone

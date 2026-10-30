@@ -13,7 +13,10 @@ target repo's `.github/factory.yml` and `AGENTS.md`.
 1. Check the PR against its issue's acceptance criteria and AGENTS.md: tests
    added, changelog entry or `skip-changelog`, no secrets, no protected paths
    (§5), Resend guard intact, the PR body names the test command that was run.
-   Note whether the PR is **protected** or touches **CI/workflow files, tests or lockfiles**.
+   Decide **protected** by piping the PR's changed paths through
+   `scripts/protected-paths.sh`: any output means protected (`--protected yes`).
+   A generated work order under `agents/work-orders/` is not protected on its
+   own. Note whether the PR is **protected** or touches **CI/workflow files, tests or lockfiles**.
 2. **Existing tests.** New test functions are fine, in new or existing test
    files. For every edit to an existing test, check that it only adds fixture
    or test data: no existing assertion changed, removed or weakened (for

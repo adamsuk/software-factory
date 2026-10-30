@@ -3,6 +3,17 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-10-30
+
+### Changed
+
+- `AGENTS.md` section 5 no longer protects `agents/work-orders/**` (#162).
+  Generated work orders are bookkeeping, so a factory PR that only adds one is
+  no longer routed to `factory:blocked`. `AGENTS.md`, `agents/roles/**`,
+  `agents/grok-build.md` and `CODEOWNERS` stay protected. The path list now
+  lives in `scripts/protected-paths.sh`, used by `run-work-order.sh` and named
+  in the reviewer brief for the `--protected` call.
+
 ## 2026-10-29
 
 ### Added

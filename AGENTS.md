@@ -78,7 +78,11 @@ A change that alters any of these needs a person, not an agent fix:
   `.coderabbit.yaml`,
 - lockfiles: `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `poetry.lock`,
   `uv.lock`, `Cargo.lock`, `go.sum`, `Gemfile.lock`, `composer.lock`, `*.lock`,
-- agent instructions: `AGENTS.md`, `agents/**`, `CODEOWNERS`.
+- agent instructions: `AGENTS.md`, `agents/**`, `CODEOWNERS`. The one exception
+  is `agents/work-orders/**`: generated work orders are bookkeeping, not
+  instruction, so they are **not** protected. `agents/roles/**` and
+  `agents/grok-build.md` stay protected. `scripts/protected-paths.sh` is the
+  deterministic check for this path list.
 
 If the work order genuinely needs one, say so in the PR and request Scott's
 review. Never make it as part of a fix-loop attempt.

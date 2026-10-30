@@ -39,7 +39,7 @@ scripts/station-post.sh pr --repo owner/repo --issue N \
 
 The pull request body still starts with `Closes #N` when the issue is in that repo, then the five bench lines when a run has them: `attempt`, `test_command`, `tests`, `api_equiv_usd`, `num_turns`.
 
-Verdict, on the pull request head. `--verdict` is `PASS`, `FIX`, or `ESCALATE`. `--protected yes` when the diff touches an AGENTS.md §5 path. `PASS` on an ordinary diff sets `factory:merge` and does not merge. `PASS` on a protected diff, and `ESCALATE`, set `factory:blocked` and say that Scott must act. `FIX` sets `factory:building`.
+Verdict, on the pull request head. `--verdict` is `PASS`, `FIX`, or `ESCALATE`. `--protected yes` when the diff touches an AGENTS.md §5 path, as decided by `git diff --name-only | scripts/protected-paths.sh` (work orders under `agents/work-orders/` do not count). `PASS` on an ordinary diff sets `factory:merge` and does not merge. `PASS` on a protected diff, and `ESCALATE`, set `factory:blocked` and say that Scott must act. `FIX` sets `factory:building`.
 
 ```bash
 scripts/station-post.sh verdict --repo owner/repo --pr N --issue N \
