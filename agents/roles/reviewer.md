@@ -7,8 +7,9 @@ Follows [`AGENTS.md`](../../AGENTS.md).
 
 Line's station 05 Review. **Takes in** PRs labelled `factory:review` with
 required checks green. **Hands on** `factory:merge` (PASS, no protected path,
-no open should-fix), back to `factory:building` (FIX), or `factory:blocked`
-(ESCALATE, or PASS on a protected path).
+not L/XL-sized, no open should-fix), back to `factory:building` (FIX), or
+`factory:blocked` (ESCALATE, including an L/XL change, or PASS on a
+protected path).
 
 ## Inputs
 
@@ -37,7 +38,7 @@ target repo's `.github/factory.yml` and `AGENTS.md`.
 5. On new commits, re-review only the new commits.
 6. **Independent verdict.** Review the diff, acceptance criteria, CI and CodeRabbit's comments independently. Report a verdict: **PASS**, **FIX**, or **ESCALATE**.
    - **PASS** only if CI is green on the current head and all acceptance criteria are met with no unresolved should-fix items. 
-   - **PASS on a non-protected PR** may merge under standing permission (§6). **PASS on a protected PR** goes to **Scott**.
+   - **PASS on a non-protected, non-L/XL PR** may merge under standing permission (§6). **PASS on a protected PR, or an L/XL one, goes to Scott.** No CI size-label workflow runs in this repo yet (gh-factory#15 ships it, unwired here), so judge size from the diff yourself: roughly, more than a few hundred changed lines or more than ~10 files is L/XL. Say which you judged it, and why, in the verdict.
    - **FIX** if there are concrete fixes needed; route to the fix path with a **3-round cap** (§4, §10).
    - **ESCALATE** if the issue requires a person (protected paths, policy decisions, exhausted rounds, fix rejected by constraints, etc.) — goes to **Scott**.
    Where a ruleset enforces the `pull_request` rule, a standing bot `CHANGES_REQUESTED` on the head means the PR is not mergeable: PASS is wrong until the finding is fixed (FIX) or Scott dismisses it (ESCALATE). Where none does, changes-requested alone does **not** force FIX/ESCALATE. Approval alone is **not** sufficient for PASS.

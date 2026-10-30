@@ -32,9 +32,13 @@ and tracks it to a reviewed PR. Follows [`AGENTS.md`](../../AGENTS.md).
    that count as in flight by the definition above: an open PR or
    `factory/<issue>-*` branch for a factory issue. At 2 or more, do not pick a
    **new** issue for that repo; leave it `factory:ready` and report that
-   review capacity is full. Issues already in flight still proceed through
-   steps 2-7. The cap is brief-only: `foreman-orchestrate.sh pick` hands the
-   decision to the agent, so this text is what enforces it.
+   review capacity is full. Issues already in flight stay on steps 6-7
+   (Gate, Merge) only — the cap never reruns step 4 (Build) on a pending PR;
+   step 6 already says not to. The one exception is step 6's own `retry`
+   path, which reruns step 4 on the same branch when the gate authorizes it
+   (attempt below 3) — the cap doesn't change that. The cap is brief-only:
+   `foreman-orchestrate.sh pick` hands the decision to the agent, so this
+   text is what enforces it.
    On pickup, swap `factory:ready` for `factory:building`. touchlineHQ
    targets are fine to build; only merging is paused.
 2. **Resolve the target.** A backlog issue names its target repo in a

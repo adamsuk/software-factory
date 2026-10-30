@@ -24,4 +24,17 @@ echo "ok: cap stated once"
 grep -q 'station 05 Review' "$reviewer" || fail "reviewer brief lacks station header"
 grep -q '\*\*Takes in\*\*' "$reviewer" || fail "reviewer lacks takes in"
 grep -q '\*\*Hands on\*\*' "$reviewer" || fail "reviewer lacks hands on"
+grep -q 'L/XL' "$reviewer" || fail "reviewer header does not mention L/XL escalation"
 echo "ok: reviewer station header"
+
+# In-flight issues must not be routed back through Build (step 4); the cap
+# text must say steps 6-7, not a range that includes Build.
+grep -q 'stay on steps 6-7' <<< "$pick" || fail "cap does not keep in-flight issues on steps 6-7 only"
+! grep -q 'steps 2-7' <<< "$pick" || fail "cap still claims steps 2-7"
+echo "ok: in-flight issues are not routed back through Build"
+
+# Step 6 (Independent verdict) must also carry the L/XL rule, not just the header.
+verdict=$(awk '/^6\. \*\*Independent verdict\.\*\*/{on=1} /^## Outputs/{on=0} on' "$reviewer")
+[[ -n "$verdict" ]] || fail "Independent verdict step not found"
+grep -q 'L/XL' <<< "$verdict" || fail "Independent verdict step does not mention L/XL"
+echo "ok: Independent verdict step states the L/XL rule"

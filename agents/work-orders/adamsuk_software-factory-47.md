@@ -76,6 +76,9 @@ are still missing:
       rather than just the brief — actually enforced there, with a test
       proving a repo at the cap is skipped and a repo under it is not
 - [ ] `CHANGELOG.md` gains a dated entry in this repo's changelog style
+- [ ] One real issue reaches `factory:merge` from `factory:review` through a
+      recorded PR Reviewer PASS verdict (no named human approver required —
+      that's #44/#9, explicitly out of scope here)
 
 ## Report back
 
