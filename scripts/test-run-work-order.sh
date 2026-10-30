@@ -1474,7 +1474,8 @@ export GROK_ENV_DUMP
 if grep -qE '^(GH_TOKEN|GITHUB_TOKEN)=' "$scrub_dir/env.txt"; then
   fail "GH_TOKEN or GITHUB_TOKEN reached Grok's environment"
 fi
-! grep -q sentinel "$scrub_dir/env.txt" || fail "token value leaked into Grok's environment"
+! grep -qE 'sentinel-gh-token|sentinel-github-token' "$scrub_dir/env.txt" \
+  || fail "token value leaked into Grok's environment"
 unset GROK_ENV_DUMP
 
 PATH=$ORIG_PATH

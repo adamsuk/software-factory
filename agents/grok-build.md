@@ -81,10 +81,13 @@ decision is #7):
   nothing more.
 - **Credentials on that box:** the owner's `gh` login and the Grok CLI signed
   in to the owner's grok.com account (or `XAI_API_KEY`). Grok Build is handed
-  none of the token variables: the wrapper runs it as
+  neither `GH_TOKEN` nor `GITHUB_TOKEN`: the wrapper runs it as
   `env -u GH_TOKEN -u GITHUB_TOKEN grok ...`, and
   `scripts/test-run-work-order.sh` (`grok-token-scrub`) runs that exact
   command with both set and checks neither reaches Grok's environment.
+  `XAI_API_KEY`, when that's how this box authenticates, is **not** scrubbed
+  — Grok needs it to run at all, and there's no other authentication path
+  for an unattended run today.
 - **The other half:** `--deny 'Bash(git push*)' --deny 'Bash(gh *)'` stop Grok
   pushing or calling `gh` directly, even if it had a credential.
 - **A guardrail, not isolation.** An agent with shell access on the box could
