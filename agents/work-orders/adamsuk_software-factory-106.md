@@ -88,8 +88,11 @@ Add a dated `CHANGELOG.md` entry.
       Scout or `agents/roles/research.md` and this issue.
 - [ ] `shellcheck scripts/*.sh adapters/*/run.sh` exits 0 and stays green. The role text is
       asserted by `scripts/test-research-brief.sh` (added in fix round 3).
-- [ ] Apart from any file under `agents/work-orders/`, the only implementation
-      files changed are `agents/roles/research.md` and `CHANGELOG.md`.
+- [ ] Apart from any file under `agents/work-orders/`, the only files
+      changed are `agents/roles/research.md`, `CHANGELOG.md`,
+      `.github/factory.yml` and `scripts/test-research-brief.sh` (the
+      latter two added in fix round 4, wiring the new test into the
+      local gate).
 
 ## Report back
 
