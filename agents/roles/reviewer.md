@@ -23,14 +23,15 @@ target repo's `.github/factory.yml` and `AGENTS.md`.
 3. **References.** Issue links use `#N` only for the PR's own repo and
    `owner/repo#N` for an issue in another repo, in the title, commits and
    body.
-4. **CodeRabbit awareness.** Ensure each PR head has had a CodeRabbit review (any state). If CodeRabbit says it already reviewed, won't review incrementally, or the head has gone ~20 minutes without review (including if head is CodeRabbit's commit), post `@coderabbitai full review` **once per head commit**. A review of an older commit never counts. Do **not** treat "changes requested" as an automatic block or "approval" as sufficient.
+4. **CodeRabbit awareness.** Ensure each PR head has had a CodeRabbit review (any state). If CodeRabbit says it already reviewed, won't review incrementally, or the head has gone ~20 minutes without review (including if head is CodeRabbit's commit), post `@coderabbitai full review` **once per head commit**. A review of an older commit never counts. "Approval" is never sufficient on its own. A bot's `CHANGES_REQUESTED` on the current head blocks a merge where a ruleset enforces the `pull_request` rule on that repo (the `factory-main` ruleset; the enrolled repos are those `gh factory plan` lists as enrolled, checked by `scripts/ruleset-drift-check.sh`, so this brief keeps no copy of the list). The remedy is to fix the finding or have Scott dismiss it. Where no ruleset enforces it, it is not an automatic block. This brief makes no claim about whether an owner bypass can merge over a standing review.
 5. On new commits, re-review only the new commits.
 6. **Independent verdict.** Review the diff, acceptance criteria, CI and CodeRabbit's comments independently. Report a verdict: **PASS**, **FIX**, or **ESCALATE**.
    - **PASS** only if CI is green on the current head and all acceptance criteria are met with no unresolved should-fix items. 
    - **PASS on a non-protected PR** may merge under standing permission (§6). **PASS on a protected PR** goes to **Scott**.
    - **FIX** if there are concrete fixes needed; route to the fix path with a **3-round cap** (§4, §10).
    - **ESCALATE** if the issue requires a person (protected paths, policy decisions, exhausted rounds, fix rejected by constraints, etc.) — goes to **Scott**.
-   CodeRabbit changes-requested alone does **not** force FIX/ESCALATE; CodeRabbit approval alone is **not** sufficient for PASS.
+   Where a ruleset enforces the `pull_request` rule, a standing bot `CHANGES_REQUESTED` on the head means the PR is not mergeable: PASS is wrong until the finding is fixed (FIX) or Scott dismisses it (ESCALATE). Where none does, changes-requested alone does **not** force FIX/ESCALATE. Approval alone is **not** sufficient for PASS.
+   **Observed merge status.** Every verdict comment states the PR's observed `mergeStateStatus` for the head under review, read with `gh pr view <N> --json mergeStateStatus,headRefOid` (not inferred from the rules), with the head SHA it was read at.
 
 ## Outputs
 
