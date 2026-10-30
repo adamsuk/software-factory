@@ -71,6 +71,27 @@ Optional: `-m <model>` (see `grok models`), `--effort <level>`.
 - Keep `sessionId` to continue a fix attempt with `grok -p "..." --resume <id>`.
 - Never paste the JSON into an issue or PR; it can contain file contents.
 
+## Run environment
+
+What this runs on today, and what protects it (tracked in #44; the identity
+decision is #7):
+
+- **The box:** a shared computer. There is no per-agent sandbox and no
+  network egress allowlist yet. `--sandbox workspace` limits where Grok writes,
+  nothing more.
+- **Credentials on that box:** the owner's `gh` login and the Grok CLI signed
+  in to the owner's grok.com account (or `XAI_API_KEY`). Grok Build is handed
+  none of the token variables: the wrapper runs it as
+  `env -u GH_TOKEN -u GITHUB_TOKEN grok ...`, and
+  `scripts/test-run-work-order.sh` (`grok-token-scrub`) runs that exact
+  command with both set and checks neither reaches Grok's environment.
+- **The other half:** `--deny 'Bash(git push*)' --deny 'Bash(gh *)'` stop Grok
+  pushing or calling `gh` directly, even if it had a credential.
+- **A guardrail, not isolation.** An agent with shell access on the box could
+  still reach those credentials by other means (the `gh` config file, the
+  Grok login, other processes). Real isolation (sandboxing, egress limits, a
+  separate bot identity) is #44's later work and #7; none of it is done here.
+
 ## What the wrapper does
 
 `scripts/run-work-order.sh [--push] <work-order.md>`:
