@@ -22,7 +22,9 @@ one, goes to Scott" — but `scripts/station-post.sh verdict` has no L/XL
 input at all. A `PASS --protected no` call always sets `factory:merge`
 regardless of size. So an L/XL, non-protected PR with a PASS verdict would
 actually merge under standing permission, contradicting the stated rule.
-The only verdict value that routes to `factory:blocked` is **ESCALATE**.
+A protected `PASS` and **ESCALATE** both route to `factory:blocked`; only a
+non-protected `PASS` routes to `factory:merge`. An L/XL change carries no
+protected signal of its own, so ESCALATE is the route that reaches blocked.
 
 One other round-2 finding is already fixed and confirmed addressed
 (`agents/work-orders/adamsuk_software-factory-47.md:78`) — don't touch it.
