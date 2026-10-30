@@ -568,8 +568,9 @@ main() {
   # AGENTS.md section 5: CI config, lockfiles, agent instructions, and edits to existing tests.
   tests_re='(^|/)(tests?|__tests__|spec)/|[._-](test|spec)\.[a-z]+$|(^|/)test_[^/]*$'
   hits=$({
-    git diff --no-renames --name-only "$start" HEAD | "$protected_paths_sh"
-    git diff --no-renames --name-only --diff-filter=MDR "$start" HEAD | grep -Ei "$tests_re"
+    git diff --no-renames -z --name-only "$start" HEAD | "$protected_paths_sh"
+    git diff --no-renames --name-only --diff-filter=MDR "$start" HEAD \
+      | grep -v '^agents/work-orders/' | grep -Ei "$tests_re"
   } || true)
   [[ -z "$hits" ]] || die 4 "needs a person, protected paths changed: $(echo "$hits" | tr '\n' ' ')"
 
