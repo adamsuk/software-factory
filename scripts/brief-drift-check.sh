@@ -19,7 +19,7 @@ CANONICAL_LABELS=(
 root=${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}
 brief=$root/agents/grok-build.md
 wrapper=$root/scripts/run-work-order.sh
-for f in "$brief" "$wrapper" "$root/AGENTS.md"; do
+for f in "$brief" "$wrapper" "$root/AGENTS.md" "$root/stations/README.md"; do
   [[ -f "$f" ]] || { echo "brief-drift-check: missing $f" >&2; exit 2; }
 done
 
@@ -37,7 +37,11 @@ while read -r code; do
   fi
 done < <(printf '%s\n' "$section" | grep -oiE 'exits?( with)?( code)? [0-9]+' | grep -oE '[0-9]+$' | sort -un)
 
-invocation=$(printf '%s\n' "$section" | sed -n '/run-work-order\.sh/,/^$/p')
+# Only the first invocation block: later mentions of the wrapper are ignored.
+invocation=$(printf '%s\n' "$section" | awk '
+  /run-work-order\.sh/ && !found { found = 1 }
+  found { print; if (/^$/) exit }
+')
 
 while read -r flag; do
   [[ -n "$flag" ]] || continue

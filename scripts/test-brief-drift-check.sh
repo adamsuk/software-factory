@@ -123,3 +123,31 @@ status=0; out=$(bash "$script" "$r") || status=$?
 [[ $status -eq 1 ]] || fail "expected exit 1, got $status: $out"
 grep -qF 'exit 99' <<< "$out" || fail "'exits with code N' wording was not recognised: $out"
 pass
+
+tname="ignores flags after a later, unrelated mention of the wrapper"
+r=$(fresh_root later-mention)
+# Append a second paragraph (still inside the section: it is the last one
+# before the next heading, or end of file) that mentions the wrapper and
+# shows an unsupported flag on the following line.
+awk '
+  /^## What the wrapper does/ { on = 1 }
+  on && /^## / && !/^## What the wrapper does/ && !done {
+    print "Later note about run-work-order.sh setup:"
+    print "    --unrelated-setup-flag"
+    print ""
+    done = 1
+  }
+  { print }
+  END { if (!done) { print ""; print "Later note about run-work-order.sh setup:"; print "    --unrelated-setup-flag" } }
+' "$r/agents/grok-build.md" > "$r/b" && mv "$r/b" "$r/agents/grok-build.md"
+grep -qF -- '--unrelated-setup-flag' "$r/agents/grok-build.md" || fail "fixture edit did not apply"
+status=0; out=$(bash "$script" "$r") || status=$?
+[[ $status -eq 0 ]] || fail "later mention contributed flags (exit $status): $out"
+pass
+
+tname="exits 2 when stations/README.md is missing"
+r=$(fresh_root missing-stations)
+rm "$r/stations/README.md"
+status=0; bash "$script" "$r" > /dev/null 2>&1 || status=$?
+[[ $status -eq 2 ]] || fail "expected exit 2, got $status"
+pass
