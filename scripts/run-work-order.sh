@@ -519,6 +519,8 @@ main() {
   here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
   rules="$here/AGENTS.md"
   [[ -f "$rules" ]] || die 2 "missing $rules"
+  protected_paths_sh="$here/scripts/protected-paths.sh"
+  [[ -x "$protected_paths_sh" ]] || die 2 "missing $protected_paths_sh"
   for tool in git gh grok jq; do command -v "$tool" > /dev/null || die 2 "$tool not found"; done
   git var GIT_COMMITTER_IDENT > /dev/null 2>&1 || die 2 "set git user.name and user.email (the identity agent commits use)"
 
@@ -564,11 +566,11 @@ main() {
   setup_tree=$(git rev-parse 'HEAD^{tree}')
 
   # AGENTS.md section 5: CI config, lockfiles, agent instructions, and edits to existing tests.
-  protected='^(\.github/(workflows|actions)/|\.github/factory\.yml$|\.github/CODEOWNERS$|CODEOWNERS$|AGENTS\.md$|agents/)|(^|/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|go\.sum|[^/]*\.lock)$'
   tests_re='(^|/)(tests?|__tests__|spec)/|[._-](test|spec)\.[a-z]+$|(^|/)test_[^/]*$'
   hits=$({
-    git diff --name-only "$start" HEAD | grep -E "$protected"
-    git diff --name-only --diff-filter=MDR "$start" HEAD | grep -Ei "$tests_re"
+    git diff --no-renames -z --name-only "$start" HEAD | "$protected_paths_sh"
+    git diff --no-renames --name-only --diff-filter=MDR "$start" HEAD \
+      | grep -v '^agents/work-orders/' | grep -Ei "$tests_re"
   } || true)
   [[ -z "$hits" ]] || die 4 "needs a person, protected paths changed: $(echo "$hits" | tr '\n' ' ')"
 
