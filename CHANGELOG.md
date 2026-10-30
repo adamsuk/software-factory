@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 2026-10-30
 
+### Added
+
+- Foreman "Pick" step caps open agent PRs at 2 per repo (counted in the PR's
+  own repo); at the cap no new issue is picked (#47). The reviewer brief now
+  states station 05 Review's inputs and outputs.
+
 ### Changed
 
 - `AGENTS.md` section 5 no longer protects `agents/work-orders/**` (#162).

@@ -3,6 +3,13 @@
 Reviews agent and human PRs in repos with `reviewer` in `agents.roles`.
 Follows [`AGENTS.md`](../../AGENTS.md).
 
+## Station
+
+Line's station 05 Review. **Takes in** PRs labelled `factory:review` with
+required checks green. **Hands on** `factory:merge` (PASS, no protected path,
+no open should-fix), back to `factory:building` (FIX), or `factory:blocked`
+(ESCALATE, or PASS on a protected path).
+
 ## Inputs
 
 A PR link and its head commit, the linked issue or work order, and the
