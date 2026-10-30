@@ -9,7 +9,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Foreman "Pick" step caps open agent PRs at 2 per repo (counted in the PR's
   own repo); at the cap no new issue is picked (#47). The reviewer brief now
-  states station 05 Review's inputs and outputs.
+  states station 05 Review's inputs and outputs, including that an L/XL
+  change goes to Scott.
+- A "Run environment" section in `agents/grok-build.md` (#44) and a test
+  (`grok-token-scrub` in `scripts/test-run-work-order.sh`) proving Grok Build
+  is started without `GH_TOKEN` or `GITHUB_TOKEN`.
 
 ### Changed
 
