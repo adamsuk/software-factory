@@ -89,12 +89,12 @@ Add a dated `CHANGELOG.md` entry.
 - [ ] `shellcheck scripts/*.sh` exits 0. It stays green and does not assert
       the role text — this is a role-brief edit, so no new test file is
       required.
-- [ ] The only files changed are `agents/roles/research.md` and
-      `CHANGELOG.md`.
+- [ ] Apart from this work order, the only implementation files changed
+      are `agents/roles/research.md` and `CHANGELOG.md`.
 
 ## Report back
 
-In the PR body: confirm the only files changed are `agents/roles/research.md`
-and `CHANGELOG.md`. This PR edits a protected path (`agents/roles/**`,
+In the PR body: confirm that, apart from the work order files, the only
+implementation files changed are `agents/roles/research.md` and `CHANGELOG.md`. This PR edits a protected path (`agents/roles/**`,
 AGENTS.md §5) — say so explicitly and expect Scott's review regardless of
 verdict.

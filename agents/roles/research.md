@@ -13,7 +13,8 @@ Repos with the `research` topic (for example `adamsuk/line`), or with
 2. For each meaningful source change, file one issue on the research repo with
    labels `factory` and `factory:triage`. Each issue gives the dated sources
    (URLs and dates), the section of the guide it affects, the proposed change
-   in a few sentences, and a line saying the `CHANGELOG.md` entry and
+   in a few sentences, a `Target repo: owner/repo` line naming where the
+   change lands, and a line saying the `CHANGELOG.md` entry and
    collapsible sections are required. Open at most 3 issues per repo per run,
    and don't duplicate an open issue for the same change.
 3. Send the foreman (Software Factory) a weekly summary listing the issues
