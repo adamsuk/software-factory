@@ -33,7 +33,7 @@ previous round; do not change anything for it.)
 
 In `scripts/test-foreman-pick-cap.sh`, extract the `## Station` block from
 `agents/roles/reviewer.md` the same way the existing code already extracts
-the Pick step from `foreman.md` (`awk '/^## Station/{on=1} /^## /{on=0} on'`,
+the Pick step from `foreman.md` (`awk '/^## Station/{on=1; next} /^## /{on=0} on'`,
 stopping at the next `## ` heading), and run the existing L/XL assertion
 against that extracted block instead of the whole file.
 

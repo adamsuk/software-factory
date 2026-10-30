@@ -26,6 +26,8 @@ grep -q '\*\*Takes in\*\*' "$reviewer" || fail "reviewer lacks takes in"
 grep -q '\*\*Hands on\*\*' "$reviewer" || fail "reviewer lacks hands on"
 station=$(awk '/^## Station/{on=1; next} /^## /{on=0} on' "$reviewer")
 grep -q 'L/XL' <<< "$station" || fail "reviewer header does not mention L/XL escalation"
+# L/XL must route to blocked via ESCALATE, not to merge via PASS.
+grep -Eq 'ESCALATE, including an L/XL' <<< "${station//$'\n'/ }" || fail "reviewer header does not route L/XL via ESCALATE"
 echo "ok: reviewer station header"
 
 # In-flight issues must not be routed back through Build (step 4); the cap
@@ -38,4 +40,6 @@ echo "ok: in-flight issues are not routed back through Build"
 verdict=$(awk '/^6\. \*\*Independent verdict\.\*\*/{on=1} /^## Outputs/{on=0} on' "$reviewer")
 [[ -n "$verdict" ]] || fail "Independent verdict step not found"
 grep -q 'L/XL' <<< "$verdict" || fail "Independent verdict step does not mention L/XL"
+grep -q 'L/XL change is reported as ESCALATE, not PASS' <<< "$verdict" || fail "Independent verdict step does not route L/XL via ESCALATE"
+! grep -q 'or an L/XL one, goes to Scott' <<< "$verdict" || fail "Independent verdict step still routes L/XL via PASS"
 echo "ok: Independent verdict step states the L/XL rule"
