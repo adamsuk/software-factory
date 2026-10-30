@@ -14,7 +14,7 @@ pick=$(awk '/^1\. \*\*Pick\.\*\*/{on=1} /^2\. \*\*Resolve/{on=0} on' "$brief")
 [[ -n "$pick" ]] || fail "Pick step not found"
 grep -q 'Cap: 2 open agent PRs per repo' <<< "$pick" || fail "cap of 2 not stated under Pick"
 pickflat=$(tr -s ' \n' '  ' <<< "$pick")
-grep -q "candidate issue's \`Target repo:\`" <<< "$pickflat" || fail "cap is not evaluated against the candidate's Target repo"
+grep -Eq "(^|[.!?*] )Evaluate the cap against the candidate issue's \`Target repo:\`" <<< "$pickflat" || fail "cap is not evaluated against the candidate's Target repo"
 ! grep -q "PR's own repo (the repo the branch" <<< "$pickflat" || fail "cap still counts against the PR's own repo"
 grep -q 'branch-only' <<< "$pickflat" || fail "cap does not count branch-only in-flight entries"
 grep -q 'new' <<< "$pick" || fail "cap does not say it applies to new issues"
@@ -50,4 +50,5 @@ grep -q 'L/XL change is reported as ESCALATE, not PASS' <<< "$verdict" || fail "
 ! grep -q 'or an L/XL one, goes to Scott' <<< "$verdict" || fail "Independent verdict step still routes L/XL via PASS"
 # shellcheck disable=SC2016  # literal backticked text, not expansion
 grep -Fq 'ESCALATE both set `factory:blocked`' <<< "${verdict//$'\n'/ }" || fail "Independent verdict step does not route ESCALATE to factory:blocked"
+grep -Fq 'ESCALATE takes precedence over FIX for an L/XL change' <<< "${verdict//$'\n'/ }" || fail "Independent verdict step does not say ESCALATE wins over FIX for L/XL"
 echo "ok: Independent verdict step states the L/XL rule"

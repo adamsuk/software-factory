@@ -7,8 +7,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- Foreman "Pick" step caps open agent PRs at 2 per repo (counted in the PR's
-  own repo); at the cap no new issue is picked (#47). The reviewer brief now
+- Foreman "Pick" step caps in-flight factory entries (open agent PRs, including
+  branch-only ones) at 2 per repo, counted against the candidate issue's
+  `Target repo:`; at the cap no new issue is picked (#47). The reviewer brief now
   states station 05 Review's inputs and outputs, including that an L/XL
   change goes to Scott.
 - A "Run environment" section in `agents/grok-build.md` (#44) and a test
