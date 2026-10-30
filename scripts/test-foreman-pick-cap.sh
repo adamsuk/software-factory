@@ -24,7 +24,8 @@ echo "ok: cap stated once"
 grep -q 'station 05 Review' "$reviewer" || fail "reviewer brief lacks station header"
 grep -q '\*\*Takes in\*\*' "$reviewer" || fail "reviewer lacks takes in"
 grep -q '\*\*Hands on\*\*' "$reviewer" || fail "reviewer lacks hands on"
-grep -q 'L/XL' "$reviewer" || fail "reviewer header does not mention L/XL escalation"
+station=$(awk '/^## Station/{on=1; next} /^## /{on=0} on' "$reviewer")
+grep -q 'L/XL' <<< "$station" || fail "reviewer header does not mention L/XL escalation"
 echo "ok: reviewer station header"
 
 # In-flight issues must not be routed back through Build (step 4); the cap
