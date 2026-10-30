@@ -33,6 +33,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- `station-post.sh verdict --should-fix` now matches `review-issue.sh`: no leading
+  zeros, and `PASS` with a non-zero count or `FIX` with zero is rejected (#47).
 - `AGENTS.md` §10.4 and the reviewer brief no longer say changes-requested
   "alone doesn't block". A bot's `CHANGES_REQUESTED` on the current head
   blocks a merge where the `factory-main` ruleset enforces the `pull_request`

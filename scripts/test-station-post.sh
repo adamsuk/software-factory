@@ -309,6 +309,36 @@ rc=$?
 set -e
 assert_eq "$rc" "2"
 
+tname="verdict should-fix rejects leading zero"
+reset_issue "factory:review"
+seed_review_pr
+set +e
+"$post" verdict --repo acme/widgets --pr 1 --issue 7 --sha abcdef1234567890 \
+  --verdict FIX --protected no --should-fix 01 --summary "x" >"$root/err" 2>&1
+rc=$?
+set -e
+assert_eq "$rc" "2"
+
+tname="verdict should-fix rejects PASS with non-zero"
+reset_issue "factory:review"
+seed_review_pr
+set +e
+"$post" verdict --repo acme/widgets --pr 1 --issue 7 --sha abcdef1234567890 \
+  --verdict PASS --protected no --should-fix 2 --summary "x" >"$root/err" 2>&1
+rc=$?
+set -e
+assert_eq "$rc" "2"
+
+tname="verdict should-fix rejects FIX with zero"
+reset_issue "factory:review"
+seed_review_pr
+set +e
+"$post" verdict --repo acme/widgets --pr 1 --issue 7 --sha abcdef1234567890 \
+  --verdict FIX --protected no --should-fix 0 --summary "x" >"$root/err" 2>&1
+rc=$?
+set -e
+assert_eq "$rc" "2"
+
 tname="closes on a non-factory branch"
 reset_issue "factory:building"
 python3 - << PY

@@ -297,7 +297,12 @@ cmd_verdict() {
   esac
   [[ "$protected" == "yes" || "$protected" == "no" ]] || die 2 "protected must be yes or no"
   [[ -n "$summary" ]] || die 2 "summary is required"
-  [[ -z "$should_fix" || "$should_fix" =~ ^[0-9]+$ ]] || die 2 "should-fix must be a non-negative integer"
+  [[ -z "$should_fix" || "$should_fix" =~ ^(0|[1-9][0-9]*)$ ]] || die 2 "should-fix must be 0 or a positive integer with no leading zeros"
+  # review-issue.sh can never resolve these combinations, so refuse to post them.
+  if [[ -n "$should_fix" ]]; then
+    [[ "$verdict" != "PASS" || "$should_fix" == "0" ]] || die 2 "should-fix must be 0 for a PASS verdict"
+    [[ "$verdict" != "FIX" || "$should_fix" != "0" ]] || die 2 "should-fix must be at least 1 for a FIX verdict"
+  fi
   local json names
   json=$(read_issue) || die 7 "could not read issue"
   names=$(labels_of "$json")
