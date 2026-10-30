@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 2026-10-30
 
+### Added
+
+- A "Run environment" section in `agents/grok-build.md` (#44) and a test
+  (`grok-token-scrub` in `scripts/test-run-work-order.sh`) proving Grok Build
+  is started without `GH_TOKEN` or `GITHUB_TOKEN`.
+
 ### Changed
 
 - `AGENTS.md` section 5 no longer protects `agents/work-orders/**` (#162).
