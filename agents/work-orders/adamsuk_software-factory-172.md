@@ -88,6 +88,8 @@ before starting.
       `mergeStateStatus` for the head under review
 - [ ] `CHANGELOG.md` gains a dated entry in the form the top of that file
       describes
+- [ ] A post-change verdict on a real pull request reports the observed
+      `mergeStateStatus` and the head SHA used for the observation
 
 ## Report back
 
