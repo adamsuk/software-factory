@@ -7,7 +7,7 @@ branch: factory/47-review-station-cap
 base: main
 test_command: "shellcheck scripts/*.sh adapters/*/run.sh && bash scripts/test-foreman-pick-cap.sh"
 setup_command: ""
-changelog: false
+changelog: true
 merge_allowed: false
 review_bot: coderabbit
 attempt: 4
