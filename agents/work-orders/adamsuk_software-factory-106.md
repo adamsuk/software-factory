@@ -86,9 +86,8 @@ Add a dated `CHANGELOG.md` entry.
 - [ ] `CHANGELOG.md` has a dated `## YYYY-MM-DD` entry (Europe/London) for
       this change, in this repo's Keep a Changelog style, naming Research
       Scout or `agents/roles/research.md` and this issue.
-- [ ] `shellcheck scripts/*.sh` exits 0. It stays green and does not assert
-      the role text — this is a role-brief edit, so no new test file is
-      required.
+- [ ] `shellcheck scripts/*.sh adapters/*/run.sh` exits 0 and stays green. The role text is
+      asserted by `scripts/test-research-brief.sh` (added in fix round 3).
 - [ ] Apart from this work order, the only implementation files changed
       are `agents/roles/research.md` and `CHANGELOG.md`.
 
