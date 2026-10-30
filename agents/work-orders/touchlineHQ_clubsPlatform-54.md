@@ -33,13 +33,21 @@ regression could pass E2E against one build and ship a different one.
   and runs E2E against it, instead of building its own copy.
 - The deploy job downloads the **same** artifact and deploys it, instead of
   running `npm run build` again.
+- Declare explicit job dependencies: preview E2E and deploy both `needs` the
+  build/upload job, and deploy also `needs` preview E2E — so deploy cannot
+  run against an artifact E2E hasn't tested yet.
 - Print the digest in both the E2E job and the deploy job's logs, and make
   sure they're the same value (that's the proof the two jobs used the
   identical artifact).
-- If preview and production need different `VITE_*` environment values,
-  say so explicitly in the PR body, and keep the difference to injected
-  config only (e.g. a separate config file read at runtime, or env vars
-  injected at deploy time) — not a different build.
+- `VITE_*` values are **build-time** inputs (Vite bakes them into the bundle
+  via `import.meta.env`; see `website/src/lib/posthog.ts`) — they cannot
+  differ between preview and production once there is one shared artifact.
+  If preview and production currently need different `VITE_*` values, say so
+  explicitly in the PR body and either (a) use identical values for the
+  shared artifact, or (b) move the setting to a runtime configuration path
+  the application reads (a separate config file, or a `window` global set at
+  deploy time) — not deployment-time injection of different `VITE_*` values,
+  which cannot work once the build already happened.
 
 ## Out of scope
 
@@ -53,6 +61,8 @@ regression could pass E2E against one build and ship a different one.
       in `main.yml`
 - [ ] The preview E2E job tests the uploaded artifact, not a fresh build
 - [ ] The deploy job deploys the uploaded artifact, not a fresh build
+- [ ] Preview E2E and deploy both declare `needs` on the build/upload job,
+      and deploy also declares `needs` on preview E2E
 - [ ] The artifact's digest is printed in both the E2E job and the deploy
       job's logs, and the PR body shows they match on a real run
 - [ ] Required checks stay green
