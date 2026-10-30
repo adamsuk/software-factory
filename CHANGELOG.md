@@ -16,8 +16,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (`grok-token-scrub` in `scripts/test-run-work-order.sh`) proving Grok Build
   is started without `GH_TOKEN` or `GITHUB_TOKEN`.
 
+- `station-post.sh verdict` takes an optional `--should-fix N` (default
+  unchanged: 1 for FIX, 0 otherwise); the reviewer brief says to pass the real
+  count for FIX and ESCALATE (#47).
+
 ### Changed
 
+- The foreman pick cap also counts `factory:building` issues as in flight and
+  keeps scanning past a capped candidate to the next eligible one (#47).
 - `AGENTS.md` section 5 no longer protects `agents/work-orders/**` (#162).
   Generated work orders are bookkeeping, so a factory PR that only adds one is
   no longer routed to `factory:blocked`. `AGENTS.md`, `agents/roles/**`,

@@ -52,3 +52,15 @@ grep -q 'L/XL change is reported as ESCALATE, not PASS' <<< "$verdict" || fail "
 grep -Fq 'ESCALATE both set `factory:blocked`' <<< "${verdict//$'\n'/ }" || fail "Independent verdict step does not route ESCALATE to factory:blocked"
 grep -Fq 'ESCALATE takes precedence over FIX for an L/XL change' <<< "${verdict//$'\n'/ }" || fail "Independent verdict step does not say ESCALATE wins over FIX for L/XL"
 echo "ok: Independent verdict step states the L/XL rule"
+
+# Round 7: label-only in-flight entries count, and a capped candidate does not
+# stop the scan.
+# shellcheck disable=SC2016  # literal backticked text, not expansion
+grep -Fq 'an issue labelled `factory:building`' <<< "$pickflat" || fail "cap does not count factory:building as in flight"
+grep -Fq 'continue scanning in age order for the next-oldest eligible candidate' <<< "$pickflat" || fail "Pick does not scan past a capped candidate"
+grep -Fq 'only if no later candidate passes the cap' <<< "$pickflat" || fail "capacity-full report is not conditional on no later candidate"
+echo "ok: factory:building counts and scan continues past a capped candidate"
+
+grep -Fq -- '--should-fix N' "$reviewer" || fail "reviewer brief does not document --should-fix"
+grep -Fq -- '--should-fix' "$here/../stations/github-writes.md" || fail "github-writes does not document --should-fix"
+echo "ok: --should-fix documented"

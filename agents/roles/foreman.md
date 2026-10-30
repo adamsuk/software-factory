@@ -31,10 +31,16 @@ and tracks it to a reviewed PR. Follows [`AGENTS.md`](../../AGENTS.md).
    candidate issue's `Target repo:` (the repo step 2 resolves; a fresh
    candidate has no PR or branch yet, so there is no "PR's own repo" to read).
    Count every in-flight factory entry in *that* repo, by the definition
-   above: an open PR or a `factory/<issue>-*` branch, whether open-PR or
-   branch-only (picked up, branch pushed, no PR yet). At 2 or more, do not
-   pick this **new** candidate; leave it `factory:ready` and report that
-   review capacity is full. Issues already in flight stay on steps 6-7
+   above: an open PR, a `factory/<issue>-*` branch, or an issue labelled
+   `factory:building` whose `Target repo:` is that repo, whether open-PR or
+   branch-only (picked up, branch pushed, no PR yet) or label-only (just
+   picked up, no branch yet). At 2 or more, do not
+   pick this **new** candidate; leave it `factory:ready` and continue
+   scanning in age order for the next-oldest eligible candidate (it may
+   target a repo under the cap). Report that review capacity is full only
+   if no later candidate passes the cap. The cap does not serialize
+   concurrent Pick runs: two simultaneous runs could both undercount, a
+   known gap that needs a real reservation mechanism, not wording. Issues already in flight stay on steps 6-7
    (Gate, Merge) only — the cap never reruns step 4 (Build) on a pending PR;
    step 6 already says not to. The one exception is step 6's own `retry`
    path, which reruns step 4 on the same branch when the gate authorizes it
