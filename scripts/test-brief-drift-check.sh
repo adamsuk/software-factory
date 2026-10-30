@@ -145,6 +145,28 @@ status=0; out=$(bash "$script" "$r") || status=$?
 [[ $status -eq 0 ]] || fail "later mention contributed flags (exit $status): $out"
 pass
 
+tname="catches an unsupported flag when a prose mention precedes the real invocation"
+r=$(fresh_root prose-first)
+awk '
+  /^## What the wrapper does/ { print; print ""; print "Run it with `scripts/run-work-order.sh` as shown below:"; next }
+  { print }
+' "$r/agents/grok-build.md" > "$r/b" && mv "$r/b" "$r/agents/grok-build.md"
+sed 's/run-work-order.sh \[--push\]/run-work-order.sh [--push] [--nonsense]/' "$r/agents/grok-build.md" > "$r/b" && mv "$r/b" "$r/agents/grok-build.md"
+grep -qF 'as shown below' "$r/agents/grok-build.md" || fail "fixture edit did not apply"
+status=0; out=$(bash "$script" "$r") || status=$?
+[[ $status -eq 1 ]] || fail "expected exit 1, got $status: $out"
+grep -qF -- '--nonsense' <<< "$out" || fail "output does not name --nonsense: $out"
+pass
+
+tname="reports drift when no real invocation block exists"
+r=$(fresh_root no-invocation)
+# shellcheck disable=SC2016
+sed 's/`scripts\/run-work-order.sh \[--push\] <work-order.md>`/the wrapper/' "$r/agents/grok-build.md" > "$r/b" && mv "$r/b" "$r/agents/grok-build.md"
+status=0; out=$(bash "$script" "$r") || status=$?
+[[ $status -eq 1 ]] || fail "expected exit 1, got $status: $out"
+grep -qF 'shows no scripts/run-work-order.sh invocation' <<< "$out" || fail "no-invocation drift not reported: $out"
+pass
+
 tname="exits 2 when stations/README.md is missing"
 r=$(fresh_root missing-stations)
 rm "$r/stations/README.md"

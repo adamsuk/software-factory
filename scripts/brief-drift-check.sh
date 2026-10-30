@@ -37,11 +37,19 @@ while read -r code; do
   fi
 done < <(printf '%s\n' "$section" | grep -oiE 'exits?( with)?( code)? [0-9]+' | grep -oE '[0-9]+$' | sort -un)
 
-# Only the first invocation block: later mentions of the wrapper are ignored.
+# The actual invocation, not the first mention: a line where the wrapper's name
+# sits in an unclosed code span (`scripts/run-work-order.sh [--push] ...`) or
+# starts a fenced command line. A prose mention such as "`run-work-order.sh` as
+# shown below" closes its span right after the name, so it does not count.
+# Only that first invocation block is read, up to the next blank line.
 invocation=$(printf '%s\n' "$section" | awk '
-  /run-work-order\.sh/ && !found { found = 1 }
+  !found && (/(^|[^`])`[^`]*run-work-order\.sh([[:space:]]|$)/ ||
+             /^[[:space:]]*(\$ )?[^ `]*run-work-order\.sh([[:space:]]|$)/) { found = 1 }
   found { print; if (/^$/) exit }
 ')
+if [[ -z "$invocation" ]]; then
+  report "agents/grok-build.md 'What the wrapper does' shows no scripts/run-work-order.sh invocation to check"
+fi
 
 while read -r flag; do
   [[ -n "$flag" ]] || continue

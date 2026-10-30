@@ -44,8 +44,8 @@ anything related to `stations/README.md` or label extraction.
       if ! grep -qF -- "\"$flag\"" "$wrapper"; then
         report "agents/grok-build.md documents flag $flag but scripts/run-work-order.sh does not parse it"
       fi
-   -done < <(printf '%s\n' "$section" | grep -E 'run-work-order\.sh' | grep -oE '\-\-[a-z][a-z-]*' | sort -u)
-   +done < <(printf '%s\n' "$invocation" | grep -oE '\-\-[a-z][a-z-]*' | sort -u)
+   -done < <(printf '%s\n' "$section" | grep -E 'run-work-order\.sh' | grep -oE '\-\-[a-z][a-z0-9_-]*' | sort -u)
+   +done < <(printf '%s\n' "$invocation" | grep -oE '\-\-[a-z][a-z0-9_-]*' | sort -u)
    ```
 
 2. **Flag tokens get truncated.** The extraction pattern
@@ -63,6 +63,8 @@ anything related to `stations/README.md` or label extraction.
 - A fixture with a flag like `--push2` (digits) that the wrapper doesn't
   parse — confirm it's still reported as drift, not truncated to the
   real `--push` and accepted.
+- A matching underscore case (e.g. `--push_suffix`) is covered by the same
+  pattern and acceptance criteria.
 - Confirm non-vacuous: both new tests fail against the pre-fix script and
   pass against the fix.
 
