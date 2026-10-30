@@ -1418,6 +1418,28 @@ dir_rel=$(cd "$rel_base" && FACTORY_WORKSPACE="rel-workspace" choose_clone_dir "
 [[ "$dir_rel" == "$rel_base/rel-workspace/"* ]] || fail "relative root not resolved against cwd: $dir_rel"
 rm -rf "$dir_rel" || true
 
+tname="protected-paths-main-placement"
+# Confirm via declare -f main, without calling main (grok/gh/clone are not
+# mocked for a full run). Two regressions from PR #185's review:
+# 1. the protected-paths checker must be resolved through the absolute
+#    $here, not a BASH_SOURCE-relative path that breaks after the earlier
+#    `cd "$dir"`;
+# 2. a work-order filename that happens to match the existing-test pattern
+#    (e.g. agents/work-orders/test_example-162.md) must not trip "needs a
+#    person" the way an edited existing test would.
+main_src=$(declare -f main)
+# shellcheck disable=SC2016  # literal text search, not expansion
+[[ "$main_src" == *'"$protected_paths_sh"'* ]] \
+  || fail "protected-paths checker is not called through \$protected_paths_sh"
+# shellcheck disable=SC2016  # literal text search, not expansion
+[[ "$main_src" != *'$(dirname "${BASH_SOURCE[0]}")/protected-paths.sh'* ]] \
+  || fail "protected-paths checker is still resolved relative to BASH_SOURCE"
+[[ "$main_src" == *"-z --name-only"* || "$main_src" == *"--name-only -z"* ]] \
+  || fail "protected-paths diff is not NUL-delimited (-z)"
+tests_line=$(printf '%s\n' "$main_src" | grep -F 'diff-filter=MDR')
+[[ "$tests_line" == *"grep -v '^agents/work-orders/'"* ]] \
+  || fail "existing-test check does not exclude agents/work-orders/: $tests_line"
+
 PATH=$ORIG_PATH
 # Read by finish_commit / prepare_env in the sourced runner.
 : "$title" "$issue" "$base" "$tests"
