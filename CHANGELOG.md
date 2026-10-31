@@ -15,6 +15,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `scripts/brief-drift-check.sh` (#51) fails CI when `agents/grok-build.md`
+  documents an exit code or flag `scripts/run-work-order.sh` doesn't have, or
+  when `AGENTS.md` or a brief names a `factory:*` label outside the nine
+  canonical ones. It runs in the `tests` job and has fixture tests.
+- `postmortems/TEMPLATE.md`, a one-page production incident template (#51).
 - Foreman "Pick" step caps in-flight factory entries (open agent PRs, including
   branch-only ones) at 2 per repo, counted against the candidate issue's
   `Target repo:`; at the cap no new issue is picked (#47). The reviewer brief now
