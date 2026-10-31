@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 2026-10-31
 
+### Changed
+
+- The reviewer brief requires a four-field record on every review of the
+  current head: agreed behaviour, the checks that ran, behaviour nobody
+  asked for, and blast radius. The record is for that head only, written
+  beside the PASS, FIX, or ESCALATE verdict, and it is not the should-fix
+  count. A record for an older head does not count (#119).
+
 ### Fixed
 
 - The foreman pick cap keys each in-flight entry on
