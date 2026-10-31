@@ -268,6 +268,77 @@ first=$(jq -r '.comments[-1].body' "$MOCK/issue.json" | head -n 1)
 assert_eq "$first" "<!-- factory:review -->"
 grep -q 'Scott must act' "$MOCK/issue.json" || fail "missing scott line"
 
+seed_review_pr() {
+  python3 - << PY
+import json
+json.dump([{"number": 1, "headRefName": "factory/7-widgets", "body": "Closes #7", "comments": []}], open("$MOCK/prs.json", "w"))
+PY
+}
+review_should_fix() {
+  jq -r '.[0].comments[].body | select(startswith("<!-- factory:review -->")) | split("\n")[2]' "$MOCK/prs.json" | tail -n 1
+}
+
+tname="verdict should-fix flag recorded"
+reset_issue "factory:review"
+seed_review_pr
+"$post" verdict --repo acme/widgets --pr 1 --issue 7 --sha abcdef1234567890 \
+  --verdict ESCALATE --protected no --should-fix 3 --summary "L/XL." >/dev/null
+assert_eq "$(review_should_fix)" "should-fix: 3"
+
+tname="verdict should-fix default FIX"
+reset_issue "factory:review"
+seed_review_pr
+"$post" verdict --repo acme/widgets --pr 1 --issue 7 --sha abcdef1234567890 \
+  --verdict FIX --protected no --summary "Fix it." >/dev/null
+assert_eq "$(review_should_fix)" "should-fix: 1"
+
+tname="verdict should-fix default non-FIX"
+reset_issue "factory:review"
+seed_review_pr
+"$post" verdict --repo acme/widgets --pr 1 --issue 7 --sha abcdef1234567890 \
+  --verdict ESCALATE --protected no --summary "Needs Scott." >/dev/null
+assert_eq "$(review_should_fix)" "should-fix: 0"
+
+tname="verdict should-fix rejects non-integer"
+reset_issue "factory:review"
+seed_review_pr
+set +e
+"$post" verdict --repo acme/widgets --pr 1 --issue 7 --sha abcdef1234567890 \
+  --verdict FIX --protected no --should-fix many --summary "x" >"$root/err" 2>&1
+rc=$?
+set -e
+assert_eq "$rc" "2"
+
+tname="verdict should-fix rejects leading zero"
+reset_issue "factory:review"
+seed_review_pr
+set +e
+"$post" verdict --repo acme/widgets --pr 1 --issue 7 --sha abcdef1234567890 \
+  --verdict FIX --protected no --should-fix 01 --summary "x" >"$root/err" 2>&1
+rc=$?
+set -e
+assert_eq "$rc" "2"
+
+tname="verdict should-fix rejects PASS with non-zero"
+reset_issue "factory:review"
+seed_review_pr
+set +e
+"$post" verdict --repo acme/widgets --pr 1 --issue 7 --sha abcdef1234567890 \
+  --verdict PASS --protected no --should-fix 2 --summary "x" >"$root/err" 2>&1
+rc=$?
+set -e
+assert_eq "$rc" "2"
+
+tname="verdict should-fix rejects FIX with zero"
+reset_issue "factory:review"
+seed_review_pr
+set +e
+"$post" verdict --repo acme/widgets --pr 1 --issue 7 --sha abcdef1234567890 \
+  --verdict FIX --protected no --should-fix 0 --summary "x" >"$root/err" 2>&1
+rc=$?
+set -e
+assert_eq "$rc" "2"
+
 tname="closes on a non-factory branch"
 reset_issue "factory:building"
 python3 - << PY

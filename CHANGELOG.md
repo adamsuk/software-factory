@@ -3,16 +3,35 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-10-31
+
+### Fixed
+
+- The foreman pick cap keys each in-flight entry on
+  `(Target repo, issue_repo, issue)`. A branch-only entry takes `issue_repo`
+  from the work order, because `factory/<issue>-*` does not carry it (#47).
+
 ## 2026-10-30
 
 ### Added
 
+- Foreman "Pick" step caps in-flight factory entries (open agent PRs, including
+  branch-only ones) at 2 per repo, counted against the candidate issue's
+  `Target repo:`; at the cap no new issue is picked (#47). The reviewer brief now
+  states station 05 Review's inputs and outputs, including that an L/XL
+  change goes to Scott.
 - A "Run environment" section in `agents/grok-build.md` (#44) and a test
   (`grok-token-scrub` in `scripts/test-run-work-order.sh`) proving Grok Build
   is started without `GH_TOKEN` or `GITHUB_TOKEN`.
 
+- `station-post.sh verdict` takes an optional `--should-fix N` (default
+  unchanged: 1 for FIX, 0 otherwise); the reviewer brief says to pass the real
+  count for FIX and ESCALATE (#47).
+
 ### Changed
 
+- The foreman pick cap also counts `factory:building` issues as in flight and
+  keeps scanning past a capped candidate to the next eligible one (#47).
 - `AGENTS.md` section 5 no longer protects `agents/work-orders/**` (#162).
   Generated work orders are bookkeeping, so a factory PR that only adds one is
   no longer routed to `factory:blocked`. `AGENTS.md`, `agents/roles/**`,
@@ -22,6 +41,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- `station-post.sh verdict --should-fix` now matches `review-issue.sh`: no leading
+  zeros, and `PASS` with a non-zero count or `FIX` with zero is rejected (#47).
 - `AGENTS.md` §10.4 and the reviewer brief no longer say changes-requested
   "alone doesn't block". A bot's `CHANGES_REQUESTED` on the current head
   blocks a merge where the `factory-main` ruleset enforces the `pull_request`
