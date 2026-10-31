@@ -16,7 +16,7 @@ Commands:
   pr       --repo OWNER/REPO --issue N --head factory/N-slug --title TEXT --body-file PATH
            [--issue-repo OWNER/REPO]
   verdict  --repo OWNER/REPO --pr N --issue N --sha SHA --verdict PASS|FIX|ESCALATE
-           --summary TEXT [--protected yes|no] [--issue-repo OWNER/REPO]
+           --summary TEXT [--protected yes|no] [--should-fix N] [--issue-repo OWNER/REPO]
   blocked  --repo OWNER/REPO --issue N --body-file PATH
 
 Never merges. --dry-run still reads GitHub, and prints the comment and label
@@ -48,6 +48,7 @@ sha=""
 verdict=""
 summary=""
 protected="no"
+should_fix=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -64,6 +65,7 @@ while [[ $# -gt 0 ]]; do
     --verdict) verdict="${2:-}"; shift 2 ;;
     --summary) summary="${2:-}"; shift 2 ;;
     --protected) protected="${2:-}"; shift 2 ;;
+    --should-fix) should_fix="${2:-}"; shift 2 ;;
     --help|-h) usage ;;
     *) die 2 "unknown argument: $1" ;;
   esac
@@ -295,6 +297,12 @@ cmd_verdict() {
   esac
   [[ "$protected" == "yes" || "$protected" == "no" ]] || die 2 "protected must be yes or no"
   [[ -n "$summary" ]] || die 2 "summary is required"
+  [[ -z "$should_fix" || "$should_fix" =~ ^(0|[1-9][0-9]*)$ ]] || die 2 "should-fix must be 0 or a positive integer with no leading zeros"
+  # review-issue.sh can never resolve these combinations, so refuse to post them.
+  if [[ -n "$should_fix" ]]; then
+    [[ "$verdict" != "PASS" || "$should_fix" == "0" ]] || die 2 "should-fix must be 0 for a PASS verdict"
+    [[ "$verdict" != "FIX" || "$should_fix" != "0" ]] || die 2 "should-fix must be at least 1 for a FIX verdict"
+  fi
   local json names
   json=$(read_issue) || die 7 "could not read issue"
   names=$(labels_of "$json")
@@ -318,6 +326,7 @@ cmd_verdict() {
     FIX) should=1 ;;
     *) should=0 ;;
   esac
+  [[ -z "$should_fix" ]] || should=$should_fix
   four=$(printf '%s\n' "<!-- factory:review -->" "verdict: ${verdict}" "should-fix: ${should}" "nits: 0")
   if ! printf '%s\n' "$pr_json" | jq -e --arg v "verdict: ${verdict}" '
       [.comments[]? | ((.body // "") | split("\n") | map(gsub("\r$"; "")))]
