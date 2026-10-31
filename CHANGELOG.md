@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-10-31
+
+### Added
+
+- A Grok Build work order for a touchlineHQ issue (PR #191).
+
 ## 2026-10-30
 
 ### Added
