@@ -34,9 +34,11 @@ and tracks it to a reviewed PR. Follows [`AGENTS.md`](../../AGENTS.md).
    above: an open PR, a `factory/<issue>-*` branch, or an issue labelled
    `factory:building` whose `Target repo:` is that repo, whether open-PR or
    branch-only (picked up, branch pushed, no PR yet) or label-only (just
-   picked up, no branch yet). The cap counts unique `(Target repo, issue)`
-   pairs, not one count per matching artifact: an issue with both
-   `factory:building` and a matching branch counts once. At 2 or more, do not
+   picked up, no branch yet). The cap counts unique `(Target repo, issue_repo, issue)`
+   triples, not one count per matching artifact: an issue with both
+   `factory:building` and a matching branch counts once. Branch-only entries
+   take `issue_repo` from the work order, because a `factory/<issue>-*` branch
+   does not carry it. At 2 or more, do not
    pick this **new** candidate; leave it `factory:ready` and continue
    scanning in age order for the next-oldest eligible candidate (it may
    target a repo under the cap). Report that review capacity is full only

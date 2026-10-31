@@ -3,6 +3,14 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-10-31
+
+### Fixed
+
+- The foreman pick cap keys each in-flight entry on
+  `(Target repo, issue_repo, issue)`. A branch-only entry takes `issue_repo`
+  from the work order, because `factory/<issue>-*` does not carry it (#47).
+
 ## 2026-10-30
 
 ### Added

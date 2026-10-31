@@ -65,7 +65,10 @@ grep -Fq -- '--should-fix N' "$reviewer" || fail "reviewer brief does not docume
 grep -Fq -- '--should-fix' "$here/../stations/github-writes.md" || fail "github-writes does not document --should-fix"
 echo "ok: --should-fix documented"
 
-# Round 9: the cap counts unique issues, not one per matching artifact.
+# The cap counts unique (Target repo, issue_repo, issue) triples, not one
+# per matching artifact. A branch name does not carry issue_repo.
 # shellcheck disable=SC2016  # literal backticked text, not expansion
-grep -Fq 'The cap counts unique `(Target repo, issue)` pairs, not one count per matching artifact' <<< "$pickflat" || fail "cap does not count unique issues"
-echo "ok: cap counts unique (Target repo, issue) pairs"
+grep -Fq 'The cap counts unique `(Target repo, issue_repo, issue)` triples, not one count per matching artifact' <<< "$pickflat" || fail "cap does not count unique (Target repo, issue_repo, issue) triples"
+# shellcheck disable=SC2016  # literal backticked text, not expansion
+grep -Fq 'Branch-only entries take `issue_repo` from the work order' <<< "$pickflat" || fail "branch-only cap entries do not take issue_repo from the work order"
+echo "ok: cap counts unique (Target repo, issue_repo, issue) triples"
