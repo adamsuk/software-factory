@@ -35,6 +35,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Research Scout (`agents/roles/research.md`) now files issues on research
+  repos (labels `factory`, `factory:triage`, max 3 per repo per run) instead
+  of opening or merging its own PRs; the factory builds them. The weekly
+  summary goes to the foreman (#106).
 - The foreman pick cap also counts `factory:building` issues as in flight and
   keeps scanning past a capped candidate to the next eligible one (#47).
 - `AGENTS.md` section 5 no longer protects `agents/work-orders/**` (#162).
