@@ -7,6 +7,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `scripts/test-harness-eval.sh` replays one recorded work order offline (#20).
+  The fixture `scripts/fixtures/replay-work-order.md` is a copy of
+  `agents/work-orders/adamsuk_gh-factory-33.md`. The suite renders the builder
+  prompt with `scripts/station-run.sh --dry-run` and checks the fences still
+  wrap that work order. No model call and no new dependency.
+  `scripts/station-run.sh` reads `AGENTS.md` and the role briefs from the
+  latest `v*` tag, so this case checks the composer fences and the recorded
+  work order. `FACTORY_RELEASE_REF` stays unset.
+
 - `scripts/test-untrusted-issue.sh` records that a harmless prompt-injection
   issue is data (#16). The suite runs `write_untrusted_block` and
   `escape_untrusted` from `scripts/watcher/watch.sh` and checks the body stays
