@@ -3454,8 +3454,12 @@ step_independent_review() {
   done
 }
 
-# $1 grok JSON, $2 result file, $3 sha. Writes a verdict object. Unparseable
-# or failed output becomes ESCALATE.
+# $1 grok JSON, $2 result file, $3 sha. Writes a verdict object.
+# Structured output wins. Otherwise the last PASS, FIX, or ESCALATE object
+# in .text (or .result), including several JSON values or trailing text.
+# Then a final VERDICT line, or a final line that is exactly PASS, FIX, or
+# ESCALATE. Unparseable output becomes ESCALATE and records the grok path
+# in raw. The grok file is not rewritten.
 ir_save_result() {
   local out=$1 dest=$2 sha=$3 obj v
   obj=$(jq -c '
@@ -3464,18 +3468,53 @@ ir_save_result() {
       elif ($x | type) == "string" then ($x | try fromjson catch null)
       else null end;
     def ok($o): ($o | type) == "object" and ((($o.verdict // "") | tostring | ascii_upcase) as $v | $v == "PASS" or $v == "FIX" or $v == "ESCALATE");
+    # Last top-level object in $s with a PASS, FIX, or ESCALATE verdict.
+    # "{" opens a candidate, strings hide braces, and a finished candidate
+    # is kept only when fromjson and ok both succeed.
+    def last_verdict_text($s):
+      if ($s | type) != "string" or ($s | length) == 0 then null
+      else
+        ($s | length) as $n
+        | reduce range(0; $n) as $i (
+            {last: null, mode: "seek", depth: 0, str: false, esc: false, start: 0};
+            ($s[$i:$i+1]) as $c
+            | if .mode == "seek" then
+                if $c == "{" then . + {mode: "obj", depth: 1, str: false, esc: false, start: $i}
+                else . end
+              elif .str then
+                if .esc then . + {esc: false}
+                elif $c == "\\" then . + {esc: true}
+                elif $c == "\"" then . + {str: false}
+                else . end
+              elif $c == "\"" then . + {str: true}
+              elif $c == "{" then . + {depth: (.depth + 1)}
+              elif $c == "}" then
+                if .depth == 1 then
+                  . as $st
+                  | ($s[$st.start:$i+1] | try fromjson catch null) as $o
+                  | if ok($o) then $st + {last: $o, mode: "seek", depth: 0, str: false, esc: false}
+                    else $st + {mode: "seek", depth: 0, str: false, esc: false} end
+                else . + {depth: (.depth - 1)} end
+              else . end
+          )
+        | .last
+      end;
     (obj_of(.structured_output // .structuredOutput // null)) as $s
     | (obj_of(.text // .result // null)) as $t
     | if ok($s) then $s elif ok($t) then $t
       else
-        ((.text // .result // "") | tostring | split("\n") | map(gsub("^[[:space:]]+|[[:space:]]+$"; ""))
-          | map(select(test("^VERDICT: (PASS|FIX|ESCALATE)$"))) | last // "") as $line
-        | if $line == "" then null
-          else {verdict: ($line | sub("^VERDICT: "; "")), summary: "Verdict line only; no structured findings.", fix: [], dismissed: [], escalate: []} end
+        (last_verdict_text((.text // .result // "") | if type == "string" then . else "" end)) as $m
+        | if ok($m) then $m
+          else
+            ((.text // .result // "") | tostring | split("\n") | map(gsub("^[[:space:]]+|[[:space:]]+$"; ""))
+              | map(select(test("^(VERDICT: )?(PASS|FIX|ESCALATE)$"))) | last // "") as $line
+            | if $line == "" then null
+              else {verdict: ($line | sub("^VERDICT: "; "")), summary: "Verdict line only; no structured findings.", fix: [], dismissed: [], escalate: []} end
+          end
       end
   ' "$out" 2>/dev/null || true)
   if [[ -z $obj || $obj == null ]]; then
-    obj='{"verdict":"ESCALATE","summary":"Independent review output was missing or not parseable.","fix":[],"dismissed":[],"escalate":["Review did not return a usable verdict."]}'
+    obj=$(jq -nc --arg raw "$out" '{verdict:"ESCALATE",summary:"Independent review output was missing or not parseable.",fix:[],dismissed:[],escalate:["Review did not return a usable verdict."],raw:$raw}')
   fi
   v=$(jq -r '.verdict | tostring | ascii_upcase' <<< "$obj")
   # FIX with nothing to fix cannot be acted on.
@@ -3488,7 +3527,8 @@ ir_save_result() {
      fix: [(.fix // [])[] | tostring | .[0:400]][0:10],
      dismissed: [(.dismissed // [])[] | tostring | .[0:400]][0:15],
      escalate: [(.escalate // [])[] | tostring | .[0:400]][0:6],
-     sha: $sha, at: $at}' <<< "$obj" > "$dest"
+     sha: $sha, at: $at}
+    + (if (.raw | type) == "string" then {raw: .raw} else {} end)' <<< "$obj" > "$dest"
 }
 
 # Posts the saved verdict once per head (marker ireview-posted-*). No @ mentions.

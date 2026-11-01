@@ -3,6 +3,16 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-01
+
+### Fixed
+
+- Independent review keeps the last PASS, FIX, or ESCALATE object when Grok's
+  `.text` holds several JSON values or trailing text. A final `VERDICT:` line,
+  or a final line that is exactly PASS, FIX, or ESCALATE, still counts when no
+  JSON object parses. When nothing does, the result records the raw grok file
+  path. Covered by `scripts/test-ir-verdict-parse.sh` (#194).
+
 ## 2026-10-31
 
 ### Changed
