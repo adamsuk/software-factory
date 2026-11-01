@@ -14,6 +14,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   routing, the comment body, or the one-word stdout. `review`, `pending`,
   `skip`, and `blocked` for `no-required-checks` do not write it. Covered by
   `scripts/test-red-check-record.sh`.
+- `scripts/factory-delivery-metrics.sh` prints change failure rate, rework
+  rounds, recovery time, and cost per change for one repository over a UTC
+  window (#14). The weekly monitor reads it from `$REF` with the label and
+  pull request scripts, for the same window, and appends that stdout to
+  `metrics/<last-day>.md`.
 
 - `scripts/test-harness-eval.sh` replays one recorded work order offline (#20).
   The fixture `scripts/fixtures/replay-work-order.md` is a copy of
