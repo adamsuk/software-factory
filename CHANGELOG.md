@@ -23,8 +23,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   markers. The command named in that issue is not run. The same two functions
   in `scripts/watcher/watch.new.sh` are checked to match.
 
+### Changed
+
+- The watcher dismisses outdated `coderabbitai[bot]` `CHANGES_REQUESTED`
+  reviews on an ordinary or allowlisted `factory/` pull request after an
+  independent PASS with green checks, then merges only when a fresh gate
+  read is the ordinary merge decision. Human reviews stay, and a protected
+  pull request that goes to Scott stays with Scott. A failed dismiss is
+  reported to Scott. Optional budget `focus_issues` limits build, triage,
+  planning, and Grok gate work, and `max_issues_in_flight` caps new build
+  claims (#199).
+- `AGENTS.md` §10.4 marks the ordinary and allowlisted watcher dismiss path
+  as the exception to the current-head bot `CHANGES_REQUESTED` rule (#199).
+
 ### Fixed
 
+- A build stopped by `max_issues_in_flight` removes the software-factory clone
+  made for that attempt. While the cap stays full, the work directory no longer
+  gains an `sf-main` clone on every cycle (#199).
 - Independent review keeps the last PASS, FIX, or ESCALATE object when Grok's
   `.text` holds several JSON values or trailing text. A final `VERDICT:` line,
   or a final line that is exactly PASS, FIX, or ESCALATE, still counts when no
