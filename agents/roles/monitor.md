@@ -5,16 +5,17 @@ Bot teammate. This file is the procedure. It does not grant permission to merge.
 
 ## Inputs
 
-- `scripts/factory-label-metrics.sh` and `scripts/factory-pr-metrics.sh`. Both
-  are read-only. Read each one from the promoted release ref (`$REF`) when
-  that path exists there. Otherwise read `scripts/factory-label-metrics.sh`
-  from `origin/factory/84-label-metrics`. Do not read
-  `scripts/factory-pr-metrics.sh` from any other ref.
+- `scripts/factory-label-metrics.sh`, `scripts/factory-pr-metrics.sh`, and
+  `scripts/factory-delivery-metrics.sh`. All three are read-only. Read each
+  one from the promoted release ref (`$REF`) only. All three are already on
+  `main`.
 - One repository in this first version: `adamsuk/software-factory`.
+- The ledger path is `$FACTORY_LEDGER_FILE`. The committed default is
+  `/workspace/factory-ledger.csv`.
 
-The weekly procedure stays inactive until both scripts can be read from those
-refs. If either path is missing, commit nothing and report the missing path
-to Scott.
+The weekly procedure stays inactive until all three scripts can be read from
+`$REF`. If any of the three paths is missing on `$REF`, commit nothing and
+report the missing path to Scott.
 
 ## Steps
 
@@ -23,24 +24,27 @@ to Scott.
 1. **Window.** Take the date in UTC. `until` is the next UTC date, `YYYY-MM-DD`.
    `since` is seven days before `until`. The last day included is the day
    before `until`.
-2. **Measure.** For `scripts/factory-pr-metrics.sh`, run `git show
-   "$REF:scripts/factory-pr-metrics.sh"`. For
-   `scripts/factory-label-metrics.sh`, use that same `$REF` path when
-   it exists, and otherwise `git show
-   origin/factory/84-label-metrics:scripts/factory-label-metrics.sh`.
-   Write each script to a temporary file, run `bash` on that file with
-   `--repo adamsuk/software-factory --since <since> --until <until>`, and
-   delete the temporary file. If either script cannot be read, or either
-   exits non-zero, commit nothing and report that to Scott.
+2. **Measure.** For each of `scripts/factory-label-metrics.sh`,
+   `scripts/factory-pr-metrics.sh`, and `scripts/factory-delivery-metrics.sh`,
+   run `git show "$REF:<path>"`. Write each script to a temporary file, run
+   `bash` on that file, and delete the temporary file. Pass
+   `--repo adamsuk/software-factory --since <since> --until <until>` to each.
+   For `scripts/factory-delivery-metrics.sh` also pass `--ledger` from
+   `$FACTORY_LEDGER_FILE` (committed default `/workspace/factory-ledger.csv`)
+   and one `--required-check` each for `ShellCheck`, `changelog / changelog`,
+   and `tests`. If any path is missing on `$REF`, or any script exits
+   non-zero, commit nothing and report the missing path or the failure to
+   Scott.
 3. **Record.** Write `metrics/<last-day>.md`: the label script's stdout, one
-   blank line, then the pull request script's stdout. Change no other file.
-   Open a pull request whose body contains that file's path. Do not merge the
-   pull request.
+   blank line, then the pull request script's stdout, one blank line, then
+   the delivery script's stdout. Change no other file. Open a pull request
+   whose body contains that file's path. Do not merge the pull request.
 4. **Stop.** Do not set `factory:done`. Do not add or edit a file under
    `.github/workflows/`. Do not call PostHog. Do not file an alert. Do not
-   pass another repository to the scripts.
+   pass another repository to the scripts. Do not commit any file other than
+   `metrics/<last-day>.md`.
 
 ## Out of scope
 
-Change failure rate, recovery time, rework, and harness evals. `factory:done`
-is set by 09 Return (AGENTS.md section 9), not by this role.
+Harness evals. `factory:done` is set by 09 Return (AGENTS.md section 9), not
+by this role.

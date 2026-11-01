@@ -238,6 +238,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `scripts/factory-delivery-metrics.sh` prints change failure rate, rework
+  rounds, recovery time, and cost per change for one repository over a UTC
+  window (#14). The weekly monitor reads it from `$REF` with the label and
+  pull request scripts, for the same window, and appends that stdout to
+  `metrics/<last-day>.md`.
 - `scripts/wait-for-review-bot.sh`, run by `foreman-orchestrate.sh review`
   before the reviewer role, so the independent review can weigh the review
   bot's comments as AGENTS.md §10.4 requires. It had not been waiting: across
