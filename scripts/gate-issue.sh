@@ -6,11 +6,20 @@
 # Reads only repo, issue, issue_repo, branch, and attempt from the front
 # matter. An empty issue_repo means repo. The body after the closing ---
 # is ignored. Exit 2 on a bad work order (no gh call, no stdout). Exit 7
-# when gh fails or required_checks cannot be parsed, except gh pr checks
-# exit 8, whose JSON is kept. No stdout on exit 2 or 7. Success prints one
-# word: review, retry, blocked, pending,
-# or skip. Never merges, creates, pushes, or edits the work order.
+# when gh fails, required_checks cannot be parsed, or the red record cannot
+# be written, except gh pr checks exit 8, whose JSON is kept. No stdout on
+# exit 2 or 7. Success prints one word: review, retry, blocked, pending,
+# or skip. Never merges, opens a pull request, pushes, or edits the work
+# order. On retry, and on blocked for repeat or cap, also replaces
+# <work-order>.red-record with one line per current red required check:
+# "<name> <new|seen-before> Scott". review, pending, skip, and blocked for
+# no-required-checks do not write that file. The comment body and the
+# one-word stdout stay as they are.
 set -euo pipefail
+
+# Exact check names already listed on a red: line of any <!-- factory:gate -->
+# comment. A red: value of exactly "-" is the sentinel and is not stored.
+declare -A seen_red=()
 
 die() { echo "gate-issue: $2" >&2; exit "$1"; }
 
@@ -201,10 +210,19 @@ load_checks() {
   fi
 }
 
-# 0 when the latest marker comment's red: line equals this red list.
-red_repeated() {
-  local body line
-  body=$(gh issue view "$issue" --repo "$issue_repo" --json comments | jq -r '
+# One gh read of the issue comments. Sets latest_gate_body to the newest
+# <!-- factory:gate --> body (empty when there is none) and fills seen_red
+# from every such comment, not only the newest. A red: value is split on
+# ", " (comma, space), the same separator join_sorted uses. The whole value
+# "-" is the no-required-checks sentinel, not a check name.
+load_gate_history() {
+  local comments_json fields field rest part
+  unset seen_red
+  declare -gA seen_red=()
+  latest_gate_body=""
+  comments_json=$(gh issue view "$issue" --repo "$issue_repo" --json comments) \
+    || die 7 "could not read comments"
+  latest_gate_body=$(printf '%s\n' "$comments_json" | jq -r '
     [ .comments[]?
       | select(((.body // "") | split("\n")[0]) == "<!-- factory:gate -->")
       | {t: (.createdAt // ""), body: (.body // "")}
@@ -212,12 +230,64 @@ red_repeated() {
     | sort_by(.t)
     | if length == 0 then "" else .[-1].body end
   ') || die 7 "could not read comments"
+  fields=$(printf '%s\n' "$comments_json" | jq -r '
+    .comments[]?
+    | select(((.body // "") | split("\n")[0]) == "<!-- factory:gate -->")
+    | (.body // "")
+    | split("\n")[]
+    | select(startswith("red: "))
+    | sub("^red: "; "")
+  ') || die 7 "could not read comments"
+  while IFS= read -r field || [[ -n "$field" ]]; do
+    # "-" alone is the sentinel, not a check name. Any other value is split
+    # on ", " only.
+    if [[ -z "$field" || "$field" == "-" ]]; then
+      continue
+    fi
+    rest=$field
+    while [[ "$rest" == *", "* ]]; do
+      part=${rest%%", "*}
+      rest=${rest#*", "}
+      if [[ -n "$part" ]]; then
+        seen_red["$part"]=1
+      fi
+    done
+    if [[ -n "$rest" ]]; then
+      seen_red["$rest"]=1
+    fi
+  done <<< "$fields"
+}
+
+# 0 when the latest marker comment's red: line equals this red list.
+# Uses latest_gate_body from load_gate_history. The match is the whole list,
+# so a name that was red only on an older comment does not make this a repeat.
+red_repeated() {
+  local line
   while IFS= read -r line || [[ -n "$line" ]]; do
     if [[ "$line" == "red: ${red_list}" ]]; then
       return 0
     fi
-  done <<< "$body"
+  done <<< "$latest_gate_body"
   return 1
+}
+
+# Replace <work-order>.red-record. One line per current red check, in the
+# same LC_ALL=C order as the red: list: "<name> <new|seen-before> Scott".
+write_red_record() {
+  local dest="${order}.red-record" tmp name flag
+  tmp=$(mktemp "${dest}.XXXXXX") || die 7 "could not write red record"
+  while IFS= read -r name || [[ -n "$name" ]]; do
+    if [[ -z "$name" ]]; then
+      continue
+    fi
+    if [[ -n "${seen_red[$name]+x}" ]]; then
+      flag=seen-before
+    else
+      flag=new
+    fi
+    printf '%s %s Scott\n' "$name" "$flag" >> "$tmp"
+  done < <(printf '%s\n' "${red_names[@]}" | LC_ALL=C sort)
+  mv -f "$tmp" "$dest" || die 7 "could not write red record"
 }
 
 apply_review() {
@@ -259,6 +329,8 @@ apply_blocked() {
 
 decide_red() {
   red_list=$(join_sorted "${red_names[@]}")
+  load_gate_history
+  write_red_record
   if red_repeated; then
     apply_blocked repeat
   elif [[ "$attempt" == "3" ]]; then
