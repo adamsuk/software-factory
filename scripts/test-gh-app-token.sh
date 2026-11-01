@@ -81,6 +81,8 @@ export GH_CONFIG_DIR=$tmpdir/gh-config
 export PATH="$tmpdir/bin:$PATH"
 unset FACTORY_GH_APP_ID FACTORY_GH_APP_INSTALLATION_ID FACTORY_GH_APP_KEY_FILE || true
 unset GH_TOKEN GITHUB_TOKEN || true
+unset GH_APP_SLUG FACTORY_GH_APP_SLUG FACTORY_GH_APP_ENV_FILE || true
+unset FACTORY_GH_APP_SLUG_FILE FACTORY_GH_APP_APP_HTTP_FILE || true
 
 export FACTORY_GH_APP_NOW_FILE=$tmpdir/now
 export FACTORY_GH_APP_CURL_DIR=$tmpdir/calls
@@ -104,6 +106,7 @@ cat > "$tmpdir/bin/curl" << 'EOF'
 #!/bin/bash
 set -euo pipefail
 out=""
+url=""
 args=("$@")
 i=0
 while (( i < ${#args[@]} )); do
@@ -111,6 +114,9 @@ while (( i < ${#args[@]} )); do
     --output|-o)
       i=$((i + 1))
       out=${args[$i]}
+      ;;
+    https://*)
+      url=${args[$i]}
       ;;
   esac
   i=$((i + 1))
@@ -125,6 +131,26 @@ n=$((n + 1))
 printf '%s\n' "$n" > "$count_file"
 mkdir -p "$dir/$n"
 printf '%s\n' "$@" > "$dir/$n/args"
+# GET /app returns the app slug. It must not be treated as a token mint.
+if [[ $url == https://api.github.com/app ]]; then
+  code=200
+  if [[ -n ${FACTORY_GH_APP_APP_HTTP_FILE:-} && -f ${FACTORY_GH_APP_APP_HTTP_FILE} ]]; then
+    code=$(tr -cd '0-9' < "$FACTORY_GH_APP_APP_HTTP_FILE")
+  fi
+  slug_value=software-factory-line
+  if [[ -n ${FACTORY_GH_APP_SLUG_FILE:-} && -f ${FACTORY_GH_APP_SLUG_FILE} ]]; then
+    slug_value=$(tr -cd 'A-Za-z0-9-' < "$FACTORY_GH_APP_SLUG_FILE")
+  fi
+  if [[ -n $out ]]; then
+    if [[ $code == 200 ]]; then
+      printf '{"slug":"%s"}\n' "$slug_value" > "$out"
+    else
+      printf '{}\n' > "$out"
+    fi
+  fi
+  printf '%s' "$code"
+  exit 0
+fi
 token=$(tr -cd 'A-Za-z0-9_.-' < "${FACTORY_GH_APP_TOKEN_FILE:?}")
 expires=$(tr -d '[:space:]' < "${FACTORY_GH_APP_EXPIRES_FILE:?}")
 if [[ -n $out ]]; then
@@ -709,6 +735,184 @@ for rel in scripts/watcher/watch.sh scripts/watcher/watch.new.sh; do
       esac
     ' bash "$login_root/bin" "$login_root/watch" "$login_root/gh.log" "$login_root/home" "$mode" "$root/$rel" \
       || fail "$rel factory login ($mode)"
+  done
+done
+# App token in use: independent-review matching uses <slug>[bot].
+# No app: the station login captured before GH_TOKEN is unchanged.
+# Slug is derived (env, gh-app env file, GET /app), not hard-coded.
+tname="slug-from-env"
+unset GH_APP_SLUG FACTORY_GH_APP_SLUG FACTORY_GH_APP_ENV_FILE || true
+# Beside the installation-token cache. Do not read XDG_CACHE_HOME here:
+# a subshell above points it at a throwaway directory.
+slug_cache=${cache%/*}/app-slug
+rm -f "$slug_cache" "$tmpdir/gh-app.env"
+printf '%s\n' 'from-github-app' > "$tmpdir/slug-body"
+export FACTORY_GH_APP_SLUG_FILE=$tmpdir/slug-body
+slug_count=$(curl_count)
+GH_APP_SLUG=cfg-slug bash "$helper" --slug >"$out" 2>"$err"
+[[ $(tr -d '\n' < "$out") == cfg-slug ]] || fail "GH_APP_SLUG was not the slug"
+[[ ! -s $err ]] || fail "configured slug wrote to stderr"
+[[ $(curl_count) == "$slug_count" ]] || fail "GH_APP_SLUG called GitHub"
+unset GH_APP_SLUG
+
+tname="slug-from-factory-env"
+FACTORY_GH_APP_SLUG=factory-cfg-slug bash "$helper" --slug >"$out" 2>"$err"
+[[ $(tr -d '\n' < "$out") == factory-cfg-slug ]] || fail "FACTORY_GH_APP_SLUG was not the slug"
+[[ $(curl_count) == "$slug_count" ]] || fail "FACTORY_GH_APP_SLUG called GitHub"
+unset FACTORY_GH_APP_SLUG
+
+tname="slug-from-env-file"
+# Sibling of FACTORY_GH_APP_KEY_FILE. Same file the host already uses.
+printf '%s\n' 'FACTORY_GH_APP_ID=1' 'export GH_APP_SLUG="file-slug"' > "$tmpdir/gh-app.env"
+bash "$helper" --slug >"$out" 2>"$err"
+[[ $(tr -d '\n' < "$out") == file-slug ]] || fail "gh-app.env slug was $(tr -d '\n' < "$out")"
+[[ $(curl_count) == "$slug_count" ]] || fail "env file slug called GitHub"
+[[ ! -s $err ]] || fail "env file slug wrote to stderr"
+if grep -F -q 'FACTORY_GH_APP_ID=1' "$out" "$err"; then
+  fail "env file contents leaked"
+fi
+rm -f "$tmpdir/gh-app.env"
+
+tname="slug-env-beats-file"
+printf '%s\n' 'GH_APP_SLUG=file-slug' > "$tmpdir/gh-app.env"
+GH_APP_SLUG=cfg-slug bash "$helper" --slug >"$out" 2>"$err"
+[[ $(tr -d '\n' < "$out") == cfg-slug ]] || fail "env slug did not beat the env file"
+rm -f "$tmpdir/gh-app.env"
+unset GH_APP_SLUG
+
+tname="slug-from-github"
+rm -f "$slug_cache"
+bash "$helper" --slug >"$out" 2>"$err"
+[[ $(tr -d '\n' < "$out") == from-github-app ]] || fail "GET /app slug was $(tr -d '\n' < "$out")"
+[[ $(curl_count) == $((slug_count + 1)) ]] || fail "GET /app was not one call"
+[[ ! -s $err ]] || fail "GET /app wrote to stderr"
+[[ -f $slug_cache ]] || fail "slug cache missing"
+[[ $(stat -c '%a' "$slug_cache") == 600 ]] || fail "slug cache mode is $(stat -c '%a' "$slug_cache")"
+grep -F -x -q -- 'from-github-app' "$slug_cache" || fail "slug cache contents"
+app_args=$tmpdir/calls/$((slug_count + 1))/args
+grep -F -x -q -- 'https://api.github.com/app' "$app_args" || fail "slug URL is not GET /app"
+grep -F -x -q -- 'GET' "$app_args" || fail "slug request is not GET"
+if grep -F -q 'access_tokens' "$app_args"; then
+  fail "slug request hit the installation token endpoint"
+fi
+if grep -F -q 'Authorization:' "$err"; then
+  fail "JWT header on stderr"
+fi
+assert_no_secret "$err" ""
+assert_no_secret "$out" ""
+assert_no_secret "$slug_cache" ""
+# Cached slug does not mint again, and the token stdout stays the token.
+bash "$helper" --slug >"$out" 2>"$err"
+[[ $(curl_count) == $((slug_count + 1)) ]] || fail "cached slug called GitHub"
+[[ $(tr -d '\n' < "$out") == from-github-app ]] || fail "cached slug changed"
+bash "$helper" >"$out" 2>"$err"
+token_now=$(tr -d '\n' < "$out")
+[[ $token_now == ghs_* ]] || fail "token stdout changed while resolving the slug"
+[[ $token_now != from-github-app ]] || fail "token stdout was the slug"
+if grep -F -q -- "$token_now" "$slug_cache"; then
+  fail "installation token stored in the slug cache"
+fi
+if grep -F -q -- "$pem_line" "$slug_cache"; then
+  fail "private key stored in the slug cache"
+fi
+
+tname="slug-fallback"
+printf '500\n' > "$tmpdir/app-http"
+export FACTORY_GH_APP_APP_HTTP_FILE=$tmpdir/app-http
+rm -f "$slug_cache"
+bash "$helper" --slug >"$out" 2>"$err"
+[[ $(tr -d '\n' < "$out") == software-factory-line ]] || fail "fallback slug was $(tr -d '\n' < "$out")"
+[[ ! -s $err ]] || fail "slug fallback wrote to stderr"
+[[ ! -e $slug_cache ]] || fail "fallback slug was cached"
+unset FACTORY_GH_APP_APP_HTTP_FILE
+rm -f "$tmpdir/app-http"
+# Restore a real slug so the watcher match is not the hard-coded default.
+rm -f "$slug_cache"
+printf '%s\n' 'gate-bot-slug' > "$tmpdir/slug-body"
+
+for rel in scripts/watcher/watch.sh scripts/watcher/watch.new.sh; do
+  # shellcheck disable=SC2016  # literal source text, not expansion
+  grep -F -q 'bash "$helper" --slug' "$root/$rel" \
+    || fail "$rel does not ask the helper for the app slug"
+  for mode in app preset noapp; do
+    tname="review-login-${mode}-$(basename "$rel")"
+    : > "$login_root/gh.log"
+    # shellcheck disable=SC2016  # script runs in the child bash, not here
+    timeout 40 bash -c '
+      set -euo pipefail
+      export PATH="$1:$PATH"
+      export FACTORY_WATCH_ROOT="$2"
+      export FACTORY_LOGIN_GH_LOG="$3"
+      export HOME="$4"
+      export GH_CONFIG_DIR="$4/gh-config"
+      mkdir -p "$HOME" "$GH_CONFIG_DIR" "$FACTORY_WATCH_ROOT"
+      mode=$5
+      script=$6
+      case "$mode" in
+        app)
+          unset FACTORY_LOGIN
+          unset GH_TOKEN
+          # shellcheck disable=SC1090
+          source "$script"
+          resolve_factory_login
+          apply_factory_gh_app_token
+          got=$(factory_login)
+          [[ $got == "gate-bot-slug[bot]" ]]
+          [[ $FACTORY_LOGIN == "gate-bot-slug[bot]" ]]
+          [[ $GH_TOKEN == ghs_* ]]
+          if grep -F -q "GH_TOKEN=installation" "$FACTORY_LOGIN_GH_LOG"; then
+            printf "GET /user ran with the installation token\n" >&2
+            exit 1
+          fi
+          lines=$(awk "END { print NR }" "$FACTORY_LOGIN_GH_LOG")
+          got=$(factory_login)
+          [[ $got == "gate-bot-slug[bot]" ]]
+          [[ $(awk "END { print NR }" "$FACTORY_LOGIN_GH_LOG") == "$lines" ]]
+          ;;
+        preset)
+          export FACTORY_LOGIN=kept-login
+          unset GH_TOKEN
+          # shellcheck disable=SC1090
+          source "$script"
+          resolve_factory_login
+          apply_factory_gh_app_token
+          got=$(factory_login)
+          [[ $got == kept-login ]]
+          [[ $GH_TOKEN == ghs_* ]]
+          [[ ! -s $FACTORY_LOGIN_GH_LOG ]]
+          ;;
+        noapp)
+          unset FACTORY_LOGIN
+          unset GH_TOKEN
+          unset FACTORY_GH_APP_ID
+          # shellcheck disable=SC1090
+          source "$script"
+          resolve_factory_login
+          apply_factory_gh_app_token
+          got=$(factory_login)
+          [[ $got == station-user ]]
+          [[ $FACTORY_LOGIN == station-user ]]
+          [[ -z ${GH_TOKEN+x} ]]
+          grep -F -q "GH_TOKEN=<unset>" "$FACTORY_LOGIN_GH_LOG"
+          grep -F -q "args=api user" "$FACTORY_LOGIN_GH_LOG"
+          if grep -F -q "GH_TOKEN=installation" "$FACTORY_LOGIN_GH_LOG"; then
+            printf "GET /user ran with the installation token\n" >&2
+            exit 1
+          fi
+          ;;
+        *)
+          printf "unknown mode %s\n" "$mode" >&2
+          exit 1
+          ;;
+      esac
+    ' bash "$login_root/bin" "$login_root/watch" "$login_root/gh.log" "$login_root/home" "$mode" "$root/$rel" \
+      >"$out" 2>"$err" || fail "$rel review login ($mode)"
+    if [[ -n $pem_line ]] && grep -F -q -- "$pem_line" "$out" "$err"; then
+      fail "$rel review login ($mode) leaked the private key"
+    fi
+    if grep -F -q 'Authorization:' "$out" "$err"; then
+      fail "$rel review login ($mode) leaked a JWT"
+    fi
   done
 done
 rm -rf "$login_root"

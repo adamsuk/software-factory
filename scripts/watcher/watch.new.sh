@@ -275,11 +275,13 @@ GATE_CR_COMMITS=0
 GATE_IR="none"
 GATE_IR_SUMMARY=""
 GATE_SENS="n"
-# Host may set this to the account that posts independent-review comments
-# (the station gh user, or <app-slug>[bot] when the GitHub App posts them).
-# Empty means resolve it on the first cycle, before the installation token
-# is installed. Do not clear a value the host already set.
+# Host may set this to the account matched against independent-review
+# comments. Empty means the station gh login until an installation token is
+# applied, then <app-slug>[bot], because that is who posts the comments.
+# A value the host already set is kept.
 FACTORY_LOGIN=${FACTORY_LOGIN:-}
+FACTORY_LOGIN_FROM_RESOLVE=0
+FACTORY_LOGIN_FROM_APP=0
 GROK_LAST_OUT=""
 REVIEW_VERDICT=""
 REVIEW_BULLETS=""
@@ -2520,6 +2522,9 @@ factory_login() {
     FACTORY_LOGIN=""
     return 1
   fi
+  # Captured from the station gh login, not a host preset and not the app bot.
+  FACTORY_LOGIN_FROM_RESOLVE=1
+  FACTORY_LOGIN_FROM_APP=0
   printf '%s' "$FACTORY_LOGIN"
 }
 
@@ -5157,12 +5162,36 @@ flush_events() {
   esac
 }
 
+# Installation-token comments are posted as <slug>[bot]. A host FACTORY_LOGIN
+# that was set before any capture still wins. The slug comes from
+# gh-app-token.sh --slug (env, gh-app env file, cached GET /app, then the
+# documented software-factory-line last resort). Never call GET /user here.
+use_app_bot_login() {
+  local helper=$1 slug=""
+  if [[ -n ${FACTORY_LOGIN:-} && ${FACTORY_LOGIN_FROM_RESOLVE:-0} != 1 && ${FACTORY_LOGIN_FROM_APP:-0} != 1 ]]; then
+    return 0
+  fi
+  if [[ -n $helper && -f $helper ]]; then
+    slug=$(bash "$helper" --slug) || slug=""
+    slug=${slug//$'\n'/}
+    slug=${slug//$'\r'/}
+  fi
+  if [[ ! $slug =~ ^[A-Za-z0-9][A-Za-z0-9-]{0,98}$ ]]; then
+    slug=software-factory-line
+  fi
+  FACTORY_LOGIN="${slug}[bot]"
+  FACTORY_LOGIN_FROM_APP=1
+  FACTORY_LOGIN_FROM_RESOLVE=0
+}
+
 # Use a GitHub App installation token for gh and git push when the host set
 # FACTORY_GH_APP_ID, FACTORY_GH_APP_INSTALLATION_ID and FACTORY_GH_APP_KEY_FILE.
 # Otherwise keep the current gh login and leave GH_TOKEN unset. Refreshed
 # each cycle so a long run does not keep an expired token. Grok is started
 # with those variables removed.
 # The .early step must also stage gh-app-token.sh in $FACTORY_WATCH_ROOT.
+# When a token is applied, independent-review matching uses <slug>[bot]
+# unless the host preset FACTORY_LOGIN.
 apply_factory_gh_app_token() {
   local helper token script_dir candidate resolved
   # Flat live copy: beside this script. Repo tree: scripts/gh-app-token.sh.
@@ -5185,14 +5214,24 @@ apply_factory_gh_app_token() {
   fi
   if [[ -n $token ]]; then
     export GH_TOKEN="$token"
+    use_app_bot_login "$helper"
   else
     unset GH_TOKEN
+    # A later refresh failed. Comments fall back to the station login, so
+    # matching must follow. A host preset is left alone.
+    if [[ ${FACTORY_LOGIN_FROM_APP:-0} == 1 ]]; then
+      FACTORY_LOGIN=""
+      FACTORY_LOGIN_FROM_APP=0
+      FACTORY_LOGIN_FROM_RESOLVE=0
+      resolve_factory_login
+    fi
   fi
 }
 
 cycle() {
-  # Installation tokens cannot call GET /user. Resolve the factory login
-  # first and keep it for the independent-review comment match.
+  # Installation tokens cannot call GET /user. Capture the station login
+  # first, then apply the token. Comment matching switches to <slug>[bot]
+  # when a token is applied. A preset FACTORY_LOGIN stays.
   resolve_factory_login
   apply_factory_gh_app_token
   write_heartbeat

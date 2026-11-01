@@ -68,9 +68,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `../gh-app-token.sh`. The `.early` step must also stage that helper in
   `$FACTORY_WATCH_ROOT` (#195).
 - Both watchers resolve the factory login before `GH_TOKEN` is the GitHub
-  App installation token. `GET /user` is not called with that token. The
-  login captured first, or a preset `FACTORY_LOGIN`, is the one matched
-  against independent-review comments (#195).
+  App installation token. `GET /user` is not called with that token. When
+  that token is applied, independent-review comments are matched as
+  `<slug>[bot]`. The slug is `GH_APP_SLUG` or `FACTORY_GH_APP_SLUG` (the
+  environment or the gh-app env file), else `GET /app` with the app JWT,
+  cached beside the token. `software-factory-line` is only the last resort.
+  A preset `FACTORY_LOGIN` still wins. With no app, matching stays on the
+  station login (#195).
 - Independent review keeps the last PASS, FIX, or ESCALATE object when Grok's
   `.text` holds several JSON values or trailing text. A final `VERDICT:` line,
   or a final line that is exactly PASS, FIX, or ESCALATE, still counts when no
