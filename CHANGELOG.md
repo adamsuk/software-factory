@@ -67,6 +67,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Both watchers find `gh-app-token.sh` beside the script and at
   `../gh-app-token.sh`. The `.early` step must also stage that helper in
   `$FACTORY_WATCH_ROOT` (#195).
+- Both watchers resolve the factory login before `GH_TOKEN` is the GitHub
+  App installation token. `GET /user` is not called with that token. The
+  login captured first, or a preset `FACTORY_LOGIN`, is the one matched
+  against independent-review comments (#195).
 - Independent review keeps the last PASS, FIX, or ESCALATE object when Grok's
   `.text` holds several JSON values or trailing text. A final `VERDICT:` line,
   or a final line that is exactly PASS, FIX, or ESCALATE, still counts when no

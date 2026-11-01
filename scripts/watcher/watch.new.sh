@@ -275,7 +275,11 @@ GATE_CR_COMMITS=0
 GATE_IR="none"
 GATE_IR_SUMMARY=""
 GATE_SENS="n"
-FACTORY_LOGIN=""
+# Host may set this to the account that posts independent-review comments
+# (the station gh user, or <app-slug>[bot] when the GitHub App posts them).
+# Empty means resolve it on the first cycle, before the installation token
+# is installed. Do not clear a value the host already set.
+FACTORY_LOGIN=${FACTORY_LOGIN:-}
 GROK_LAST_OUT=""
 REVIEW_VERDICT=""
 REVIEW_BULLETS=""
@@ -2482,21 +2486,65 @@ state_age_secs() {
 }
 
 factory_login() {
+  # Login matched against independent-review comments. A preset FACTORY_LOGIN
+  # wins. Otherwise ask the current gh user. Never call GET /user while
+  # GH_TOKEN is an installation token: that endpoint is not available to it,
+  # and the failure sets GATE_REVIEW=error and blocks the merge gate.
   if [[ -n ${FACTORY_LOGIN:-} ]]; then
     printf '%s' "$FACTORY_LOGIN"
     return 0
   fi
-  local dest
-  dest="${CYCLE_DIR}/gh-user.json"
+  if [[ ${GH_TOKEN:-} == ghs_* ]]; then
+    return 1
+  fi
+  local dest="" cleanup=0
+  if [[ -n ${CYCLE_DIR:-} && -d $CYCLE_DIR ]]; then
+    dest="${CYCLE_DIR}/gh-user.json"
+  else
+    dest=$(mktemp "${TMPDIR:-/tmp}/factory-login.XXXXXX") || return 1
+    cleanup=1
+  fi
   if [[ ! -s $dest ]]; then
-    gh_out "$dest" gh api user --jq '{login: .login}' || return 1
+    if ! gh_out "$dest" gh api user --jq '{login: .login}'; then
+      if (( cleanup )); then
+        rm -f "$dest" "${dest}.err"
+      fi
+      return 1
+    fi
   fi
   FACTORY_LOGIN=$(jq -r '.login // ""' "$dest")
+  if (( cleanup )); then
+    rm -f "$dest" "${dest}.err"
+  fi
   if [[ -z $FACTORY_LOGIN || $FACTORY_LOGIN == null ]]; then
     FACTORY_LOGIN=""
     return 1
   fi
   printf '%s' "$FACTORY_LOGIN"
+}
+
+# Call before apply_factory_gh_app_token. When this process already holds an
+# installation token, drop it for the lookup so GET /user runs as the station
+# gh login, then put the token back. The captured login is what comment
+# matching uses for the rest of the process.
+resolve_factory_login() {
+  if [[ -n ${FACTORY_LOGIN:-} ]]; then
+    return 0
+  fi
+  local had=0 saved=""
+  if [[ ${GH_TOKEN:-} == ghs_* ]]; then
+    saved=$GH_TOKEN
+    had=1
+    unset GH_TOKEN
+  fi
+  if ! factory_login >/dev/null; then
+    FACTORY_LOGIN=""
+  fi
+  if (( had )); then
+    GH_TOKEN=$saved
+    export GH_TOKEN
+  fi
+  return 0
 }
 
 compact_json_values() {
@@ -5143,6 +5191,9 @@ apply_factory_gh_app_token() {
 }
 
 cycle() {
+  # Installation tokens cannot call GET /user. Resolve the factory login
+  # first and keep it for the independent-review comment match.
+  resolve_factory_login
   apply_factory_gh_app_token
   write_heartbeat
   GROK_USED=0

@@ -581,5 +581,137 @@ for rel in scripts/watcher/watch.sh scripts/watcher/watch.new.sh; do
   rm -f "$parent_helper"
 done
 
+# factory_login must not call GET /user while GH_TOKEN is an installation
+# token. cycle() resolves the login first; a preset FACTORY_LOGIN is kept.
+tname="factory-login"
+login_root=$tmpdir/login-root
+rm -rf "$login_root"
+mkdir -p "$login_root/bin" "$login_root/home" "$login_root/watch"
+cat > "$login_root/bin/gh" << 'EOF'
+#!/bin/bash
+log=${FACTORY_LOGIN_GH_LOG:?}
+if [[ -n ${GH_TOKEN+x} ]]; then
+  if [[ $GH_TOKEN == ghs_* ]]; then
+    printf 'GH_TOKEN=installation\n' >> "$log"
+    printf 'gh saw an installation token\n' >&2
+    exit 97
+  fi
+  printf 'GH_TOKEN=set\n' >> "$log"
+else
+  printf 'GH_TOKEN=<unset>\n' >> "$log"
+fi
+printf 'args=%s\n' "$*" >> "$log"
+if [[ ${1:-} == api && ${2:-} == user ]]; then
+  printf '%s\n' '{"login":"station-user"}'
+  exit 0
+fi
+printf 'unexpected gh: %s\n' "$*" >&2
+exit 99
+EOF
+chmod +x "$login_root/bin/gh"
+: > "$login_root/gh.log"
+
+for rel in scripts/watcher/watch.sh scripts/watcher/watch.new.sh; do
+  awk '
+    /^cycle\(\)/ { in_fn = 1; next }
+    in_fn && /^}/ { exit }
+    in_fn && /resolve_factory_login/ && !resolve_line { resolve_line = NR }
+    in_fn && /apply_factory_gh_app_token/ && !apply_line { apply_line = NR }
+    END {
+      if (!resolve_line || !apply_line || resolve_line >= apply_line) exit 1
+    }
+  ' "$root/$rel" || fail "$rel applies the installation token before resolving the factory login"
+
+  for mode in preset refuse before capture; do
+    tname="factory-login-${mode}-$(basename "$rel")"
+    : > "$login_root/gh.log"
+    # shellcheck disable=SC2016  # script runs in the child bash, not here
+    timeout 30 bash -c '
+      set -euo pipefail
+      export PATH="$1:$PATH"
+      export FACTORY_WATCH_ROOT="$2"
+      export FACTORY_LOGIN_GH_LOG="$3"
+      export HOME="$4"
+      export GH_CONFIG_DIR="$4/gh-config"
+      mkdir -p "$HOME" "$GH_CONFIG_DIR" "$FACTORY_WATCH_ROOT"
+      mode=$5
+      script=$6
+      case "$mode" in
+        preset)
+          export FACTORY_LOGIN="app-slug[bot]"
+          export GH_TOKEN=ghs_shouldnotbeused
+          # shellcheck disable=SC1090
+          source "$script"
+          [[ $FACTORY_LOGIN == "app-slug[bot]" ]]
+          got=$(factory_login)
+          [[ $got == "app-slug[bot]" ]]
+          [[ ! -s $FACTORY_LOGIN_GH_LOG ]]
+          [[ $GH_TOKEN == ghs_shouldnotbeused ]]
+          ;;
+        refuse)
+          unset FACTORY_LOGIN
+          export GH_TOKEN=ghs_shouldnotbeused
+          # shellcheck disable=SC1090
+          source "$script"
+          [[ -z ${FACTORY_LOGIN:-} ]]
+          if factory_login; then
+            printf "factory_login called GET /user with an installation token\n" >&2
+            exit 1
+          fi
+          [[ -z ${FACTORY_LOGIN:-} ]]
+          [[ ! -s $FACTORY_LOGIN_GH_LOG ]]
+          [[ $GH_TOKEN == ghs_shouldnotbeused ]]
+          ;;
+        before)
+          unset FACTORY_LOGIN
+          unset GH_TOKEN
+          # shellcheck disable=SC1090
+          source "$script"
+          # Not a command substitution: that subshell would drop FACTORY_LOGIN.
+          factory_login >"$FACTORY_WATCH_ROOT/login.out"
+          [[ $FACTORY_LOGIN == station-user ]]
+          [[ $(<"$FACTORY_WATCH_ROOT/login.out") == station-user ]]
+          export GH_TOKEN=ghs_shouldnotbeused
+          factory_login >"$FACTORY_WATCH_ROOT/login.out"
+          [[ $(<"$FACTORY_WATCH_ROOT/login.out") == station-user ]]
+          [[ $(awk "END { print NR }" "$FACTORY_LOGIN_GH_LOG") == 2 ]]
+          grep -F -q "GH_TOKEN=<unset>" "$FACTORY_LOGIN_GH_LOG"
+          grep -F -q "args=api user" "$FACTORY_LOGIN_GH_LOG"
+          if grep -F -q "GH_TOKEN=installation" "$FACTORY_LOGIN_GH_LOG"; then
+            printf "GET /user ran with the installation token\n" >&2
+            exit 1
+          fi
+          ;;
+        capture)
+          unset FACTORY_LOGIN
+          export GH_TOKEN=ghs_shouldnotbeused
+          # shellcheck disable=SC1090
+          source "$script"
+          resolve_factory_login
+          [[ $FACTORY_LOGIN == station-user ]]
+          [[ $GH_TOKEN == ghs_shouldnotbeused ]]
+          grep -F -q "GH_TOKEN=<unset>" "$FACTORY_LOGIN_GH_LOG"
+          grep -F -q "args=api user" "$FACTORY_LOGIN_GH_LOG"
+          if grep -F -q "GH_TOKEN=installation" "$FACTORY_LOGIN_GH_LOG"; then
+            printf "GET /user ran with the installation token\n" >&2
+            exit 1
+          fi
+          lines=$(awk "END { print NR }" "$FACTORY_LOGIN_GH_LOG")
+          resolve_factory_login
+          got=$(factory_login)
+          [[ $got == station-user ]]
+          [[ $(awk "END { print NR }" "$FACTORY_LOGIN_GH_LOG") == "$lines" ]]
+          ;;
+        *)
+          printf "unknown mode %s\n" "$mode" >&2
+          exit 1
+          ;;
+      esac
+    ' bash "$login_root/bin" "$login_root/watch" "$login_root/gh.log" "$login_root/home" "$mode" "$root/$rel" \
+      || fail "$rel factory login ($mode)"
+  done
+done
+rm -rf "$login_root"
+
 [[ ! -e $HOME/.config/gh ]] || fail "a test used gh config"
 echo "ok  gh-app-token"
