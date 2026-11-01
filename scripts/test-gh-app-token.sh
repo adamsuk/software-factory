@@ -608,7 +608,9 @@ for rel in scripts/watcher/watch.sh scripts/watcher/watch.new.sh; do
 done
 
 # factory_login must not call GET /user while GH_TOKEN is an installation
-# token. cycle() resolves the login first; a preset FACTORY_LOGIN is kept.
+# token. cycle() resolves the login before the token is applied. A
+# FACTORY_LOGIN that is already set is returned as-is and is not replaced
+# by GET /user.
 tname="factory-login"
 login_root=$tmpdir/login-root
 rm -rf "$login_root"
@@ -737,8 +739,9 @@ for rel in scripts/watcher/watch.sh scripts/watcher/watch.new.sh; do
       || fail "$rel factory login ($mode)"
   done
 done
-# App token in use: independent-review matching uses <slug>[bot].
-# No app: the station login captured before GH_TOKEN is unchanged.
+# App token in use: independent-review matching uses <slug>[bot], even when
+# FACTORY_LOGIN was preset. Preset with no app token: that preset login.
+# No app and no preset: the station login is unchanged.
 # Slug is derived (env, gh-app env file, GET /app), not hard-coded.
 tname="slug-from-env"
 unset GH_APP_SLUG FACTORY_GH_APP_SLUG FACTORY_GH_APP_ENV_FILE || true
@@ -834,7 +837,7 @@ for rel in scripts/watcher/watch.sh scripts/watcher/watch.new.sh; do
   # shellcheck disable=SC2016  # literal source text, not expansion
   grep -F -q 'bash "$helper" --slug' "$root/$rel" \
     || fail "$rel does not ask the helper for the app slug"
-  for mode in app preset noapp; do
+  for mode in app preset-app preset-noapp noapp; do
     tname="review-login-${mode}-$(basename "$rel")"
     : > "$login_root/gh.log"
     # shellcheck disable=SC2016  # script runs in the child bash, not here
@@ -869,7 +872,7 @@ for rel in scripts/watcher/watch.sh scripts/watcher/watch.new.sh; do
           [[ $got == "gate-bot-slug[bot]" ]]
           [[ $(awk "END { print NR }" "$FACTORY_LOGIN_GH_LOG") == "$lines" ]]
           ;;
-        preset)
+        preset-app)
           export FACTORY_LOGIN=kept-login
           unset GH_TOKEN
           # shellcheck disable=SC1090
@@ -877,9 +880,48 @@ for rel in scripts/watcher/watch.sh scripts/watcher/watch.new.sh; do
           resolve_factory_login
           apply_factory_gh_app_token
           got=$(factory_login)
-          [[ $got == kept-login ]]
+          [[ $got == "gate-bot-slug[bot]" ]]
+          [[ $FACTORY_LOGIN == "gate-bot-slug[bot]" ]]
           [[ $GH_TOKEN == ghs_* ]]
           [[ ! -s $FACTORY_LOGIN_GH_LOG ]]
+          if grep -F -q "GH_TOKEN=installation" "$FACTORY_LOGIN_GH_LOG"; then
+            printf "GET /user ran with the installation token\n" >&2
+            exit 1
+          fi
+          lines=$(awk "END { print NR }" "$FACTORY_LOGIN_GH_LOG")
+          got=$(factory_login)
+          [[ $got == "gate-bot-slug[bot]" ]]
+          [[ $(awk "END { print NR }" "$FACTORY_LOGIN_GH_LOG") == "$lines" ]]
+          # Token refresh failed: no token, so the preset login applies again.
+          unset FACTORY_GH_APP_ID
+          apply_factory_gh_app_token
+          got=$(factory_login)
+          [[ $got == kept-login ]]
+          [[ $FACTORY_LOGIN == kept-login ]]
+          [[ -z ${GH_TOKEN+x} ]]
+          [[ $(awk "END { print NR }" "$FACTORY_LOGIN_GH_LOG") == "$lines" ]]
+          if grep -F -q "GH_TOKEN=installation" "$FACTORY_LOGIN_GH_LOG"; then
+            printf "GET /user ran with the installation token\n" >&2
+            exit 1
+          fi
+          ;;
+        preset-noapp)
+          export FACTORY_LOGIN=kept-login
+          unset GH_TOKEN
+          unset FACTORY_GH_APP_ID
+          # shellcheck disable=SC1090
+          source "$script"
+          resolve_factory_login
+          apply_factory_gh_app_token
+          got=$(factory_login)
+          [[ $got == kept-login ]]
+          [[ $FACTORY_LOGIN == kept-login ]]
+          [[ -z ${GH_TOKEN+x} ]]
+          [[ ! -s $FACTORY_LOGIN_GH_LOG ]]
+          if grep -F -q "GH_TOKEN=installation" "$FACTORY_LOGIN_GH_LOG"; then
+            printf "GET /user ran with the installation token\n" >&2
+            exit 1
+          fi
           ;;
         noapp)
           unset FACTORY_LOGIN

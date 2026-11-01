@@ -275,11 +275,13 @@ GATE_CR_COMMITS=0
 GATE_IR="none"
 GATE_IR_SUMMARY=""
 GATE_SENS="n"
-# Host may set this to the account matched against independent-review
-# comments. Empty means the station gh login until an installation token is
-# applied, then <app-slug>[bot], because that is who posts the comments.
-# A value the host already set is kept.
+# Login matched against independent-review comments. When a GitHub App
+# installation token is in use, this is <app-slug>[bot] even if the host
+# preset a value. With no token, a host value is kept; empty means the
+# station gh login.
 FACTORY_LOGIN=${FACTORY_LOGIN:-}
+# Host preset, restored when a token refresh fails and no token is applied.
+FACTORY_LOGIN_PRESET=""
 FACTORY_LOGIN_FROM_RESOLVE=0
 FACTORY_LOGIN_FROM_APP=0
 GROK_LAST_OUT=""
@@ -2488,10 +2490,12 @@ state_age_secs() {
 }
 
 factory_login() {
-  # Login matched against independent-review comments. A preset FACTORY_LOGIN
-  # wins. Otherwise ask the current gh user. Never call GET /user while
-  # GH_TOKEN is an installation token: that endpoint is not available to it,
-  # and the failure sets GATE_REVIEW=error and blocks the merge gate.
+  # Login matched against independent-review comments. Return FACTORY_LOGIN
+  # when it is already set: a host preset while no installation token is
+  # applied, the station capture, or <slug>[bot] while a token is in use.
+  # Otherwise ask the current gh user. Never call GET /user while GH_TOKEN
+  # is an installation token: that endpoint is not available to it, and the
+  # failure sets GATE_REVIEW=error and blocks the merge gate.
   if [[ -n ${FACTORY_LOGIN:-} ]]; then
     printf '%s' "$FACTORY_LOGIN"
     return 0
@@ -2530,8 +2534,8 @@ factory_login() {
 
 # Call before apply_factory_gh_app_token. When this process already holds an
 # installation token, drop it for the lookup so GET /user runs as the station
-# gh login, then put the token back. The captured login is what comment
-# matching uses for the rest of the process.
+# gh login, then put the token back. A host FACTORY_LOGIN is left as-is here.
+# Comment matching uses that login only when no installation token is applied.
 resolve_factory_login() {
   if [[ -n ${FACTORY_LOGIN:-} ]]; then
     return 0
@@ -5162,14 +5166,16 @@ flush_events() {
   esac
 }
 
-# Installation-token comments are posted as <slug>[bot]. A host FACTORY_LOGIN
-# that was set before any capture still wins. The slug comes from
-# gh-app-token.sh --slug (env, gh-app env file, cached GET /app, then the
-# documented software-factory-line last resort). Never call GET /user here.
+# Installation-token comments are posted as <slug>[bot]. That login wins
+# whenever the installation token is in use, including over a host
+# FACTORY_LOGIN. The slug comes from gh-app-token.sh --slug (env, gh-app env
+# file, cached GET /app, then the documented software-factory-line last
+# resort). Never call GET /user here.
 use_app_bot_login() {
   local helper=$1 slug=""
+  # A host preset applies again only if this token is later dropped.
   if [[ -n ${FACTORY_LOGIN:-} && ${FACTORY_LOGIN_FROM_RESOLVE:-0} != 1 && ${FACTORY_LOGIN_FROM_APP:-0} != 1 ]]; then
-    return 0
+    FACTORY_LOGIN_PRESET=$FACTORY_LOGIN
   fi
   if [[ -n $helper && -f $helper ]]; then
     slug=$(bash "$helper" --slug) || slug=""
@@ -5191,7 +5197,8 @@ use_app_bot_login() {
 # with those variables removed.
 # The .early step must also stage gh-app-token.sh in $FACTORY_WATCH_ROOT.
 # When a token is applied, independent-review matching uses <slug>[bot]
-# unless the host preset FACTORY_LOGIN.
+# even if the host preset FACTORY_LOGIN. That preset applies only when no
+# token is applied.
 apply_factory_gh_app_token() {
   local helper token script_dir candidate resolved
   # Flat live copy: beside this script. Repo tree: scripts/gh-app-token.sh.
@@ -5217,21 +5224,26 @@ apply_factory_gh_app_token() {
     use_app_bot_login "$helper"
   else
     unset GH_TOKEN
-    # A later refresh failed. Comments fall back to the station login, so
-    # matching must follow. A host preset is left alone.
+    # No token is applied. A login taken from the app bot falls back to the
+    # host preset, or to the station login when the host did not preset one.
     if [[ ${FACTORY_LOGIN_FROM_APP:-0} == 1 ]]; then
-      FACTORY_LOGIN=""
       FACTORY_LOGIN_FROM_APP=0
       FACTORY_LOGIN_FROM_RESOLVE=0
-      resolve_factory_login
+      if [[ -n ${FACTORY_LOGIN_PRESET:-} ]]; then
+        FACTORY_LOGIN=$FACTORY_LOGIN_PRESET
+      else
+        FACTORY_LOGIN=""
+        resolve_factory_login
+      fi
     fi
   fi
 }
 
 cycle() {
   # Installation tokens cannot call GET /user. Capture the station login
-  # first, then apply the token. Comment matching switches to <slug>[bot]
-  # when a token is applied. A preset FACTORY_LOGIN stays.
+  # first, then apply the token. When a token is applied, comment matching
+  # uses <slug>[bot] even if FACTORY_LOGIN was preset. A preset or the
+  # station login applies only when no token is applied.
   resolve_factory_login
   apply_factory_gh_app_token
   write_heartbeat
