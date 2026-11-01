@@ -300,7 +300,7 @@ note() {
 }
 
 redact() {
-  sed -E 's/(gho|ghp|github_pat)_[A-Za-z0-9_]+/[redacted]/g'
+  sed -E 's/(gho|ghp|ghs|github_pat)_[A-Za-z0-9_]+/[redacted]/g'
 }
 
 repo_ok() {
@@ -1525,7 +1525,10 @@ run_grok() {
     grok_cmd+=(--json-schema "$schema")
   fi
   log "grok start kind=${kind} repo=${repo} ref=${ref} turns=${turns} cwd=${cwd}"
-  timeout 40m "${grok_cmd[@]}" >"$out" 2>"$err" || rc=$?
+  timeout 40m env -u GH_TOKEN -u GITHUB_TOKEN "${grok_cmd[@]}" >"$out" 2>"$err" || rc=$?
+  # Grok can run long enough for the installation token to expire. Refresh
+  # before the caller pushes or comments. The grok process itself did not see it.
+  apply_factory_gh_app_token
   rm -f "$prompt_file"
   cost=$(jq -r '.total_cost_usd // .cost_usd // empty' "$out" 2>/dev/null || true)
   stop=$(jq -r '.stopReason // empty' "$out" 2>/dev/null || true)
@@ -5105,7 +5108,29 @@ flush_events() {
   esac
 }
 
+# Use a GitHub App installation token for gh and git push when the host set
+# FACTORY_GH_APP_ID, FACTORY_GH_APP_INSTALLATION_ID and FACTORY_GH_APP_KEY_FILE.
+# Otherwise keep the current gh login and leave GH_TOKEN unset. Refreshed
+# each cycle so a long run does not keep an expired token. Grok is started
+# with those variables removed.
+apply_factory_gh_app_token() {
+  local helper token
+  helper="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/gh-app-token.sh"
+  token=""
+  if [[ -f $helper ]]; then
+    token=$(bash "$helper") || token=""
+  else
+    printf 'gh-app-token: warning: token helper is missing; keeping the current gh login\n' >&2
+  fi
+  if [[ -n $token ]]; then
+    export GH_TOKEN="$token"
+  else
+    unset GH_TOKEN
+  fi
+}
+
 cycle() {
+  apply_factory_gh_app_token
   write_heartbeat
   GROK_USED=0
   GROK_RESERVED=0

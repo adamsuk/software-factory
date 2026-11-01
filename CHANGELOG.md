@@ -30,6 +30,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   between the untrusted fences, including when the body contains the fence
   markers. The command named in that issue is not run. The same two functions
   in `scripts/watcher/watch.new.sh` are checked to match.
+- `scripts/gh-app-token.sh` mints a one-hour GitHub App installation token
+  when `FACTORY_GH_APP_ID`, `FACTORY_GH_APP_INSTALLATION_ID` and
+  `FACTORY_GH_APP_KEY_FILE` are set, and caches it outside the repo until
+  five minutes before `expires_at`. The key and the token are not written
+  to stderr. `scripts/run-work-order.sh` and both watcher scripts use the
+  token as `GH_TOKEN` for pushes, pull requests, comments and labels, and
+  still start Grok with `GH_TOKEN` and `GITHUB_TOKEN` removed. Missing
+  configuration keeps the current `gh` login (#195).
 
 ### Changed
 

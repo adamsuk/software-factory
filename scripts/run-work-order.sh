@@ -511,6 +511,26 @@ finish_commit() {
   [[ "$(git rev-parse HEAD)" != "$start" ]] || die 3 "grok made no change"
 }
 
+# Use a GitHub App installation token for gh and git push when the host set
+# FACTORY_GH_APP_ID, FACTORY_GH_APP_INSTALLATION_ID and FACTORY_GH_APP_KEY_FILE.
+# Otherwise keep the current gh login and leave GH_TOKEN unset. Grok is
+# started with those variables removed.
+apply_factory_gh_app_token() {
+  local helper token
+  helper="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/gh-app-token.sh"
+  token=""
+  if [[ -f $helper ]]; then
+    token=$(bash "$helper") || token=""
+  else
+    printf 'gh-app-token: warning: token helper is missing; keeping the current gh login\n' >&2
+  fi
+  if [[ -n $token ]]; then
+    export GH_TOKEN="$token"
+  else
+    unset GH_TOKEN
+  fi
+}
+
 main() {
   local push=false
   if [[ "${1:-}" == "--push" ]]; then push=true; shift; fi
@@ -540,6 +560,7 @@ main() {
 
   dir=$(choose_clone_dir "$repo" "$issue")
   echo "run-work-order: $repo#$issue in $dir"
+  apply_factory_gh_app_token
   gh repo clone "$repo" "$dir" -- --quiet
   cd "$dir" || die 2 "cannot enter $dir"
   if git ls-remote --exit-code --heads origin "$branch" > /dev/null; then
@@ -586,6 +607,7 @@ main() {
   write_bench_handoff
 
   if $push; then
+    apply_factory_gh_app_token
     git push --quiet -u origin "$branch"
     set_gate_label
     publish_pr
