@@ -64,6 +64,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   cannot block the watcher before its heartbeat. Setup, the setup environment
   snapshot, and tests do not inherit the installation `GH_TOKEN`. A
   pre-existing `GITHUB_TOKEN` stays for the no-app fallback (#195).
+- Both watchers find `gh-app-token.sh` beside the script and at
+  `../gh-app-token.sh`. The `.early` step must also stage that helper in
+  `$FACTORY_WATCH_ROOT` (#195).
 - Independent review keeps the last PASS, FIX, or ESCALATE object when Grok's
   `.text` holds several JSON values or trailing text. A final `VERDICT:` line,
   or a final line that is exactly PASS, FIX, or ESCALATE, still counts when no

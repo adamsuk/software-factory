@@ -5114,11 +5114,23 @@ flush_events() {
 # Otherwise keep the current gh login and leave GH_TOKEN unset. Refreshed
 # each cycle so a long run does not keep an expired token. Grok is started
 # with those variables removed.
+# The .early step must also stage gh-app-token.sh in $FACTORY_WATCH_ROOT.
 apply_factory_gh_app_token() {
-  local helper token
-  helper="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/gh-app-token.sh"
+  local helper token script_dir candidate resolved
+  # Flat live copy: beside this script. Repo tree: scripts/gh-app-token.sh.
+  script_dir=$(dirname "${BASH_SOURCE[0]}")
+  helper=""
+  for candidate in "${script_dir}/gh-app-token.sh" "${script_dir}/../gh-app-token.sh"; do
+    if [[ -f $candidate ]]; then
+      resolved=$(cd "$(dirname "$candidate")" && pwd) || resolved=""
+      if [[ -n $resolved ]]; then
+        helper="${resolved}/gh-app-token.sh"
+        break
+      fi
+    fi
+  done
   token=""
-  if [[ -f $helper ]]; then
+  if [[ -n $helper && -f $helper ]]; then
     token=$(bash "$helper") || token=""
   else
     printf 'gh-app-token: warning: token helper is missing; keeping the current gh login\n' >&2

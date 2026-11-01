@@ -539,5 +539,47 @@ for rel in scripts/watcher/watch.sh scripts/watcher/watch.new.sh; do
   [[ $got == "before [redacted] after" ]] || fail "$rel redact stateless: $got"
 done
 
+# Live watchers are a flat copy in $FACTORY_WATCH_ROOT. The helper sits beside
+# that copy. The repo tree keeps it one directory up, at scripts/gh-app-token.sh.
+# A file beside the script wins over ../gh-app-token.sh.
+tname="watcher-helper-locations"
+for rel in scripts/watcher/watch.sh scripts/watcher/watch.new.sh; do
+  # shellcheck disable=SC2016  # literal source text, not expansion
+  grep -F -q 'The .early step must also stage gh-app-token.sh in $FACTORY_WATCH_ROOT.' \
+    "$root/$rel" || fail "$rel missing .early helper note"
+  base=$(basename "$rel")
+  deploy=$tmpdir/deploy-$base
+  rm -rf "$deploy"
+  mkdir -p "$deploy"
+  cp "$root/$rel" "$deploy/$base"
+  printf '%s\n' '#!/bin/bash' 'printf "beside-token\n"' > "$deploy/gh-app-token.sh"
+  parent_helper=$tmpdir/gh-app-token.sh
+  printf '%s\n' '#!/bin/bash' 'printf "parent-token\n"' > "$parent_helper"
+  # shellcheck disable=SC2016  # script runs in the child bash, not here
+  timeout 30 bash -c '
+    set -euo pipefail
+    # shellcheck disable=SC1090
+    source "$1"
+    unset GH_TOKEN
+    apply_factory_gh_app_token
+    [[ ${GH_TOKEN:-} == beside-token ]]
+    rm -f "$2"
+    unset GH_TOKEN
+    apply_factory_gh_app_token
+    [[ ${GH_TOKEN:-} == parent-token ]]
+    rm -f "$3"
+    apply_factory_gh_app_token
+    [[ -z ${GH_TOKEN+x} ]]
+  ' bash "$deploy/$base" "$deploy/gh-app-token.sh" "$parent_helper" >"$out" 2>"$err" \
+    || fail "$rel helper lookup failed"
+  missing_warns=$(awk 'BEGIN { c = 0 } /token helper is missing/ { c++ } END { print c }' "$err")
+  [[ $missing_warns -eq 1 ]] || fail "$rel missing-helper warning count: $missing_warns"
+  if grep -F -q 'beside-token' "$err" || grep -F -q 'parent-token' "$err"; then
+    fail "$rel wrote a token to stderr"
+  fi
+  rm -rf "$deploy"
+  rm -f "$parent_helper"
+done
+
 [[ ! -e $HOME/.config/gh ]] || fail "a test used gh config"
 echo "ok  gh-app-token"
