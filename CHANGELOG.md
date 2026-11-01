@@ -30,6 +30,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   between the untrusted fences, including when the body contains the fence
   markers. The command named in that issue is not run. The same two functions
   in `scripts/watcher/watch.new.sh` are checked to match.
+- `scripts/gh-app-token.sh` mints a one-hour GitHub App installation token
+  when `FACTORY_GH_APP_ID`, `FACTORY_GH_APP_INSTALLATION_ID` and
+  `FACTORY_GH_APP_KEY_FILE` are set, and caches it outside the repo until
+  five minutes before `expires_at`. The key and the token are not written
+  to stderr. `scripts/run-work-order.sh` and both watcher scripts use the
+  token as `GH_TOKEN` for pushes, pull requests, comments and labels, and
+  still start Grok with `GH_TOKEN` and `GITHUB_TOKEN` removed. Missing
+  configuration keeps the current `gh` login (#195).
 
 ### Changed
 
@@ -49,6 +57,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - A build stopped by `max_issues_in_flight` removes the software-factory clone
   made for that attempt. While the cap stays full, the work directory no longer
   gains an `sf-main` clone on every cycle (#199).
+- GitHub App installation tokens accept the stateless `ghs_` form from the
+  October 2026 rollout (dots, hyphens, and lengths past 255 characters).
+  Both watchers redact that form. The token request uses a 10 second connect
+  timeout and a 30 second total timeout, so a stalled `api.github.com` call
+  cannot block the watcher before its heartbeat. Setup, the setup environment
+  snapshot, and tests do not inherit the installation `GH_TOKEN`. A
+  pre-existing `GITHUB_TOKEN` stays for the no-app fallback (#195).
+- Both watchers find `gh-app-token.sh` beside the script and at
+  `../gh-app-token.sh`. The `.early` step must also stage that helper in
+  `$FACTORY_WATCH_ROOT` (#195).
+- Both watchers resolve the factory login before `GH_TOKEN` is the GitHub
+  App installation token. `GET /user` is not called with that token. When
+  that token is applied, independent-review comments are matched as
+  `<slug>[bot]`, even if `FACTORY_LOGIN` was already set. The slug is
+  `GH_APP_SLUG` or `FACTORY_GH_APP_SLUG` (the environment or the gh-app env
+  file), else `GET /app` with the app JWT, cached beside the token.
+  `software-factory-line` is only the last resort. A preset `FACTORY_LOGIN`
+  applies only when no installation token is applied. With no app and no
+  preset, matching stays on the station login (#195).
 - Independent review keeps the last PASS, FIX, or ESCALATE object when Grok's
   `.text` holds several JSON values or trailing text. A final `VERDICT:` line,
   or a final line that is exactly PASS, FIX, or ESCALATE, still counts when no

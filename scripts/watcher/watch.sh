@@ -275,7 +275,15 @@ GATE_CR_COMMITS=0
 GATE_IR="none"
 GATE_IR_SUMMARY=""
 GATE_SENS="n"
-FACTORY_LOGIN=""
+# Login matched against independent-review comments. When a GitHub App
+# installation token is in use, this is <app-slug>[bot] even if the host
+# preset a value. With no token, a host value is kept; empty means the
+# station gh login.
+FACTORY_LOGIN=${FACTORY_LOGIN:-}
+# Host preset, restored when a token refresh fails and no token is applied.
+FACTORY_LOGIN_PRESET=""
+FACTORY_LOGIN_FROM_RESOLVE=0
+FACTORY_LOGIN_FROM_APP=0
 GROK_LAST_OUT=""
 REVIEW_VERDICT=""
 REVIEW_BULLETS=""
@@ -300,7 +308,8 @@ note() {
 }
 
 redact() {
-  sed -E 's/(gho|ghp|github_pat)_[A-Za-z0-9_]+/[redacted]/g'
+  # Stateless ghs_ tokens are JWTs (dots, hyphens, well past 255 characters).
+  sed -E 's/(gho|ghp|github_pat)_[A-Za-z0-9_]+|ghs_[A-Za-z0-9._-]+/[redacted]/g'
 }
 
 repo_ok() {
@@ -1525,7 +1534,10 @@ run_grok() {
     grok_cmd+=(--json-schema "$schema")
   fi
   log "grok start kind=${kind} repo=${repo} ref=${ref} turns=${turns} cwd=${cwd}"
-  timeout 40m "${grok_cmd[@]}" >"$out" 2>"$err" || rc=$?
+  timeout 40m env -u GH_TOKEN -u GITHUB_TOKEN "${grok_cmd[@]}" >"$out" 2>"$err" || rc=$?
+  # Grok can run long enough for the installation token to expire. Refresh
+  # before the caller pushes or comments. The grok process itself did not see it.
+  apply_factory_gh_app_token
   rm -f "$prompt_file"
   cost=$(jq -r '.total_cost_usd // .cost_usd // empty' "$out" 2>/dev/null || true)
   stop=$(jq -r '.stopReason // empty' "$out" 2>/dev/null || true)
@@ -2479,21 +2491,70 @@ state_age_secs() {
 }
 
 factory_login() {
+  # Login matched against independent-review comments. Return FACTORY_LOGIN
+  # when it is already set: a host preset while no installation token is
+  # applied, the station capture, or <slug>[bot] while a token is in use.
+  # Otherwise ask the current gh user. Never call GET /user while GH_TOKEN
+  # is an installation token: that endpoint is not available to it, and the
+  # failure sets GATE_REVIEW=error and blocks the merge gate.
   if [[ -n ${FACTORY_LOGIN:-} ]]; then
     printf '%s' "$FACTORY_LOGIN"
     return 0
   fi
-  local dest
-  dest="${CYCLE_DIR}/gh-user.json"
+  if [[ ${GH_TOKEN:-} == ghs_* ]]; then
+    return 1
+  fi
+  local dest="" cleanup=0
+  if [[ -n ${CYCLE_DIR:-} && -d $CYCLE_DIR ]]; then
+    dest="${CYCLE_DIR}/gh-user.json"
+  else
+    dest=$(mktemp "${TMPDIR:-/tmp}/factory-login.XXXXXX") || return 1
+    cleanup=1
+  fi
   if [[ ! -s $dest ]]; then
-    gh_out "$dest" gh api user --jq '{login: .login}' || return 1
+    if ! gh_out "$dest" gh api user --jq '{login: .login}'; then
+      if (( cleanup )); then
+        rm -f "$dest" "${dest}.err"
+      fi
+      return 1
+    fi
   fi
   FACTORY_LOGIN=$(jq -r '.login // ""' "$dest")
+  if (( cleanup )); then
+    rm -f "$dest" "${dest}.err"
+  fi
   if [[ -z $FACTORY_LOGIN || $FACTORY_LOGIN == null ]]; then
     FACTORY_LOGIN=""
     return 1
   fi
+  # Captured from the station gh login, not a host preset and not the app bot.
+  FACTORY_LOGIN_FROM_RESOLVE=1
+  FACTORY_LOGIN_FROM_APP=0
   printf '%s' "$FACTORY_LOGIN"
+}
+
+# Call before apply_factory_gh_app_token. When this process already holds an
+# installation token, drop it for the lookup so GET /user runs as the station
+# gh login, then put the token back. A host FACTORY_LOGIN is left as-is here.
+# Comment matching uses that login only when no installation token is applied.
+resolve_factory_login() {
+  if [[ -n ${FACTORY_LOGIN:-} ]]; then
+    return 0
+  fi
+  local had=0 saved=""
+  if [[ ${GH_TOKEN:-} == ghs_* ]]; then
+    saved=$GH_TOKEN
+    had=1
+    unset GH_TOKEN
+  fi
+  if ! factory_login >/dev/null; then
+    FACTORY_LOGIN=""
+  fi
+  if (( had )); then
+    GH_TOKEN=$saved
+    export GH_TOKEN
+  fi
+  return 0
 }
 
 compact_json_values() {
@@ -5106,7 +5167,86 @@ flush_events() {
   esac
 }
 
+# Installation-token comments are posted as <slug>[bot]. That login wins
+# whenever the installation token is in use, including over a host
+# FACTORY_LOGIN. The slug comes from gh-app-token.sh --slug (env, gh-app env
+# file, cached GET /app, then the documented software-factory-line last
+# resort). Never call GET /user here.
+use_app_bot_login() {
+  local helper=$1 slug=""
+  # A host preset applies again only if this token is later dropped.
+  if [[ -n ${FACTORY_LOGIN:-} && ${FACTORY_LOGIN_FROM_RESOLVE:-0} != 1 && ${FACTORY_LOGIN_FROM_APP:-0} != 1 ]]; then
+    FACTORY_LOGIN_PRESET=$FACTORY_LOGIN
+  fi
+  if [[ -n $helper && -f $helper ]]; then
+    slug=$(bash "$helper" --slug) || slug=""
+    slug=${slug//$'\n'/}
+    slug=${slug//$'\r'/}
+  fi
+  if [[ ! $slug =~ ^[A-Za-z0-9][A-Za-z0-9-]{0,98}$ ]]; then
+    slug=software-factory-line
+  fi
+  FACTORY_LOGIN="${slug}[bot]"
+  FACTORY_LOGIN_FROM_APP=1
+  FACTORY_LOGIN_FROM_RESOLVE=0
+}
+
+# Use a GitHub App installation token for gh and git push when the host set
+# FACTORY_GH_APP_ID, FACTORY_GH_APP_INSTALLATION_ID and FACTORY_GH_APP_KEY_FILE.
+# Otherwise keep the current gh login and leave GH_TOKEN unset. Refreshed
+# each cycle so a long run does not keep an expired token. Grok is started
+# with those variables removed.
+# The .early step must also stage gh-app-token.sh in $FACTORY_WATCH_ROOT.
+# When a token is applied, independent-review matching uses <slug>[bot]
+# even if the host preset FACTORY_LOGIN. That preset applies only when no
+# token is applied.
+apply_factory_gh_app_token() {
+  local helper token script_dir candidate resolved
+  # Flat live copy: beside this script. Repo tree: scripts/gh-app-token.sh.
+  script_dir=$(dirname "${BASH_SOURCE[0]}")
+  helper=""
+  for candidate in "${script_dir}/gh-app-token.sh" "${script_dir}/../gh-app-token.sh"; do
+    if [[ -f $candidate ]]; then
+      resolved=$(cd "$(dirname "$candidate")" && pwd) || resolved=""
+      if [[ -n $resolved ]]; then
+        helper="${resolved}/gh-app-token.sh"
+        break
+      fi
+    fi
+  done
+  token=""
+  if [[ -n $helper && -f $helper ]]; then
+    token=$(bash "$helper") || token=""
+  else
+    printf 'gh-app-token: warning: token helper is missing; keeping the current gh login\n' >&2
+  fi
+  if [[ -n $token ]]; then
+    export GH_TOKEN="$token"
+    use_app_bot_login "$helper"
+  else
+    unset GH_TOKEN
+    # No token is applied. A login taken from the app bot falls back to the
+    # host preset, or to the station login when the host did not preset one.
+    if [[ ${FACTORY_LOGIN_FROM_APP:-0} == 1 ]]; then
+      FACTORY_LOGIN_FROM_APP=0
+      FACTORY_LOGIN_FROM_RESOLVE=0
+      if [[ -n ${FACTORY_LOGIN_PRESET:-} ]]; then
+        FACTORY_LOGIN=$FACTORY_LOGIN_PRESET
+      else
+        FACTORY_LOGIN=""
+        resolve_factory_login
+      fi
+    fi
+  fi
+}
+
 cycle() {
+  # Installation tokens cannot call GET /user. Capture the station login
+  # first, then apply the token. When a token is applied, comment matching
+  # uses <slug>[bot] even if FACTORY_LOGIN was preset. A preset or the
+  # station login applies only when no token is applied.
+  resolve_factory_login
+  apply_factory_gh_app_token
   write_heartbeat
   GROK_USED=0
   GROK_RESERVED=0
