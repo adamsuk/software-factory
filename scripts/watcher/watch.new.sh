@@ -4158,6 +4158,8 @@ step_build() {
     claim_rc=0
     claim_build_issue "$repo" "$num" || claim_rc=$?
     if (( claim_rc == 4 )); then
+      # Cloned before the claim. A full cap starts no build, so drop the clone.
+      rm -rf -- "$dest"
       log "build stop ${repo}#${num}: in-flight cap"
       return 0
     fi

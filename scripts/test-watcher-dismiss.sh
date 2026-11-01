@@ -19,6 +19,7 @@ export GH_LOG="$work/gh.log"
 # The watcher sets these when sourced. t_budget also runs before that.
 BUDGET="$FACTORY_BUDGET_FILE"
 STATE="${FACTORY_WATCH_ROOT}/state"
+WORK="${FACTORY_WATCH_ROOT}/work"
 LOG="${FACTORY_WATCH_ROOT}/watch.log"
 
 mkdir -p "$work/bin"
@@ -644,6 +645,13 @@ t_not_claimed() {
   t_logged "max_issues_in_flight"
 }
 
+# A full cap still clones software-factory before the claim, then must remove it.
+t_no_abandoned_clone() {
+  local matches
+  matches=$(compgen -G "${WORK}/sf-main.*" || true)
+  [[ -z $matches ]] || fail "in-flight cap left a software-factory clone: ${matches}"
+}
+
 t_cap() {
   DRY=0
   t_inflight_file
@@ -653,6 +661,8 @@ t_cap() {
   : > "$LOG"
   step_build
   t_not_claimed "cap 3 with 3 in flight"
+  t_logged "build stop adamsuk/software-factory#199: in-flight cap"
+  t_no_abandoned_clone
   t_budget 4 '[]' '[]'
   : > "$GH_LOG"
   : > "$LOG"

@@ -27,6 +27,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- A build stopped by `max_issues_in_flight` removes the software-factory clone
+  made for that attempt. While the cap stays full, the work directory no longer
+  gains an `sf-main` clone on every cycle (#199).
 - Independent review keeps the last PASS, FIX, or ESCALATE object when Grok's
   `.text` holds several JSON values or trailing text. A final `VERDICT:` line,
   or a final line that is exactly PASS, FIX, or ESCALATE, still counts when no
