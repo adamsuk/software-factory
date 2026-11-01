@@ -46,10 +46,28 @@ target repo's `.github/factory.yml` and `AGENTS.md`.
    - **ESCALATE** if the issue requires a person (protected paths, policy decisions, exhausted rounds, fix rejected by constraints, etc.) — goes to **Scott**.
    Where a ruleset enforces the `pull_request` rule, a standing bot `CHANGES_REQUESTED` on the head means the PR is not mergeable: PASS is wrong until the finding is fixed (FIX) or Scott dismisses it (ESCALATE). Where none does, changes-requested alone does **not** force FIX/ESCALATE. Approval alone is **not** sufficient for PASS.
    **Observed merge status.** Every verdict comment states the PR's observed `mergeStateStatus` for the head under review, read with `gh pr view <N> --json mergeStateStatus,headRefOid` (not inferred from the rules), with the head SHA it was read at.
+7. **Four-field record.** Every review of the current head writes these four
+   fields for that head only, alongside the PASS, FIX, or ESCALATE verdict:
+   agreed behaviour, the checks that ran, behaviour nobody asked for, and
+   blast radius. They stay separate from that verdict and from the should-fix
+   count. Write them fresh for the head under review, and name that head's
+   SHA. A record for an older head does not count, including when step 5
+   re-reviews only the new commits.
+   - **Agreed behaviour.** What this head was supposed to do, from the
+     acceptance criteria and the work order.
+   - **Checks that ran.** The checks that ran on this head, and what they
+     reported.
+   - **Behaviour nobody asked for.** Behaviour in this head that the
+     acceptance criteria do not ask for. Write "none" when there is none.
+   - **Blast radius.** What else this head can change or break.
+
+   The `<!-- factory:review -->` comment stays `verdict:`, `should-fix:`, and
+   `nits:` only. Do not put these four fields on those lines.
 
 ## Outputs
 
-One review per push, and a short report.
+One review per push of the current head: the PASS, FIX, or ESCALATE verdict,
+the four-field record for that head, and a short report.
 
 ## Stop rules
 
@@ -63,7 +81,11 @@ When `scripts/station-run.sh` starts this role, post the verdict with
 `scripts/station-post.sh verdict` as in
 [`stations/github-writes.md`](../../stations/github-writes.md). Do not call
 `gh` to comment, relabel, or merge. The Grok watcher posts its own verdict
-and does not use that script.
+and does not use that script. The `station-post.sh verdict` comment carries
+the PASS, FIX, or ESCALATE verdict and the should-fix count. The four-field
+record in step 7 is not those lines: pass the four fields in `--summary`,
+the prose beside the verdict for this head. The Grok watcher writes the same
+four fields in the review it posts for this head.
 
 ## Cost mode
 
