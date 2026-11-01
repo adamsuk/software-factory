@@ -24,6 +24,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   reported to Scott. Optional budget `focus_issues` limits build, triage,
   planning, and Grok gate work, and `max_issues_in_flight` caps new build
   claims (#199).
+- `AGENTS.md` §10.4 marks the ordinary and allowlisted watcher dismiss path
+  as the exception to the current-head bot `CHANGES_REQUESTED` rule (#199).
 
 ### Fixed
 
