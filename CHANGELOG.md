@@ -5,6 +5,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 2026-11-01
 
+### Added
+
+- `scripts/test-untrusted-issue.sh` records that a harmless prompt-injection
+  issue is data (#16). The suite runs `write_untrusted_block` and
+  `escape_untrusted` from `scripts/watcher/watch.sh` and checks the body stays
+  between the untrusted fences, including when the body contains the fence
+  markers. The command named in that issue is not run. The same two functions
+  in `scripts/watcher/watch.new.sh` are checked to match.
+
 ### Fixed
 
 - Independent review keeps the last PASS, FIX, or ESCALATE object when Grok's
