@@ -33,6 +33,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- The reviewer brief describes the comment `ir_post_comment` posts in both
+  `scripts/watcher/watch.sh` and `scripts/watcher/watch.new.sh`. The four-field
+  record stays the station-run reviewer's, passed in `--summary` to
+  `scripts/station-post.sh verdict`. `scripts/watcher` does not record agreed
+  behaviour, the checks that ran, behaviour nobody asked for, or blast radius
+  today (#198).
 - The watcher dismisses outdated `coderabbitai[bot]` `CHANGES_REQUESTED`
   reviews on an ordinary or allowlisted `factory/` pull request after an
   independent PASS with green checks, then merges only when a fresh gate

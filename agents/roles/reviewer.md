@@ -46,13 +46,17 @@ target repo's `.github/factory.yml` and `AGENTS.md`.
    - **ESCALATE** if the issue requires a person (protected paths, policy decisions, exhausted rounds, fix rejected by constraints, etc.) — goes to **Scott**.
    Where a ruleset enforces the `pull_request` rule, a standing bot `CHANGES_REQUESTED` on the head means the PR is not mergeable: PASS is wrong until the finding is fixed (FIX) or Scott dismisses it (ESCALATE). Where none does, changes-requested alone does **not** force FIX/ESCALATE. Approval alone is **not** sufficient for PASS.
    **Observed merge status.** Every verdict comment states the PR's observed `mergeStateStatus` for the head under review, read with `gh pr view <N> --json mergeStateStatus,headRefOid` (not inferred from the rules), with the head SHA it was read at.
-7. **Four-field record.** Every review of the current head writes these four
-   fields for that head only, alongside the PASS, FIX, or ESCALATE verdict:
+7. **Four-field record.** This is the station-run reviewer's record only.
+   When `scripts/station-run.sh` starts this role, every review of the
+   current head writes these four fields for that head only, alongside the
+   PASS, FIX, or ESCALATE verdict, and passes them in `--summary` to
+   `scripts/station-post.sh verdict`:
    agreed behaviour, the checks that ran, behaviour nobody asked for, and
    blast radius. They stay separate from that verdict and from the should-fix
    count. Write them fresh for the head under review, and name that head's
    SHA. A record for an older head does not count, including when step 5
-   re-reviews only the new commits.
+   re-reviews only the new commits. `scripts/watcher` does not record these
+   four fields today.
    - **Agreed behaviour.** What this head was supposed to do, from the
      acceptance criteria and the work order.
    - **Checks that ran.** The checks that ran on this head, and what they
@@ -66,8 +70,10 @@ target repo's `.github/factory.yml` and `AGENTS.md`.
 
 ## Outputs
 
-One review per push of the current head: the PASS, FIX, or ESCALATE verdict,
-the four-field record for that head, and a short report.
+One station-run review per push of the current head: the PASS, FIX, or
+ESCALATE verdict, the step 7 four-field record for that head, and a short
+report. The Grok watcher's comment is the one `ir_post_comment` posts
+(Station runner).
 
 ## Stop rules
 
@@ -80,12 +86,25 @@ hand them back to the builder.
 When `scripts/station-run.sh` starts this role, post the verdict with
 `scripts/station-post.sh verdict` as in
 [`stations/github-writes.md`](../../stations/github-writes.md). Do not call
-`gh` to comment, relabel, or merge. The Grok watcher posts its own verdict
-and does not use that script. The `station-post.sh verdict` comment carries
-the PASS, FIX, or ESCALATE verdict and the should-fix count. The four-field
-record in step 7 is not those lines: pass the four fields in `--summary`,
-the prose beside the verdict for this head. The Grok watcher writes the same
-four fields in the review it posts for this head.
+`gh` to comment, relabel, or merge. The `station-post.sh verdict` comment
+carries the PASS, FIX, or ESCALATE verdict and the should-fix count. The
+four-field record in step 7 is the station-run reviewer's record only, and
+it is not those lines: pass the four fields in `--summary`, the prose
+beside the verdict for this head.
+
+The Grok watcher posts its own comment and does not use that script. Both
+`scripts/watcher/watch.sh` and `scripts/watcher/watch.new.sh` post it from
+`ir_post_comment`. The comment begins with an HTML comment that marks an
+independent review. The marker text is in `ir_post_comment`. That marker
+includes `v2` and the head SHA. The next line is a PASS, FIX, or ESCALATE
+verdict with the short SHA (the first seven characters of the head). The
+summary follows. `ir_post_comment` then adds the Fix list, the CodeRabbit
+findings not blocking list, and the Needs a person list only when that list
+is non-empty. Those lists are the saved `fix`, `dismissed`, and `escalate`
+fields. `ir_save_result` stores verdict, summary, fix, dismissed, escalate,
+sha, and at. The independent-review prompt requires verdict, summary, fix,
+dismissed, and escalate. `scripts/watcher` does not record agreed behaviour,
+the checks that ran, behaviour nobody asked for, or blast radius today.
 
 ## Cost mode
 
