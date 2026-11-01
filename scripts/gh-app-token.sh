@@ -83,6 +83,10 @@ cache_dir() {
   printf '%s\n' "$base"
 }
 
+# Opaque installation token. Legacy values are short [A-Za-z0-9_]. Stateless
+# ghs_ tokens (October 2026) are JWTs: dots, hyphens, and well past 255 chars.
+token_re='^[A-Za-z0-9._-]{8,}$'
+
 # Print a cached token when it is still more than five minutes from expiry.
 read_cached_token() {
   local file=$1 inst=$2 mode exp cached_inst cached_token now
@@ -94,7 +98,8 @@ read_cached_token() {
   cached_token=$(sed -n '3p' "$file" 2>/dev/null || true)
   [[ $exp =~ ^[0-9]+$ ]] || return 1
   [[ $cached_inst == "$inst" ]] || return 1
-  [[ $cached_token =~ ^[A-Za-z0-9_]{8,255}$ ]] || return 1
+  # Unquoted so the variable is a regex, not a literal string.
+  [[ $cached_token =~ $token_re ]] || return 1
   now=$(now_epoch) || return 1
   if (( now < exp - 300 )); then
     printf '%s\n' "$cached_token"
@@ -182,6 +187,8 @@ mint_token() {
   http=$(curl \
     --silent \
     --show-error \
+    --connect-timeout 10 \
+    --max-time 30 \
     --request POST \
     --header "Accept: application/vnd.github+json" \
     --header "Authorization: Bearer ${jwt}" \
@@ -204,7 +211,8 @@ mint_token() {
   expires=${parsed#*$'\n'}
   expires=${expires%%$'\n'*}
   unset json parsed
-  if [[ ! $token =~ ^[A-Za-z0-9_]{8,255}$ ]]; then
+  # Unquoted so token_re is a regex, not a literal string.
+  if [[ ! $token =~ $token_re ]]; then
     warn "GitHub App installation token response had no token; keeping the current gh login"
     exit 0
   fi

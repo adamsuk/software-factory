@@ -300,7 +300,8 @@ note() {
 }
 
 redact() {
-  sed -E 's/(gho|ghp|ghs|github_pat)_[A-Za-z0-9_]+/[redacted]/g'
+  # Stateless ghs_ tokens are JWTs (dots, hyphens, well past 255 characters).
+  sed -E 's/(gho|ghp|github_pat)_[A-Za-z0-9_]+|ghs_[A-Za-z0-9._-]+/[redacted]/g'
 }
 
 repo_ok() {

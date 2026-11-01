@@ -125,7 +125,7 @@ n=$((n + 1))
 printf '%s\n' "$n" > "$count_file"
 mkdir -p "$dir/$n"
 printf '%s\n' "$@" > "$dir/$n/args"
-token=$(tr -cd 'A-Za-z0-9_' < "${FACTORY_GH_APP_TOKEN_FILE:?}")
+token=$(tr -cd 'A-Za-z0-9_.-' < "${FACTORY_GH_APP_TOKEN_FILE:?}")
 expires=$(tr -d '[:space:]' < "${FACTORY_GH_APP_EXPIRES_FILE:?}")
 if [[ -n $out ]]; then
   printf '{"token":"%s","expires_at":"%s"}\n' "$token" "$expires" > "$out"
@@ -230,6 +230,12 @@ assert_jwt() {
   (( exp > iat && exp - iat <= 600 )) || fail "exp-iat is $((exp - iat))"
   grep -F -x -q -- '--request' "$args" || fail "token request is not an explicit request"
   grep -F -x -q -- 'POST' "$args" || fail "token request is not POST"
+  grep -F -x -q -- '--connect-timeout' "$args" || fail "token request has no connect timeout"
+  [[ $(grep -F -A1 -x -- '--connect-timeout' "$args" | tail -n 1) == 10 ]] \
+    || fail "connect timeout is not 10 seconds"
+  grep -F -x -q -- '--max-time' "$args" || fail "token request has no max time"
+  [[ $(grep -F -A1 -x -- '--max-time' "$args" | tail -n 1) == 30 ]] \
+    || fail "max time is not 30 seconds"
   grep -F -x -q -- "https://api.github.com/app/installations/${FACTORY_GH_APP_INSTALLATION_ID}/access_tokens" "$args" \
     || fail "token URL does not use FACTORY_GH_APP_INSTALLATION_ID"
 }
@@ -487,7 +493,35 @@ timeout 20 bash -c '
     *export\ GH_TOKEN*|*export\ GITHUB_TOKEN*) exit 1 ;;
   esac
   printf "%s\n" "$main_src" | grep -F -q "env -u GH_TOKEN -u GITHUB_TOKEN grok"
+  printf "%s\n" "$main_src" | awk "/unset GH_TOKEN/ { saw = 1 } /prepare_env/ && saw { ok = 1 } END { exit !(ok) }"
+  if printf "%s\n" "$main_src" | grep -E -q "unset[[:space:]]+GITHUB_TOKEN|unset[[:space:]]+GH_TOKEN[[:space:]]+GITHUB_TOKEN"; then
+    exit 1
+  fi
 ' bash "$root/scripts/run-work-order.sh" || fail "main exports a token or dropped the grok scrub"
+
+tname="stateless-ghs"
+# October 2026 ghs_ tokens are JWTs: dots, hyphens, and well past 255 characters.
+# The fake curl must pass those characters through, and the cache must accept them.
+rm -f "$cache"
+printf '0\n' > "$tmpdir/calls/count"
+rm -rf "$tmpdir/calls/1" "$tmpdir/calls/2" "$tmpdir/calls/3" "$tmpdir/calls/4"
+printf '%s\n' "$((expires_epoch - 3600))" > "$tmpdir/now"
+stateless="ghs_900195001_$(printf 'A%.0s' {1..180}).$(printf 'B%.0s' {1..180}).$(printf 'C%.0s' {1..80})-sig"
+[[ ${#stateless} -gt 255 ]] || fail "fixture token is not past 255 characters"
+[[ $stateless == *.* && $stateless == *-* ]] || fail "fixture token has no dot or hyphen"
+printf '%s\n' "$stateless" > "$tmpdir/token"
+rm -f "$tmpdir/token.next"
+bash "$helper" >"$out" 2>"$err"
+[[ $(tr -d '\n' < "$out") == "$stateless" ]] || fail "stateless token was dropped on mint"
+cmp -s "$out" <(printf '%s\n' "$stateless") || fail "stdout was not exactly the stateless token"
+[[ ! -s $err ]] || fail "stateless mint wrote to stderr"
+assert_no_secret "$err" "$stateless"
+assert_jwt "$tmpdir/calls/1/args" "$FACTORY_GH_APP_ID"
+grep -F -x -q -- "$stateless" "$cache" || fail "cache does not hold the stateless token"
+bash "$helper" >"$out" 2>"$err"
+[[ $(curl_count) == 1 ]] || fail "stateless cache hit called the token endpoint"
+[[ $(tr -d '\n' < "$out") == "$stateless" ]] || fail "stateless cache hit dropped the token"
+[[ ! -s $err ]] || fail "stateless cache hit wrote to stderr"
 
 tname="redact-ghs"
 for rel in scripts/watcher/watch.sh scripts/watcher/watch.new.sh; do
@@ -501,6 +535,8 @@ for rel in scripts/watcher/watch.sh scripts/watcher/watch.new.sh; do
   got=$(printf '%s\n' 'ghp_abc gho_def github_pat_zzz ghs_supersecrettoken' | redact)
   [[ $got == "[redacted] [redacted] [redacted] [redacted]" ]] \
     || fail "$rel redact: $got"
+  got=$(printf '%s\n' "before ${stateless} after" | redact)
+  [[ $got == "before [redacted] after" ]] || fail "$rel redact stateless: $got"
 done
 
 [[ ! -e $HOME/.config/gh ]] || fail "a test used gh config"

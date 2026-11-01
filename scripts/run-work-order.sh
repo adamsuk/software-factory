@@ -514,7 +514,9 @@ finish_commit() {
 # Use a GitHub App installation token for gh and git push when the host set
 # FACTORY_GH_APP_ID, FACTORY_GH_APP_INSTALLATION_ID and FACTORY_GH_APP_KEY_FILE.
 # Otherwise keep the current gh login and leave GH_TOKEN unset. Grok is
-# started with those variables removed.
+# started with those variables removed. The installation GH_TOKEN is unset
+# again before setup and tests. A pre-existing GITHUB_TOKEN stays so a host
+# without the app can still authenticate.
 apply_factory_gh_app_token() {
   local helper token
   helper="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/gh-app-token.sh"
@@ -595,6 +597,9 @@ main() {
   } || true)
   [[ -z "$hits" ]] || die 4 "needs a person, protected paths changed: $(echo "$hits" | tr '\n' ' ')"
 
+  # Setup snapshots the environment. Drop the installation token first so
+  # setup, that snapshot, and tests cannot inherit it. Leave GITHUB_TOKEN.
+  unset GH_TOKEN
   prepare_env
   check_setup_tree
 

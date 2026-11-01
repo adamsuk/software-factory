@@ -57,6 +57,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - A build stopped by `max_issues_in_flight` removes the software-factory clone
   made for that attempt. While the cap stays full, the work directory no longer
   gains an `sf-main` clone on every cycle (#199).
+- GitHub App installation tokens accept the stateless `ghs_` form from the
+  October 2026 rollout (dots, hyphens, and lengths past 255 characters).
+  Both watchers redact that form. The token request uses a 10 second connect
+  timeout and a 30 second total timeout, so a stalled `api.github.com` call
+  cannot block the watcher before its heartbeat. Setup, the setup environment
+  snapshot, and tests do not inherit the installation `GH_TOKEN`. A
+  pre-existing `GITHUB_TOKEN` stays for the no-app fallback (#195).
 - Independent review keeps the last PASS, FIX, or ESCALATE object when Grok's
   `.text` holds several JSON values or trailing text. A final `VERDICT:` line,
   or a final line that is exactly PASS, FIX, or ESCALATE, still counts when no
