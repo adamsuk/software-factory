@@ -7,6 +7,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `scripts/gate-issue.sh` writes `<work-order>.red-record` when required
+  checks are red (#24). Each current red check is `new` or `seen-before`
+  against the `red:` lines of earlier `<!-- factory:gate -->` comments, with
+  owner Scott. The record does not change retry, repeat, or attempt-cap
+  routing, the comment body, or the one-word stdout. `review`, `pending`,
+  `skip`, and `blocked` for `no-required-checks` do not write it. Covered by
+  `scripts/test-red-check-record.sh`.
+
 - `scripts/test-harness-eval.sh` replays one recorded work order offline (#20).
   The fixture `scripts/fixtures/replay-work-order.md` is a copy of
   `agents/work-orders/adamsuk_gh-factory-33.md`. The suite renders the builder
