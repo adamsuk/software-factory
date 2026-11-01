@@ -14,6 +14,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   markers. The command named in that issue is not run. The same two functions
   in `scripts/watcher/watch.new.sh` are checked to match.
 
+### Changed
+
+- The watcher dismisses outdated `coderabbitai[bot]` `CHANGES_REQUESTED`
+  reviews on an ordinary or allowlisted `factory/` pull request after an
+  independent PASS with green checks, then merges only when a fresh gate
+  read is the ordinary merge decision. Human reviews stay, and a protected
+  pull request that goes to Scott stays with Scott. A failed dismiss is
+  reported to Scott. Optional budget `focus_issues` limits build, triage,
+  planning, and Grok gate work, and `max_issues_in_flight` caps new build
+  claims (#199).
+
 ### Fixed
 
 - Independent review keeps the last PASS, FIX, or ESCALATE object when Grok's

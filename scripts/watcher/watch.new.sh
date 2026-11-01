@@ -61,6 +61,13 @@
 # CHANGES_REQUESTED alone no longer blocks; APPROVED alone no longer suffices.
 # Ordinary factory/ PASS PRs merge (standing permission); sensitive PASS PRs
 # (protected, CI, test, lockfile) go to Scott as ready with the summary.
+# Ordinary and allowlisted PASS + green factory/ PRs whose GitHub state is
+# BLOCKED only by coderabbitai[bot] CHANGES_REQUESTED reviews (any commit,
+# including one older than the head) have those bot reviews dismissed, then
+# the gate is read again. Merge only when that re-check is the ordinary merge.
+# A human CHANGES_REQUESTED review stays, and while one is present nothing is
+# dismissed. A protected PR that goes to Scott stays with Scott. A failed
+# dismiss is reported to Scott.
 # FIX goes to the fix path: ordinary PRs get @coderabbitai fix comments, then
 # Grok fallback; sensitive PRs go straight to scoped Grok; 3 rounds per PR.
 # ESCALATE goes to Scott (needs_scott). Exception (Scott 27 Oct 16:34):
@@ -95,7 +102,7 @@
 #   ireview-posted-<repo>-<N>-<head> verdict comment posted
 #   ireview-esc-<repo>-<N>-<head>    needs-scott: ESCALATE
 #   ready-<repo>-<N>-<head>          needs-scott: sensitive PR is PASS + green, ready for Scott
-#   crblock-<repo>-<N>-<head>        needs-scott: PASS + green but GitHub BLOCKED (CodeRabbit changes requested)
+#   crblock-<repo>-<N>-<head>        needs-scott: dismissing CodeRabbit CHANGES_REQUESTED failed
 #   crscope-<repo>-<N>-<head>
 #   review-<repo>-<N>-<head>
 #   nonfactory-<repo>-<N>-<head>
@@ -624,7 +631,7 @@ fetch_reviews() {
     return 0
   fi
   if gh_out "$dest" gh api --paginate "repos/${repo}/pulls/${pr}/reviews" \
-    --jq '.[] | {user: (.user.login // ""), state: (.state // ""), commit_id: (.commit_id // ""), submitted_at: (.submitted_at // "")}'; then
+    --jq '.[] | {id: (.id // 0), user: (.user.login // ""), state: (.state // ""), commit_id: (.commit_id // ""), submitted_at: (.submitted_at // "")}'; then
     # An empty review list is a successful empty file. Mark it so we do not refetch.
     touch "${dest}.ok"
     printf '%s' "$dest"
@@ -781,8 +788,12 @@ reset_gate() {
 #   2 ready for Scott: as 0 but sensitive (protected, CI, test, lockfile), not DIRTY.
 #   4 ready for Scott: PASS + green + CLEAN on a non-factory branch.
 #   5 ESCALATE: verdict ESCALATE (or script scope check on CodeRabbit commits).
-#   6 PASS + green on an ordinary factory/ PR but GitHub says BLOCKED while
-#     CodeRabbit's head review is CHANGES_REQUESTED (tell Scott).
+#   6 PASS + green on a factory/ PR (ordinary, or sensitive but closing an
+#     allowlisted issue) but GitHub says BLOCKED and the only
+#     CHANGES_REQUESTED reviews are coderabbitai[bot] (any commit). step_merge
+#     dismisses those reviews and merges only if a fresh gate read returns 0.
+#     A human CHANGES_REQUESTED review is not this case. A sensitive PR that
+#     is not allowlisted stays on return 2 and nothing is dismissed.
 #   1 not ready (FIX, no verdict yet, CI not green, ...). 3 read failure.
 # The older notes below describe the pre-27-Oct CodeRabbit-approval gate.
 # Returns 0 (decision merge) only when the head branch starts with factory/,
@@ -891,7 +902,7 @@ merge_gate() {
   fi
   load_ir_state "$repo" "$pr"
 
-  local ready=0
+  local ready=0 block_kind=""
   [[ $GATE_VERDICT == ok && $GATE_IR == PASS ]] && ready=1
 
   # PASS + green + CLEAN on a non-factory branch is never a merge.
@@ -927,11 +938,18 @@ merge_gate() {
     fi
     # Scott 27 Oct 16:34: .merge_protected_issues in the budget file lists
     # issues whose closing PRs (same repo, factory/ branch) merge on PASS +
-    # green + CLEAN even though they are sensitive.
+    # green + CLEAN even though they are sensitive. The same allowlist reaches
+    # return 6 when GitHub is BLOCKED by bot-only CHANGES_REQUESTED reviews.
+    block_kind=$(cr_changes_block "$reviews")
     if [[ $GATE_SENS == y && $GATE_MERGE == CLEAN ]] && pr_closes_allowlisted_issue "$repo" "$GATE_BODY"; then
       GATE_DECISION=merge
       GATE_REASON="independent PASS+clean+green; sensitive but closes allowlisted ${ALLOWLIST_HIT}"
       return 0
+    fi
+    if [[ $GATE_SENS == y && $GATE_MERGE == BLOCKED && $block_kind == bot ]] && pr_closes_allowlisted_issue "$repo" "$GATE_BODY"; then
+      GATE_DECISION=no
+      GATE_REASON="independent PASS+green; sensitive but closes allowlisted ${ALLOWLIST_HIT}; GitHub BLOCKED with CodeRabbit CHANGES_REQUESTED"
+      return 6
     fi
     if [[ $GATE_SENS == y ]]; then
       if [[ $GATE_MERGE == DIRTY || -z $GATE_MERGE ]]; then
@@ -948,7 +966,7 @@ merge_gate() {
       GATE_REASON="independent PASS+clean+green+ordinary; cr=${GATE_CR}"
       return 0
     fi
-    if [[ $GATE_MERGE == BLOCKED && $GATE_CR == CHANGES_REQUESTED ]]; then
+    if [[ $GATE_MERGE == BLOCKED && $block_kind == bot ]]; then
       GATE_DECISION=no
       GATE_REASON="independent PASS+green but GitHub BLOCKED with CodeRabbit CHANGES_REQUESTED"
       return 6
@@ -974,6 +992,164 @@ pr_closes_allowlisted_issue() {
     fi
   done < <(parse_close_targets "$repo" "$body")
   return 1
+}
+
+# Prints bot, human, or none from a reviews JSON stream.
+# bot: at least one coderabbitai[bot] CHANGES_REQUESTED review, and no other
+# author has CHANGES_REQUESTED (any commit_id).
+# human: some other author has CHANGES_REQUESTED. Dismiss nobody.
+# none: no CHANGES_REQUESTED review.
+cr_changes_block() {
+  local file=$1 kind
+  if [[ ! -s ${file:-} ]]; then
+    printf 'none'
+    return 0
+  fi
+  kind=$(jq -s -r '
+    def cr: map(select(.state == "CHANGES_REQUESTED"));
+    (cr | map(select(.user != "coderabbitai[bot]")) | length) as $human
+    | (cr | map(select(.user == "coderabbitai[bot]")) | length) as $bot
+    | if $human > 0 then "human"
+      elif $bot > 0 then "bot"
+      else "none" end
+  ' "$file" 2>/dev/null) || kind=none
+  case "$kind" in
+    bot|human|none) ;;
+    *) kind=none ;;
+  esac
+  printf '%s' "$kind"
+}
+
+# Review ids to dismiss. Empty unless the block is bot-only.
+# Only coderabbitai[bot] reviews in CHANGES_REQUESTED, and only those with an id.
+cr_dismiss_ids() {
+  local file=$1
+  [[ -s ${file:-} ]] || return 0
+  jq -s -r '
+    def cr: map(select(.state == "CHANGES_REQUESTED"));
+    if (cr | any(.user != "coderabbitai[bot]")) then empty
+    else
+      cr
+      | map(select(.user == "coderabbitai[bot]" and ((.id // 0) | tonumber) > 0))
+      | .[].id
+    end
+  ' "$file" 2>/dev/null || true
+}
+
+# Drop the cached pull view and review list so the next merge_gate re-reads them.
+drop_gate_reads() {
+  local repo=$1 pr=$2 dest
+  dest=$(cache_file view "$repo" "$pr")
+  rm -f "$dest" "${dest}.err"
+  dest=$(cache_file reviews "$repo" "$pr")
+  rm -f "$dest" "${dest}.ok" "${dest}.err"
+}
+
+dismiss_one_review() {
+  local repo=$1 pr=$2 id=$3
+  repo_ok "$repo" || return 1
+  [[ $id =~ ^[0-9]+$ ]] || return 1
+  if (( DRY )); then
+    note "DRY-RUN would dismiss review ${id} on ${repo}#${pr}"
+    return 0
+  fi
+  if timeout 60 gh api --method PUT \
+      "repos/${repo}/pulls/${pr}/reviews/${id}/dismissals" \
+      -f message="Independent review PASS with green checks; dismissing outdated CodeRabbit changes-requested review." \
+      -f event="DISMISS"; then
+    note "dismissed review ${id} on ${repo}#${pr}"
+    DID_MUTATE=1
+    return 0
+  fi
+  log "dismiss failed ${repo}#${pr} review ${id}"
+  return 1
+}
+
+# Dismiss every selected bot review. 0 only when the set was non-empty and
+# every dismiss call succeeded. A human CHANGES_REQUESTED review dismisses none.
+dismiss_cr_changes() {
+  local repo=$1 pr=$2 file id saw=0
+  file=$(fetch_reviews "$repo" "$pr") || return 1
+  if [[ $(cr_changes_block "$file") != bot ]]; then
+    return 1
+  fi
+  while IFS= read -r id; do
+    [[ -n $id ]] || continue
+    saw=1
+    dismiss_one_review "$repo" "$pr" "$id" || return 1
+  done < <(cr_dismiss_ids "$file")
+  (( saw == 1 ))
+}
+
+focus_issue_count() {
+  local n
+  n=$(jq -r '(.focus_issues // []) | length' "$BUDGET" 2>/dev/null || echo 0)
+  [[ $n =~ ^[0-9]+$ ]] || n=0
+  printf '%s' "$n"
+}
+
+# 0 when .focus_issues is a non-empty list.
+focus_is_set() {
+  local n
+  n=$(focus_issue_count)
+  (( n > 0 ))
+}
+
+focus_has() {
+  local key=$1
+  jq -e --arg k "$key" '(.focus_issues // []) | index($k) != null' "$BUDGET" >/dev/null 2>&1
+}
+
+# 0 when focus is unset or this issue is in .focus_issues ("owner/repo#N").
+issue_in_focus() {
+  local repo=$1 num=$2
+  focus_is_set || return 0
+  focus_has "${repo}#${num}"
+}
+
+# 0 when this pull request may take Grok gate work.
+# Focus unset accepts every pull request. Focus set accepts a pull request
+# that closes a focus issue, has (#N) in the title for a same-repo focus
+# issue, or references adamsuk/software-factory#N (issue URL,
+# adamsuk/software-factory#N, or software-factory#N). Inside
+# adamsuk/software-factory a bare #N counts too.
+pr_in_focus() {
+  local repo=$1 title=${2-} body=${3-}
+  local target="" num="" text="" hit="" rest=""
+  focus_is_set || return 0
+  while read -r target num; do
+    [[ -n ${target:-} && -n ${num:-} ]] || continue
+    focus_has "${target}#${num}" && return 0
+  done < <(parse_close_targets "$repo" "$body")
+  rest=$title
+  while [[ $rest =~ \(#([0-9]+)\) ]]; do
+    num=${BASH_REMATCH[1]}
+    focus_has "${repo}#${num}" && return 0
+    rest=${rest#*"#${num})"}
+  done
+  text="${title}"$'\n'"${body}"
+  # Same matcher as the live watcher: issue URL, adamsuk/software-factory#N,
+  # or software-factory#N, with a boundary so a longer name does not match.
+  while IFS= read -r num; do
+    [[ $num =~ ^[0-9]+$ ]] || continue
+    focus_has "adamsuk/software-factory#${num}" && return 0
+  done < <(printf '%s\n' "$text" | grep -oiE '(github\.com/adamsuk/software-factory/issues/|(^|[^A-Za-z0-9_./-])(adamsuk/)?software-factory#)[0-9]+' | grep -oE '[0-9]+$' || true)
+  # A bare #N counts only inside adamsuk/software-factory.
+  if [[ $repo == "adamsuk/software-factory" ]]; then
+    while IFS= read -r num; do
+      [[ $num =~ ^[0-9]+$ ]] || continue
+      focus_has "adamsuk/software-factory#${num}" && return 0
+    done < <(printf '%s\n' "$text" | grep -oE '(^|[^A-Za-z0-9_/-])#[0-9]+' | grep -oE '[0-9]+$' || true)
+  fi
+  return 1
+}
+
+# 0 or unset in the budget means no cap. The number lives in the budget.
+max_issues_in_flight() {
+  local n
+  n=$(jq -r '.max_issues_in_flight // 0' "$BUDGET" 2>/dev/null || echo 0)
+  [[ $n =~ ^[0-9]+$ ]] || n=0
+  printf '%s' "$n"
 }
 
 ir_result_file() {
@@ -1929,9 +2105,21 @@ step_merge() {
           || true
       fi
     elif (( rc == 6 )); then
-      needs_scott "crblock-$(repo_slug "$repo")-${pr}-${GATE_SHA}" \
-        "$(printf '%s\n' "${repo}#${pr} ${GATE_URL}" "Head ${GATE_SHORT} has independent review PASS and green checks, but GitHub reports BLOCKED while CodeRabbit's review is CHANGES_REQUESTED. Not merging; dismiss that review or merge by hand." "Verdict: ${GATE_IR_SUMMARY:-PASS}")" \
-        || true
+      if ! dismiss_cr_changes "$repo" "$pr"; then
+        needs_scott "crblock-$(repo_slug "$repo")-${pr}-${GATE_SHA}" \
+          "$(printf '%s\n' "${repo}#${pr} ${GATE_URL}" "Head ${GATE_SHORT} has independent review PASS and green checks, but dismissing CodeRabbit CHANGES_REQUESTED failed. Not merging." "Verdict: ${GATE_IR_SUMMARY:-PASS}")" \
+          || true
+      else
+        drop_gate_reads "$repo" "$pr"
+        rc=0
+        merge_gate "$repo" "$pr" || rc=$?
+        log "PR ${repo}#${pr} recheck gate=${GATE_DECISION} ${GATE_REASON} sha=${GATE_SHORT} rc=${rc}"
+        if (( rc == 0 )); then
+          do_merge "$repo" "$pr" "$GATE_SHA" "$GATE_BODY" || log "merge error ${repo}#${pr}"
+        else
+          log "PR ${repo}#${pr} recheck returned ${rc}; not merging"
+        fi
+      fi
     fi
   done
 }
@@ -2798,6 +2986,10 @@ step_conflict_fallback() {
       log "conflict fallback skip ${repo}#${pr}: ${GATE_REASON}"
       continue
     fi
+    if ! pr_in_focus "$repo" "$GATE_TITLE" "$GATE_BODY"; then
+      log "conflict fallback skip ${repo}#${pr}: not in focus"
+      continue
+    fi
     if [[ $GATE_MERGE != DIRTY ]]; then
       continue
     fi
@@ -3369,6 +3561,10 @@ step_independent_review() {
       log "independent review skip ${repo}#${pr}: ${GATE_REASON}"
       continue
     fi
+    if ! pr_in_focus "$repo" "$GATE_TITLE" "$GATE_BODY"; then
+      log "independent review skip ${repo}#${pr}: not in focus"
+      continue
+    fi
     sha_ok "$GATE_SHA" || continue
     if pr_is_lockfile_only "$repo" "$pr"; then
       continue
@@ -3605,6 +3801,10 @@ step_fix_fallback() {
       log "fix fallback skip ${repo}#${pr}: ${GATE_REASON}"
       continue
     fi
+    if ! pr_in_focus "$repo" "$GATE_TITLE" "$GATE_BODY"; then
+      log "fix fallback skip ${repo}#${pr}: not in focus"
+      continue
+    fi
     if [[ $GATE_IR != FIX && $GATE_VERDICT != fail ]]; then
       continue
     fi
@@ -3823,35 +4023,68 @@ step_fix_fallback() {
 # 0 when this process marked the issue factory:building.
 # 2 when it is already factory:building or no longer factory:ready.
 # 1 when the label read, the label edit, or the claim lock failed.
+# Prints how many open issues are factory:building, factory:gate, or
+# factory:review. Caller holds build-claim.lock. Returns 1 if a list fails.
+count_open_in_flight() {
+  local repo tmp n total=0
+  for repo in "${REPOS[@]}"; do
+    tmp=$(mktemp "${TMPDIR:-/tmp}/in-flight.XXXXXX") || return 1
+    if ! timeout 60 gh issue list -R "$repo" --state open --limit 300 \
+        --json number,labels >"$tmp" 2>/dev/null; then
+      rm -f "$tmp"
+      return 1
+    fi
+    n=$(jq '[.[] | select(any(.labels[]?; .name == "factory:building" or .name == "factory:gate" or .name == "factory:review"))] | length' "$tmp" 2>/dev/null || echo "")
+    rm -f "$tmp"
+    [[ $n =~ ^[0-9]+$ ]] || return 1
+    total=$((total + n))
+  done
+  printf '%s' "$total"
+}
+
 claim_build_issue() {
   local repo=$1 num=$2
-  local names="" name ready=0 building=0 rc=0
+  local names="" name ready=0 building=0 rc=0 cap=0 inflight=0
   mkdir -p "$STATE"
   {
     if ! flock -w 180 6; then
       log "build claim lock failed ${repo}#${num}"
       rc=1
-    elif ! names=$(timeout 60 gh issue view "$num" -R "$repo" --json labels \
-        --jq '.labels[].name | select(startswith("factory:"))' 2>/dev/null); then
-      log "could not re-read labels ${repo}#${num}; not starting"
-      rc=1
     else
-      while IFS= read -r name; do
-        [[ -n $name ]] || continue
-        if [[ $name == factory:building ]]; then
-          building=1
-        elif [[ $name == factory:ready ]]; then
-          ready=1
+      cap=$(max_issues_in_flight)
+      if (( cap > 0 )); then
+        if ! inflight=$(count_open_in_flight); then
+          log "build skip ${repo}#${num}: could not count in-flight issues"
+          rc=1
+        elif (( inflight >= cap )); then
+          log "build skip ${repo}#${num}: in flight ${inflight} >= max_issues_in_flight ${cap}"
+          rc=4
         fi
-      done <<< "$names"
-      if (( building == 1 )); then
-        log "build skip ${repo}#${num}: already factory:building"
-        rc=2
-      elif (( ready == 0 )); then
-        log "build skip ${repo}#${num}: factory:ready not set"
-        rc=2
-      else
-        swap_factory_label "$repo" "$num" "factory:building" || rc=$?
+      fi
+      if (( rc == 0 )); then
+        if ! names=$(timeout 60 gh issue view "$num" -R "$repo" --json labels \
+            --jq '.labels[].name | select(startswith("factory:"))' 2>/dev/null); then
+          log "could not re-read labels ${repo}#${num}; not starting"
+          rc=1
+        else
+          while IFS= read -r name; do
+            [[ -n $name ]] || continue
+            if [[ $name == factory:building ]]; then
+              building=1
+            elif [[ $name == factory:ready ]]; then
+              ready=1
+            fi
+          done <<< "$names"
+          if (( building == 1 )); then
+            log "build skip ${repo}#${num}: already factory:building"
+            rc=2
+          elif (( ready == 0 )); then
+            log "build skip ${repo}#${num}: factory:ready not set"
+            rc=2
+          else
+            swap_factory_label "$repo" "$num" "factory:building" || rc=$?
+          fi
+        fi
       fi
     fi
   } 6>>"${STATE}/build-claim.lock" || {
@@ -3877,6 +4110,10 @@ step_build() {
     title=$(jq -r '.title' <<<"$row")
     body=$(jq -r '.body // ""' <<<"$row")
     repo_ok "$repo" || continue
+    if ! issue_in_focus "$repo" "$num"; then
+      log "build skip ${repo}#${num}: not in focus_issues"
+      continue
+    fi
     slug=$(repo_slug "$repo")
     if ! target=$(one_target_repo "$body"); then
       note "build skip ${repo}#${num}: need exactly one Target repo line"
@@ -3920,6 +4157,10 @@ step_build() {
     # other lane can start this issue. A skip leaves the issue for that lane.
     claim_rc=0
     claim_build_issue "$repo" "$num" || claim_rc=$?
+    if (( claim_rc == 4 )); then
+      log "build stop ${repo}#${num}: in-flight cap"
+      return 0
+    fi
     if (( claim_rc == 2 )); then
       continue
     fi
@@ -4335,6 +4576,19 @@ step_dependabot_triage() {
       log "dependabot triage skip ${repo}#${pr}: missing branch"
       continue
     fi
+    if focus_is_set; then
+      title=""
+      pr_body=""
+      view=$(fetch_view "$repo" "$pr" || true)
+      if [[ -n ${view:-} && -f $view ]]; then
+        title=$(jq -r '.title // ""' "$view")
+        pr_body=$(jq -r '.body // ""' "$view")
+      fi
+      if ! pr_in_focus "$repo" "$title" "$pr_body"; then
+        log "dependabot triage skip ${repo}#${pr}: not in focus"
+        continue
+      fi
+    fi
     mrc=0
     dependabot_marker_present "$repo" "$pr" "$sha" || mrc=$?
     if (( mrc == 0 )); then
@@ -4553,6 +4807,10 @@ step_triage() {
     title=$(jq -r '.title' <<<"$row")
     body=$(jq -r '.body // ""' <<<"$row")
     repo_ok "$repo" || continue
+    if ! issue_in_focus "$repo" "$num"; then
+      log "triage skip ${repo}#${num}: not in focus_issues"
+      continue
+    fi
     if ! grok_job_available 1 "$repo" "$num"; then
       log "defer triage ${repo}#${num}"
       grok_stop_step && return 0
@@ -4607,6 +4865,10 @@ step_plan() {
   # open epic, and wait while it still has open Parent: children.
   local stamp epic state_json state title body children dest prompt
   local plan_count plan_count_file
+  if focus_is_set; then
+    log "plan skip: focus_issues is set"
+    return 0
+  fi
   refresh_clock
   stamp=$TODAY_UTC
   plan_count_file="${STATE}/plan-count-${stamp}"
