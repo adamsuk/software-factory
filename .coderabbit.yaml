@@ -4,7 +4,7 @@
 # reviews.request_changes_workflow.)
 reviews:
   auto_approvals:
-    enabled: true
+    enabled: false
 
   # CodeRabbit reviews here; it does not write here (#142).
   #
