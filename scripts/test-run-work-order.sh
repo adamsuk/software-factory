@@ -4,11 +4,21 @@
 set -euo pipefail
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# Private HOME before any factory script runs, so this suite never opens
+# /home/box/.factory-secrets or a real key. Drop ambient secret names too,
+# without printing their values.
+HOME=$(mktemp -d)
+export HOME
+unset GH_TOKEN GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN \
+  FACTORY_GH_APP_ID FACTORY_GH_APP_INSTALLATION_ID FACTORY_GH_APP_KEY_FILE \
+  FACTORY_GH_APP_ENV_FILE FACTORY_GH_APP_PRIVATE_KEY \
+  AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_SECURITY_TOKEN \
+  GOOGLE_APPLICATION_CREDENTIALS CLOUDSDK_AUTH_ACCESS_TOKEN AZURE_CLIENT_SECRET
 # shellcheck source=scripts/run-work-order.sh
 source "$here/run-work-order.sh"
 
 ROOT=$(mktemp -d)
-trap 'rm -rf "$ROOT"' EXIT
+trap 'rm -rf "$ROOT" "$HOME"' EXIT
 ORIG_PATH=$PATH
 MOCK_BIN=$ROOT/mockbin
 mkdir -p "$MOCK_BIN"
@@ -1454,6 +1464,39 @@ grok_cmd=$(printf '%s\n' "$main_src" | awk '/env -u GH_TOKEN/ {on=1} on {print} 
 # in the setup_env path that could put a token back into Grok's command.
 [[ "$main_src" != *"export GH_TOKEN"* && "$main_src" != *"export GITHUB_TOKEN"* ]] \
   || fail "main re-exports a token"
+# Added checks. Each scrubbed name is unset on the grok command. A failure
+# names the variable and does not print the value.
+scrub_pairs=(
+  "GH_TOKEN=sentinel-gh-token"
+  "GITHUB_TOKEN=sentinel-github-token"
+  "GH_ENTERPRISE_TOKEN=scrub-207-gh-enterprise"
+  "GITHUB_ENTERPRISE_TOKEN=scrub-207-github-enterprise"
+  "FACTORY_GH_APP_ID=scrub-207-app-id"
+  "FACTORY_GH_APP_INSTALLATION_ID=scrub-207-app-install"
+  "FACTORY_GH_APP_KEY_FILE=scrub-207-app-key-file"
+  "FACTORY_GH_APP_ENV_FILE=scrub-207-app-env-file"
+  "FACTORY_GH_APP_PRIVATE_KEY=scrub-207-app-private-key"
+  "AWS_ACCESS_KEY_ID=scrub-207-aws-access-key-id"
+  "AWS_SECRET_ACCESS_KEY=scrub-207-aws-secret-access-key"
+  "AWS_SESSION_TOKEN=scrub-207-aws-session"
+  "AWS_SECURITY_TOKEN=scrub-207-aws-security"
+  "GOOGLE_APPLICATION_CREDENTIALS=scrub-207-google-creds"
+  "CLOUDSDK_AUTH_ACCESS_TOKEN=scrub-207-cloudsdk-token"
+  "AZURE_CLIENT_SECRET=scrub-207-azure-secret"
+)
+for scrub_spec in "${scrub_pairs[@]}"; do
+  scrub_name=${scrub_spec%%=*}
+  [[ "$grok_cmd" == *"-u ${scrub_name}"* ]] || fail "grok invocation does not unset ${scrub_name}"
+done
+[[ "$grok_cmd" != *"-u GH_REPO"* ]] || fail "grok invocation unsets GH_REPO"
+[[ "$grok_cmd" != *"-u GH_HOST"* ]] || fail "grok invocation unsets GH_HOST"
+[[ "$grok_cmd" != *"-u XAI_API_KEY"* ]] || fail "grok invocation unsets XAI_API_KEY"
+case "$HOME" in
+  /tmp/*|/var/tmp/*|"${TMPDIR:-/tmp}"/*) ;;
+  *) fail "HOME is not a mktemp directory" ;;
+esac
+[[ "$HOME" != /home/box ]] || fail "HOME is the box home"
+[[ ! -e "$HOME/.factory-secrets" ]] || fail "fake HOME contains factory-secrets"
 scrub_dir=$ROOT/scrub
 mkdir -p "$scrub_dir/bin"
 cat > "$scrub_dir/bin/grok" <<'MOCK'
@@ -1465,6 +1508,16 @@ GROK_ENV_DUMP=$scrub_dir/env.txt
 export GROK_ENV_DUMP
 (
   export GH_TOKEN=sentinel-gh-token GITHUB_TOKEN=sentinel-github-token
+  for scrub_spec in "${scrub_pairs[@]}"; do
+    scrub_name=${scrub_spec%%=*}
+    scrub_value=${scrub_spec#*=}
+    printf -v "$scrub_name" '%s' "$scrub_value"
+    # ${scrub_name?} is the name to export, not the variable scrub_name.
+    export "${scrub_name?}"
+  done
+  export GH_REPO=acme/widgets
+  export GH_HOST=github.example
+  export XAI_API_KEY=scrub-207-xai-api-key
   export PATH="$scrub_dir/bin:$ORIG_PATH"
   dir=$scrub_dir/clone order=/dev/null rules=/dev/null
   eval "$grok_cmd"
@@ -1476,6 +1529,19 @@ if grep -qE '^(GH_TOKEN|GITHUB_TOKEN)=' "$scrub_dir/env.txt"; then
 fi
 ! grep -qE 'sentinel-gh-token|sentinel-github-token' "$scrub_dir/env.txt" \
   || fail "token value leaked into Grok's environment"
+for scrub_spec in "${scrub_pairs[@]}"; do
+  scrub_name=${scrub_spec%%=*}
+  scrub_value=${scrub_spec#*=}
+  if grep -q "^${scrub_name}=" "$scrub_dir/env.txt"; then
+    fail "${scrub_name} reached Grok's environment"
+  fi
+  if grep -qF -e "$scrub_value" "$scrub_dir/env.txt"; then
+    fail "${scrub_name} value reached Grok's environment"
+  fi
+done
+grep -qxF 'GH_REPO=acme/widgets' "$scrub_dir/env.txt" || fail "GH_REPO missing from Grok's environment"
+grep -qxF 'GH_HOST=github.example' "$scrub_dir/env.txt" || fail "GH_HOST missing from Grok's environment"
+grep -qxF 'XAI_API_KEY=scrub-207-xai-api-key' "$scrub_dir/env.txt" || fail "XAI_API_KEY missing from Grok's environment"
 unset GROK_ENV_DUMP
 
 PATH=$ORIG_PATH

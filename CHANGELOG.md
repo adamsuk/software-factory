@@ -3,6 +3,20 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-02
+
+### Fixed
+
+- The Grok Build child started by `scripts/run-work-order.sh` no longer
+  receives GitHub tokens, GitHub App key material, or cloud credentials
+  (#207). The parent still applies the App token for clone and `--push`.
+  `XAI_API_KEY` stays when that is how the box logs the CLI in. Non-secret
+  `GH_REPO` and `GH_HOST` stay. `agents/grok-build.md` documents that
+  shared-box run environment. Scott must review that file because
+  `agents/**` is protected.
+- Existing tests: `scripts/test-run-work-order.sh` was extended with new
+  assertions only. No existing assertion was changed, removed, or weakened.
+
 ## 2026-11-01
 
 ### Added

@@ -76,24 +76,31 @@ Optional: `-m <model>` (see `grok models`), `--effort <level>`.
 What this runs on today, and what protects it (tracked in #44; the identity
 decision is #7):
 
-- **The box:** a shared computer. There is no per-agent sandbox and no
-  network egress allowlist yet. `--sandbox workspace` limits where Grok writes,
-  nothing more.
-- **Credentials on that box:** the owner's `gh` login and the Grok CLI signed
-  in to the owner's grok.com account (or `XAI_API_KEY`). Grok Build is handed
-  neither `GH_TOKEN` nor `GITHUB_TOKEN`: the wrapper runs it as
-  `env -u GH_TOKEN -u GITHUB_TOKEN grok ...`, and
-  `scripts/test-run-work-order.sh` (`grok-token-scrub`) runs that exact
-  command with both set and checks neither reaches Grok's environment.
-  `XAI_API_KEY`, when that's how this box authenticates, is **not** scrubbed
-  — Grok needs it to run at all, and there's no other authentication path
-  for an unattended run today.
-- **The other half:** `--deny 'Bash(git push*)' --deny 'Bash(gh *)'` stop Grok
-  pushing or calling `gh` directly, even if it had a credential.
-- **A guardrail, not isolation.** An agent with shell access on the box could
-  still reach those credentials by other means (the `gh` config file, the
-  Grok login, other processes). Real isolation (sandboxing, egress limits, a
-  separate bot identity) is #44's later work and #7; none of it is done here.
+- **The box.** It runs on the shared box. There is no per-agent sandbox.
+  `--sandbox workspace` limits where Grok writes, nothing more.
+- **Credentials on that box.** The owner's `gh` token, the Grok CLI signed in
+  as the owner, and the GitHub App `software-factory-line` used by the watcher.
+  The wrapper may keep those for clone, push, and the pull request.
+- **What the builder process receives.** None of those tokens or secrets.
+  The child is started without `GH_TOKEN`, `GITHUB_TOKEN`,
+  `GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN`, `FACTORY_GH_APP_ID`,
+  `FACTORY_GH_APP_INSTALLATION_ID`, `FACTORY_GH_APP_KEY_FILE`,
+  `FACTORY_GH_APP_ENV_FILE`, `FACTORY_GH_APP_PRIVATE_KEY`,
+  `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`,
+  `AWS_SECURITY_TOKEN`, `GOOGLE_APPLICATION_CREDENTIALS`,
+  `CLOUDSDK_AUTH_ACCESS_TOKEN`, and `AZURE_CLIENT_SECRET`.
+  Keep `XAI_API_KEY` when that is how the box logs the CLI in: Grok needs it
+  to run, and a stored session wins when one is present. Non-secret `GH_REPO`
+  and `GH_HOST` stay. `scripts/test-run-work-order.sh` (`grok-token-scrub`)
+  sets a fake sentinel on each scrubbed name and checks the child environment.
+- **Forbidden.** The builder must not `git push`, call `gh`, or see the
+  secrets listed above. Push and the pull request stay in the wrapper. Keep
+  `--deny 'Bash(git push*)' --deny 'Bash(gh *)'`.
+- **A guardrail, not isolation.** The on-disk `gh` config and the Grok session
+  stay readable. That is a guardrail, not isolation. Sandboxing, an egress
+  allowlist, and a separate bot identity (#7) stay later work.
+- **Review.** Scott must review this file because `agents/**` is protected
+  (AGENTS.md §5).
 
 ## What the wrapper does
 
@@ -109,8 +116,9 @@ decision is #7):
    neither is usable it exits with code 8 naming the root. The paths in the run
    log must match where the work happened. `$dir.grok.json`, `$dir.bench.txt`
    and `$dir.venv` are written beside the clone directory.
-3. Runs the command above, with `GH_TOKEN`/`GITHUB_TOKEN` removed from Grok's
-   environment.
+3. Runs the command above, with GitHub tokens, GitHub App key material and
+   cloud credentials removed from the builder process (`XAI_API_KEY` stays
+   when that is how the box logs the CLI in; `GH_REPO` and `GH_HOST` stay).
 4. Stops (exit 3) if Grok fails or doesn't end with `end_turn`, or made no
    change. Grok Build often commits by itself, so its commits and any leftover
    changes become one commit on top of the starting revision, titled
