@@ -59,8 +59,8 @@ awk -v dir="$work" '
 open_cap=1000
 open_json=$(gh issue list --repo "$repo" --label factory --state open --limit "$((open_cap + 1))" \
   --json number,title) || die 7 "gh issue list failed"
-[[ $(printf '%s' "$open_json" | jq 'length') -le $open_cap ]] \
-  || die 7 "more than $open_cap open factory issues; the matcher would miss some"
+[[ $(printf '%s' "$open_json" | jq 'length') -lt $open_cap ]] \
+  || die 7 "$open_cap or more open factory issues (the search API caps at $open_cap); the matcher would miss some"
 open_list=$(printf '%s' "$open_json" | jq -r '.[] | "\(.number)\t\(.title | gsub("[\r\n]"; " "))"') \
   || die 7 "bad issue list"
 

@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- The 60,000-byte candidate guard moved out of `line-audit.yml` into
+  `scripts/check-candidate-size.sh` with a boundary test, and
+  `scripts/audit-triage.sh` now rejects exactly 1000 open `factory` issues
+  too, since the search API caps results at 1000 and may have truncated (#211).
 - The Line audit now fails loudly when `candidates.md` is over 60,000 bytes
   instead of silently truncating it, and `scripts/audit-triage.sh` now asks
   `gh issue list` for up to 1000 open `factory` issues (`gh issue list` has no

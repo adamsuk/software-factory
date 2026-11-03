@@ -126,6 +126,12 @@ run
 grep -q -- '--limit 1001' "$work/calls" || fail "limit not raised past 200: $(cat "$work/calls")"
 pass
 
+tname="exactly 1000 open issues -> 7 (search API ceiling, may be truncated)"; reset
+jq -n '[range(1000) | {number: (. + 1000), title: "t\(.)"}]' > "$work/open.json"
+run
+[[ $status -eq 7 ]] || fail "status $status"
+pass
+
 tname="a match beyond the old 200 cap is still offered"; reset
 jq -n '[range(300) | {number: (. + 1), title: "t\(.)"}]' > "$work/open.json"
 printf '## Candidate issues\n\n- Something new\n  Acceptance: x\n' > "$work/cands.md"
