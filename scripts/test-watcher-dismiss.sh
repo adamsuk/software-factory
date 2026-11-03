@@ -842,6 +842,20 @@ t_ir_record() {
   jq -nc --arg sha "$sha" '{verdict:"PASS",summary:"Old.",fix:[],dismissed:[],escalate:[],sha:$sha}' > "$f"
   ir_post_comment "$repo" "$pr" "$sha" || fail "old-format result did not post"
   grep -F -q -- "$sha" "$GH_LOG" || fail "old-format comment lacks full sha"
+  # A token-shaped string in a field is redacted; @org/package stays readable.
+  sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  f=$(ir_result_file "$repo" "$pr" "$sha")
+  local tok
+  tok="ghp_$(printf 'A1b2%.0s' {1..9})"
+  jq -nc --arg sha "$sha" --arg tok "$tok" '{verdict:"PASS",summary:"S.",
+    agreed_behaviour:"uses @org/package", checks_ran:("CI printed " + $tok),
+    unasked_behaviour:"none", blast_radius:"x", fix:[],dismissed:[],escalate:[],sha:$sha}' > "$f"
+  : > "$GH_LOG"
+  ir_post_comment "$repo" "$pr" "$sha" || fail "redaction case did not post"
+  grep -F -q -- "$tok" "$GH_LOG" && fail "token reached the posted comment"
+  grep -F -q -- "[redacted]" "$GH_LOG" || fail "token not shown as [redacted]"
+  grep -F -q -- "org/package" "$GH_LOG" || fail "@org/package lost its name"
+  grep -F -q -- "@org/package" "$GH_LOG" && fail "bare mention left in comment"
   # A verdict-only parse falls back to placeholders.
   local out="$work/out.json" dest="$work/dest.json"
   printf '%s' '{"result":"VERDICT: PASS"}' > "$out"

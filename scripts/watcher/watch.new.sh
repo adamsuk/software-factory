@@ -3801,18 +3801,22 @@ ir_post_comment() {
   [[ -e ${STATE}/ireview-posted-${slug}-${pr}-${sha} ]] && return 0
   body=$(jq -r --arg sha "$sha" '
     def clean: tostring | gsub("[\r\n]+"; " ") | gsub("@"; "") | .[0:300];
+    # Review-record fields are a short prose account: keep @org/pkg readable (a
+    # zero-width space stops the mention pinging) and allow 600 characters.
+    def prose: tostring | gsub("[\r\n]+"; " ") | gsub("@"; "@\u200b") | .[0:600];
     def section($title; $xs): if ($xs | length) > 0 then "\n" + $title + "\n" + ([$xs[] | "- " + clean] | join("\n")) else "" end;
     "<!-- factory:independent-review v2 sha=" + $sha + " -->\n"
     + "**Independent review (after CodeRabbit): " + .verdict + "** on " + ($sha[0:7]) + "\nHead: " + $sha + "\n"
     + ((.summary // "") | clean)
-    + "\n\n**Agreed behaviour:** " + ((.agreed_behaviour // "not available") | clean)
-    + "\n**Checks that ran:** " + ((.checks_ran // "not available") | clean)
-    + "\n**Behaviour nobody asked for:** " + ((.unasked_behaviour // "not available") | clean)
-    + "\n**Blast radius:** " + ((.blast_radius // "not available") | clean)
+    + "\n\n**Agreed behaviour:** " + ((.agreed_behaviour // "not available") | prose)
+    + "\n**Checks that ran:** " + ((.checks_ran // "not available") | prose)
+    + "\n**Behaviour nobody asked for:** " + ((.unasked_behaviour // "not available") | prose)
+    + "\n**Blast radius:** " + ((.blast_radius // "not available") | prose)
     + section("Fix:"; (.fix // []))
     + section("CodeRabbit findings not blocking:"; (.dismissed // []))
     + section("Needs a person:"; (.escalate // []))
   ' "$f") || return 1
+  body=$(printf '%s' "$body" | redact) || return 1
   comment_pr "$repo" "$pr" "$body" "ireview-posted-${slug}-${pr}-${sha}"
 }
 
