@@ -513,10 +513,12 @@ finish_commit() {
 
 # Use a GitHub App installation token for gh and git push when the host set
 # FACTORY_GH_APP_ID, FACTORY_GH_APP_INSTALLATION_ID and FACTORY_GH_APP_KEY_FILE.
-# Otherwise keep the current gh login and leave GH_TOKEN unset. Grok is
-# started with those variables removed. The installation GH_TOKEN is unset
-# again before setup and tests. A pre-existing GITHUB_TOKEN stays so a host
-# without the app can still authenticate.
+# Otherwise keep the current gh login and leave GH_TOKEN unset. The grok child
+# is started with GitHub tokens, App key material and cloud credentials removed.
+# The parent keeps what clone, setup and --push need. The installation GH_TOKEN
+# is unset again before setup and tests, then applied again before --push.
+# A pre-existing GITHUB_TOKEN stays in the parent so a host without the app
+# can still authenticate.
 apply_factory_gh_app_token() {
   local helper token
   helper="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/gh-app-token.sh"
@@ -574,7 +576,25 @@ main() {
   start=$(git rev-parse HEAD)
 
   status=0
-  env -u GH_TOKEN -u GITHUB_TOKEN grok --no-auto-update \
+  # Scrub only this child. Clone, setup and --push keep their credentials, and
+  # apply_factory_gh_app_token runs again before --push. The inner env is the
+  # call-site form scripts/test-gh-app-token.sh locks; it is what runs grok.
+  env -u GH_TOKEN -u GITHUB_TOKEN \
+    -u GH_ENTERPRISE_TOKEN \
+    -u GITHUB_ENTERPRISE_TOKEN \
+    -u FACTORY_GH_APP_ID \
+    -u FACTORY_GH_APP_INSTALLATION_ID \
+    -u FACTORY_GH_APP_KEY_FILE \
+    -u FACTORY_GH_APP_ENV_FILE \
+    -u FACTORY_GH_APP_PRIVATE_KEY \
+    -u AWS_ACCESS_KEY_ID \
+    -u AWS_SECRET_ACCESS_KEY \
+    -u AWS_SESSION_TOKEN \
+    -u AWS_SECURITY_TOKEN \
+    -u GOOGLE_APPLICATION_CREDENTIALS \
+    -u CLOUDSDK_AUTH_ACCESS_TOKEN \
+    -u AZURE_CLIENT_SECRET \
+    env -u GH_TOKEN -u GITHUB_TOKEN grok --no-auto-update \
     --cwd "$dir" --trust \
     --prompt-file "$order" --rules "$(cat "$rules")" \
     --output-format json --max-turns "${GROK_MAX_TURNS:-60}" \
