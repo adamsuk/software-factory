@@ -27,6 +27,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   job's first step, so a commented-out Harden-Runner line is no false pass, and
   fails when `changelog.yml` is missing or unreadable. Two fixture self-tests
   fail without these fixes (#214).
+- The watcher's independent-review comment now redacts `sk-` and `xai-` keys,
+  shows an empty or whitespace-only review-record field as `not available`,
+  caps those fields at 600 characters before the `@` escape so no content is
+  pushed out, and wraps the full head SHA in backticks so GitHub doesn't
+  shorten it (#232).
+- The watcher's independent-review comment now passes its whole body through
+  `redact`, so a token in `checks_ran` shows as `[redacted]`. The four
+  review-record fields keep `@org/package` readable (a zero-width space after
+  `@` stops the mention) and are capped at 600 characters instead of 300;
+  `summary`, `fix`, `dismissed` and `escalate` are unchanged (#232).
+- `t_ir_record` now asserts the exact `@` + zero-width space + `org/package`
+  sequence in the review-record comment, so stripping `@` outright fails it
+  (#232).
 - The scheduled ruleset-drift run now lists only `--owner adamsuk`, and
   `scripts/ruleset-drift-check.sh` now names the missing required checks in a
   `required_status_checks` drift report, for example
@@ -39,6 +52,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   ruleset exists. Scott must review the workflow and `factory.yml` (protected
   paths) and set the `FACTORY_READ_TOKEN` secret.
 - Existing tests: new case only, no existing assertion changed.
+- The watcher's independent-review comment now carries the four
+  review-record fields (agreed behaviour, checks that ran, behaviour nobody
+  asked for, blast radius) and the full 40-character head SHA as visible
+  text (#232). `watch.sh` and `watch.new.sh` change identically.
 
 ### Added
 
