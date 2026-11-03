@@ -250,7 +250,7 @@ jobs:
   triage:
     name: Triage the findings
     needs: [gate, audit]
-    if: needs.audit.result == 'success' && needs.gate.outputs.parent_issue != '' && needs.audit.outputs.candidates != ''
+    if: needs.audit.result == 'success' && needs.gate.outputs.parent_issue != ''
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:

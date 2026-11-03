@@ -7,6 +7,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- The `triage` job in `line-audit.yml` now runs even when the audit finds zero
+  candidates, so a clean research-cycle audit still gets its summary comment and
+  closes the parent issue (#211).
 - The scheduled ruleset-drift run now lists only `--owner adamsuk`, and
   `scripts/ruleset-drift-check.sh` now names the missing required checks in a
   `required_status_checks` drift report, for example
