@@ -119,6 +119,22 @@ run
 grep -q '^issue close 9 ' "$work/calls" || fail "parent not closed"
 pass
 
+tname="more than 1000 open issues -> 7, not a silent cut"; reset
+jq -n '[range(1001) | {number: (. + 1000), title: "t\(.)"}]' > "$work/open.json"
+run
+[[ $status -eq 7 ]] || fail "status $status"
+grep -q -- '--limit 1001' "$work/calls" || fail "limit not raised past 200: $(cat "$work/calls")"
+pass
+
+tname="a match beyond the old 200 cap is still offered"; reset
+jq -n '[range(300) | {number: (. + 1), title: "t\(.)"}]' > "$work/open.json"
+printf '## Candidate issues\n\n- Something new\n  Acceptance: x\n' > "$work/cands.md"
+printf 'MATCH 290\n' > "$work/answer"
+run
+[[ $status -eq 0 ]] || fail "status $status: $(cat "$work/stderr")"
+grep -q '^issue comment 290 ' "$work/calls" || fail "no comment on #290"
+pass
+
 tname="gh failure -> 7"; reset
 cat > "$work/bin/gh" << 'F'
 #!/usr/bin/env bash

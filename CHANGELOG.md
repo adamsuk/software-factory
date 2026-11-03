@@ -7,6 +7,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- The Line audit now fails loudly when `candidates.md` is over 60,000 bytes
+  instead of silently truncating it, and `scripts/audit-triage.sh` now asks
+  `gh issue list` for up to 1000 open `factory` issues (`gh issue list` has no
+  `--paginate`; `--limit` pages internally, so the old `--limit 200` was the
+  cap) and exits 7 if that is exceeded (#211).
 - The `triage` job in `line-audit.yml` now runs even when the audit finds zero
   candidates, so a clean research-cycle audit still gets its summary comment and
   closes the parent issue (#211).

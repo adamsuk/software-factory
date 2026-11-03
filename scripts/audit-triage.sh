@@ -53,8 +53,14 @@ awk -v dir="$work" '
   f != "" { print > f }
 ' "$cfile"
 
-open_json=$(gh issue list --repo "$repo" --label factory --state open --limit 200 \
+# gh issue list has no --paginate flag; --limit makes it page internally. Ask for
+# one more than the cap so a full page is detected and fails loud instead of
+# silently hiding open issues from the matcher.
+open_cap=1000
+open_json=$(gh issue list --repo "$repo" --label factory --state open --limit "$((open_cap + 1))" \
   --json number,title) || die 7 "gh issue list failed"
+[[ $(printf '%s' "$open_json" | jq 'length') -le $open_cap ]] \
+  || die 7 "more than $open_cap open factory issues; the matcher would miss some"
 open_list=$(printf '%s' "$open_json" | jq -r '.[] | "\(.number)\t\(.title | gsub("[\r\n]"; " "))"') \
   || die 7 "bad issue list"
 

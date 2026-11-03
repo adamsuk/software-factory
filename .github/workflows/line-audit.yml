@@ -185,6 +185,11 @@ jobs:
         id: candidates
         run: |
           set -euo pipefail
+          size=$(wc -c < "$RUNNER_TEMP/candidates.md")
+          if [ "$size" -gt 60000 ]; then
+            echo "::error::candidates.md is $size bytes, over the 60000-byte limit; triage would silently drop candidates"
+            exit 1
+          fi
           delim="EOF_$(openssl rand -hex 8)"
           { echo "text<<$delim"; head -c 60000 "$RUNNER_TEMP/candidates.md"; echo; echo "$delim"; } >> "$GITHUB_OUTPUT"
       - name: Compare with the latest audit
