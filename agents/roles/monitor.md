@@ -5,16 +5,16 @@ Bot teammate. This file is the procedure. It does not grant permission to merge.
 
 ## Inputs
 
-- `scripts/factory-label-metrics.sh`, `scripts/factory-pr-metrics.sh`, and
-  `scripts/factory-delivery-metrics.sh`. All three are read-only. Read each
-  one from the promoted release ref (`$REF`) only. All three are already on
-  `main`.
+- `scripts/factory-label-metrics.sh`, `scripts/factory-pr-metrics.sh`,
+  `scripts/factory-delivery-metrics.sh`, and `scripts/review-bot-metrics.sh`.
+  All four are read-only. Read each one from the promoted release ref (`$REF`)
+  only. All four are already on `main`.
 - One repository in this first version: `adamsuk/software-factory`.
 - The ledger path is `$FACTORY_LEDGER_FILE`. The committed default is
   `/workspace/factory-ledger.csv`.
 
-The weekly procedure stays inactive until all three scripts can be read from
-`$REF`. If any of the three paths is missing on `$REF`, commit nothing and
+The weekly procedure stays inactive until all four scripts can be read from
+`$REF`. If any of the four paths is missing on `$REF`, commit nothing and
 report the missing path to Scott.
 
 ## Steps
@@ -28,16 +28,20 @@ report the missing path to Scott.
    `scripts/factory-pr-metrics.sh`, and `scripts/factory-delivery-metrics.sh`,
    run `git show "$REF:<path>"`. Write each script to a temporary file, run
    `bash` on that file, and delete the temporary file. Pass
-   `--repo adamsuk/software-factory --since <since> --until <until>` to each.
+   `--repo adamsuk/software-factory --since <since> --until <until>` to each of
+   those three.
    For `scripts/factory-delivery-metrics.sh` also pass `--ledger` from
    `$FACTORY_LEDGER_FILE` (committed default `/workspace/factory-ledger.csv`)
    and one `--required-check` each for `ShellCheck`, `changelog / changelog`,
-   and `tests`. If any path is missing on `$REF`, or any script exits
+   and `tests`. Then run `scripts/review-bot-metrics.sh --repo adamsuk/software-factory`
+   the same way (it takes no `--since` or `--until`; pass neither). If any path is missing on `$REF`, or any script exits
    non-zero, commit nothing and report the missing path or the failure to
    Scott.
 3. **Record.** Write `metrics/<last-day>.md`: the label script's stdout, one
    blank line, then the pull request script's stdout, one blank line, then
-   the delivery script's stdout. Change no other file. Open a pull request
+   the delivery script's stdout, one blank line, then the review-bot script's
+   stdout (`scripts/review-bot-metrics.sh`, CodeRabbit comment acceptance).
+   Change no other file. Open a pull request
    whose body contains that file's path. Do not merge the pull request.
 4. **Stop.** Do not set `factory:done`. Do not add or edit a file under
    `.github/workflows/`. Do not call PostHog. Do not file an alert. Do not
