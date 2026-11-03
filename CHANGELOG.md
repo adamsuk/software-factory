@@ -67,6 +67,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `ci.yml`, `egress-policy: audit`) as the first step of every job (#214).
   `changelog.yml` is a bare reusable-workflow caller with no steps, so it
   needed no change.
+- New `scripts/test-harden-runner.sh` (offline, read-only) asserts the pinned
+  Harden-Runner step with `egress-policy: audit` is the first step of every job
+  in `lint.yml`, `line-audit.yml` and `ruleset-drift.yml`, and that
+  `changelog.yml` still has no steps. It fails against `main` and passes here
+  (#214).
 
 ## 2026-11-02
 
