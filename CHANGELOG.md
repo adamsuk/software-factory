@@ -27,7 +27,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `factory`, `research-cycle`) with each finding as a GitHub sub-issue, even
   if last week's parent is still open. Closing the last open sub-issue starts
   the `Line audit` workflow (new `issues: closed` trigger plus `parent_repo`
-  and `parent_issue` dispatch inputs; the monthly cron is unchanged).
+  and `parent_issue` dispatch inputs; the monthly cron is unchanged). The
+  automatic start works only for a parent in `adamsuk/software-factory`
+  itself; for a parent on another repo, start the audit by hand with
+  `workflow_dispatch` (`parent_repo`, `parent_issue`) until
+  adamsuk/software-factory#258 makes it automatic.
 - `scripts/sub-issues-all-closed.sh` (exit 0 all closed, 1 some open, 2 error)
   and `--parent-of` mode, tested by `scripts/test-sub-issues-all-closed.sh`.
 - `scripts/audit-triage.sh`, run by a new `triage` job after a research-cycle

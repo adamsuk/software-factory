@@ -32,6 +32,14 @@ runs (see `scripts/sub-issues-all-closed.sh`), triages its findings with
 `scripts/audit-triage.sh`, and closes the parent. Research Scout does none of
 that; the next weekly run simply opens a new parent.
 
+This automatic trigger currently works **only when the research-cycle parent
+lives in `adamsuk/software-factory` itself**, because the `issues: closed`
+event only fires for that repo. Automatic triggering for a parent on any other
+enrolled repo (for example `adamsuk/line`) is not built yet. Until it is,
+start the audit for such a parent by hand with a `workflow_dispatch` of
+`Line audit` giving `parent_repo` and `parent_issue`. The follow-up is tracked
+in adamsuk/software-factory#258.
+
 ## Outputs
 
 One parent issue per week with its sub-issues on the research repo, and the weekly summary to the foreman. Research
