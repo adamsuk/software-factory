@@ -309,7 +309,7 @@ note() {
 
 redact() {
   # Stateless ghs_ tokens are JWTs (dots, hyphens, well past 255 characters).
-  sed -E 's/(gho|ghp|github_pat)_[A-Za-z0-9_]+|ghs_[A-Za-z0-9._-]+/[redacted]/g'
+  sed -E 's/(gho|ghp|github_pat)_[A-Za-z0-9_]+|ghs_[A-Za-z0-9._-]+/[redacted]/g; s/(^|[^A-Za-z0-9_])(sk|xai)-[A-Za-z0-9_-]+/\1[redacted]/g'
 }
 
 repo_ok() {
@@ -3803,11 +3803,13 @@ ir_post_comment() {
   body=$(jq -r --arg sha "$sha" '
     def clean: tostring | gsub("[\r\n]+"; " ") | gsub("@"; "") | .[0:300];
     # Review-record fields are a short prose account: keep @org/pkg readable (a
-    # zero-width space stops the mention pinging) and allow 600 characters.
-    def prose: tostring | gsub("[\r\n]+"; " ") | gsub("@"; "@\u200b") | .[0:600];
+    # zero-width space stops the mention pinging) and allow 600 characters. The
+    # cap applies before the escape so it counts original characters; an empty
+    # or whitespace-only value reads as "not available".
+    def prose: tostring | gsub("[\r\n]+"; " ") | if test("^\\s*$") then "not available" else .[0:600] | gsub("@"; "@\u200b") end;
     def section($title; $xs): if ($xs | length) > 0 then "\n" + $title + "\n" + ([$xs[] | "- " + clean] | join("\n")) else "" end;
     "<!-- factory:independent-review v2 sha=" + $sha + " -->\n"
-    + "**Independent review (after CodeRabbit): " + .verdict + "** on " + ($sha[0:7]) + "\nHead: " + $sha + "\n"
+    + "**Independent review (after CodeRabbit): " + .verdict + "** on " + ($sha[0:7]) + "\nHead: `" + $sha + "`\n"
     + ((.summary // "") | clean)
     + "\n\n**Agreed behaviour:** " + ((.agreed_behaviour // "not available") | prose)
     + "\n**Checks that ran:** " + ((.checks_ran // "not available") | prose)

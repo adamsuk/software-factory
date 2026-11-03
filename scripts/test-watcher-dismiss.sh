@@ -859,6 +859,35 @@ t_ir_record() {
   # The exact escape is @ + U+200B + org/package; stripping @ outright must fail.
   grep -F -q -- "$(printf '@\xe2\x80\x8borg/package')" "$GH_LOG" \
     || fail "@org/package not escaped with a zero-width space"
+  # The full head SHA is inline code, so GitHub shows all 40 characters.
+  grep -F -q -- "Head: \`$sha\`" "$GH_LOG" || fail "head sha is not backtick-wrapped"
+  # sk-/xai- shaped keys are redacted; ordinary hyphenated words are not.
+  sha=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  f=$(ir_result_file "$repo" "$pr" "$sha")
+  local sk="sk-Test_0123456789abcdef" xai="xai-Test_0123456789abcdef"
+  jq -nc --arg sha "$sha" --arg sk "$sk" --arg xai "$xai" '{verdict:"PASS",summary:"S.",
+    agreed_behaviour:"risk-based review", checks_ran:("keys " + $sk + " and " + $xai),
+    unasked_behaviour:"", blast_radius:"   ", fix:[],dismissed:[],escalate:[],sha:$sha}' > "$f"
+  : > "$GH_LOG"
+  ir_post_comment "$repo" "$pr" "$sha" || fail "key redaction case did not post"
+  grep -F -q -- "$sk" "$GH_LOG" && fail "sk- key reached the posted comment"
+  grep -F -q -- "$xai" "$GH_LOG" && fail "xai- key reached the posted comment"
+  grep -F -q -- "keys [redacted] and [redacted]" "$GH_LOG" || fail "sk-/xai- keys not shown as [redacted]"
+  grep -F -q -- "risk-based review" "$GH_LOG" || fail "risk-based was swallowed by redaction"
+  # Empty and whitespace-only fields read as not available, not a blank line.
+  grep -F -q -- "Behaviour nobody asked for:** not available" "$GH_LOG" || fail "empty field not rendered as not available"
+  grep -F -q -- "Blast radius:** not available" "$GH_LOG" || fail "blank field not rendered as not available"
+  # The 600-character cap counts original characters: escaping @ must not push the last one out.
+  sha=cccccccccccccccccccccccccccccccccccccccc
+  f=$(ir_result_file "$repo" "$pr" "$sha")
+  local long
+  long="$(printf 'a%.0s' {1..598})@Z"
+  jq -nc --arg sha "$sha" --arg long "$long" '{verdict:"PASS",summary:"S.",
+    agreed_behaviour:$long, checks_ran:"c", unasked_behaviour:"none", blast_radius:"x",
+    fix:[],dismissed:[],escalate:[],sha:$sha}' > "$f"
+  : > "$GH_LOG"
+  ir_post_comment "$repo" "$pr" "$sha" || fail "600-character case did not post"
+  grep -F -q -- "$(printf '@\xe2\x80\x8bZ')" "$GH_LOG" || fail "600-character field lost its last character to @ escaping"
   # A verdict-only parse falls back to placeholders.
   local out="$work/out.json" dest="$work/dest.json"
   printf '%s' '{"result":"VERDICT: PASS"}' > "$out"
