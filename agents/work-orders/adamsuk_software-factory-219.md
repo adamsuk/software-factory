@@ -131,6 +131,17 @@ with `PLAN_JSON` fake output.
 > `.github/factory.yml` and the workflow are protected paths. Scott reviews
 > the pull request.
 
+## Naming gap
+
+The new case asserts exit 1 and `o/line: required_status_checks differs`.
+It does not assert that the output names `test` and `changelog`.
+`scripts/ruleset-drift-check.sh` prints only the differing key, for this
+fixture `o/line: required_status_checks differs (ruleset factory-main)`.
+The check names stay in the plan `detail` and never reach the report, so
+the test cannot require them without failing. That criterion is not met.
+Meeting it needs the drift script to include the omitted check names.
+This fix does not change that script.
+
 ## Report back
 
 Say explicitly which script actually owns this check (confirm or correct

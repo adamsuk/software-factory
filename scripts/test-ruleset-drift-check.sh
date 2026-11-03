@@ -89,11 +89,17 @@ pass
 tname="a ruleset missing factory.yml required checks fails (line's miss)"
 # line's factory.yml requires `test` and `changelog`; its ruleset requires neither, so
 # gh-factory's plan shows the required_status_checks rule differing. Fake gh output only.
+# ruleset-drift-check.sh prints the differing key only. For this fixture the report is
+# "o/line: required_status_checks differs (ruleset factory-main)". It does not name
+# `test` or `changelog`, so this case does not treat that criterion as met.
 set_plan '[{"repo":"o/line","enrolled":true,"changes":[{"item":"ruleset","action":"update","target":"factory-main","detail":"x (differs: required_status_checks; ruleset lacks test, changelog)"}]}]'
 rc=0; out=$(run) || rc=$?
 [[ $rc -eq 1 ]] || fail "expected exit 1, got $rc"
 [[ "$out" == *"o/line: required_status_checks differs"* ]] || fail "got [$out]"
 [[ "$out" != *"No ruleset drift"* ]] || fail "said clean though required checks were missing: [$out]"
+if [[ "$out" != *"test"* || "$out" != *"changelog"* ]]; then
+  echo "GAP ($tname): output does not name both test and changelog; naming criterion not met: [$out]" >&2
+fi
 pass
 
 tname="ignores other differing keys"
