@@ -27,7 +27,9 @@ agents:
 # The ShellCheck check means shellcheck 0.11.0, pinned and checksum-verified in
 # .github/workflows/lint.yml (#155); install the same version locally (see README.md).
 # Station 04 (scripts/gate-issue.sh) reads these names. This tightens the factory's gate only:
-# GitHub enforces nothing until a ruleset exists (#112). agents.merge stays false until then.
+# GitHub enforces these through ruleset factory-main (id 26119160), which also requires
+# "Test assertions" (lint.yml) -- not listed here, a separate gap from #219's scope.
+# agents.merge stays false (see above).
 required_checks:
   - ShellCheck
   - changelog / changelog
