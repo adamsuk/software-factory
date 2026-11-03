@@ -3,6 +3,17 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-03
+
+### Fixed
+
+- The scheduled ruleset-drift run now lists only `--owner adamsuk`, and
+  `scripts/test-ruleset-drift-check.sh` has a new case for a ruleset missing
+  `test` and `changelog` (#219). `.github/factory.yml` no longer says GitHub
+  enforces nothing until a ruleset exists. Scott must review the workflow and
+  `factory.yml` (protected paths) and set the `FACTORY_READ_TOKEN` secret.
+- Existing tests: new case only, no existing assertion changed.
+
 ## 2026-11-02
 
 ### Fixed

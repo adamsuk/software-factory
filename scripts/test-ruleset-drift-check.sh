@@ -86,6 +86,16 @@ rc=0; out=$(run) || rc=$?
 [[ "$out" == *"o/b: required_status_checks differs"* ]] || fail "got [$out]"
 pass
 
+tname="a ruleset missing factory.yml required checks fails (line's miss)"
+# line's factory.yml requires `test` and `changelog`; its ruleset requires neither, so
+# gh-factory's plan shows the required_status_checks rule differing. Fake gh output only.
+set_plan '[{"repo":"o/line","enrolled":true,"changes":[{"item":"ruleset","action":"update","target":"factory-main","detail":"x (differs: required_status_checks; ruleset lacks test, changelog)"}]}]'
+rc=0; out=$(run) || rc=$?
+[[ $rc -eq 1 ]] || fail "expected exit 1, got $rc"
+[[ "$out" == *"o/line: required_status_checks differs"* ]] || fail "got [$out]"
+[[ "$out" != *"No ruleset drift"* ]] || fail "said clean though required checks were missing: [$out]"
+pass
+
 tname="ignores other differing keys"
 set_plan '[{"repo":"o/c","enrolled":true,"changes":[{"item":"ruleset","action":"update","target":"factory-main","detail":"x (differs: pull_request)"}]}]'
 run > /dev/null || fail "unrelated key must not fail"
