@@ -10,21 +10,33 @@ Repos with the `research` topic (for example `adamsuk/line`), or with
 ## Steps
 
 1. Check each repo's sources for meaningful changes since the last run.
-2. For each meaningful source change, file one issue on the research repo with
-   labels `factory` and `factory:triage`. Each issue gives the dated sources
+2. Open one parent issue on the research repo, every week regardless of
+   whether last week's cycle is still open. Title it
+   `Research cycle YYYY-MM-DD` (the run date) and give it labels `factory` and
+   `research-cycle`. Skip the parent only when step 1 found nothing.
+3. For each meaningful source change, file one issue on the research repo with
+   labels `factory` and `factory:triage`, and attach it to the parent as a
+   GitHub sub-issue (a real parent/sub-issue relationship, not just a link in
+   the body; `gh api repos/OWNER/REPO/issues/PARENT/sub_issues -F
+   sub_issue_id=ID` with the new issue's `id`). Each issue gives the dated sources
    (URLs and dates), the section of the guide it affects, the proposed change
    in a few sentences, a `Target repo: owner/repo` line naming where the
    change lands, and a line saying the `CHANGELOG.md` entry and
    collapsible sections are required. Open at most 3 issues per repo per run,
    and don't duplicate an open issue for the same change.
-3. Send the foreman (Software Factory) a weekly summary listing the issues
-   filed. The foreman tells Scott only what needs him.
+4. Send the foreman (Software Factory) a weekly summary listing the parent and
+   its sub-issues. The foreman tells Scott only what needs him.
+
+When the last open sub-issue of a parent closes, the `Line audit` workflow
+runs (see `scripts/sub-issues-all-closed.sh`), triages its findings with
+`scripts/audit-triage.sh`, and closes the parent. Research Scout does none of
+that; the next weekly run simply opens a new parent.
 
 ## Outputs
 
-Issues on the research repo, and the weekly summary to the foreman. Research
+One parent issue per week with its sub-issues on the research repo, and the weekly summary to the foreman. Research
 Scout opens no pull requests and merges nothing; the factory's builder
-(Grok Build) builds each issue and the watcher handles the PR.
+(Grok Build) builds each sub-issue and the watcher handles the PR.
 
 ## Stop rules
 

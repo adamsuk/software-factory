@@ -1,6 +1,7 @@
 # Role: auditor (Line re-audit)
 
-Runs once a month, from the scheduled `Line audit` workflow. Follows
+Runs once a month, and when the last sub-issue of a `research-cycle` parent
+closes, from the `Line audit` workflow. Follows
 [`AGENTS.md`](../../AGENTS.md). Read-only: it writes no file, files no issue and
 opens no pull request. It prints the audit; the workflow records it.
 
@@ -36,8 +37,10 @@ opens no pull request. It prints the audit; the workflow records it.
    reason. Do not carry a score over unchecked.
 4. After the audit, print `## Candidate issues`: gaps worth turning into work,
    each with a one-line title, the recommendation id, and the acceptance
-   criteria it would need. These are candidates for Scott to decide on. Never
-   file them.
+   criteria it would need. Never file them. A separate step, outside this role
+   (`scripts/audit-triage.sh`, run by the workflow after a research cycle),
+   compares them with open issues and files or comments; the auditor does not
+   know or depend on it.
 5. Print the audit between a line `<!-- audit:begin -->` and a line
    `<!-- audit:end -->`, with `## Candidate issues` after the end marker. Print
    nothing else between the markers.

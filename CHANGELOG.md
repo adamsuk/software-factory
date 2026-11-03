@@ -20,6 +20,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   paths) and set the `FACTORY_READ_TOKEN` secret.
 - Existing tests: new case only, no existing assertion changed.
 
+### Added
+
+- Research and the Line audit run as one repeating cycle (#211). Research
+  Scout opens a weekly `Research cycle YYYY-MM-DD` parent issue (labels
+  `factory`, `research-cycle`) with each finding as a GitHub sub-issue, even
+  if last week's parent is still open. Closing the last open sub-issue starts
+  the `Line audit` workflow (new `issues: closed` trigger plus `parent_repo`
+  and `parent_issue` dispatch inputs; the monthly cron is unchanged).
+- `scripts/sub-issues-all-closed.sh` (exit 0 all closed, 1 some open, 2 error)
+  and `--parent-of` mode, tested by `scripts/test-sub-issues-all-closed.sh`.
+- `scripts/audit-triage.sh`, run by a new `triage` job after a research-cycle
+  audit: comments on a matching open `factory` issue or files up to 5 new
+  `factory` + `factory:triage` issues, posts a summary on the parent and closes
+  it. It never edits another issue's body. The auditor stays read-only. Tested
+  by `scripts/test-audit-triage.sh`.
+- Scott must review: `.github/workflows/line-audit.yml` and `agents/**` are
+  protected. The workflow still needs `ANTHROPIC_API_KEY`, the
+  `AUDITOR_GUIDE_URL`, `AUDITOR_GUIDE_VERSION` and `AUDITOR_CLI_VERSION`
+  variables and the Actions PR setting; none of that is new.
+
 ## 2026-11-02
 
 ### Fixed
