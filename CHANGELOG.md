@@ -32,6 +32,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   review-record fields keep `@org/package` readable (a zero-width space after
   `@` stops the mention) and are capped at 600 characters instead of 300;
   `summary`, `fix`, `dismissed` and `escalate` are unchanged (#232).
+- `t_ir_record` now asserts the exact `@` + zero-width space + `org/package`
+  sequence in the review-record comment, so stripping `@` outright fails it
+  (#232).
 - The scheduled ruleset-drift run now lists only `--owner adamsuk`, and
   `scripts/ruleset-drift-check.sh` now names the missing required checks in a
   `required_status_checks` drift report, for example

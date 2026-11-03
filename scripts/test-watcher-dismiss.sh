@@ -856,6 +856,9 @@ t_ir_record() {
   grep -F -q -- "[redacted]" "$GH_LOG" || fail "token not shown as [redacted]"
   grep -F -q -- "org/package" "$GH_LOG" || fail "@org/package lost its name"
   grep -F -q -- "@org/package" "$GH_LOG" && fail "bare mention left in comment"
+  # The exact escape is @ + U+200B + org/package; stripping @ outright must fail.
+  grep -F -q -- "$(printf '@\xe2\x80\x8borg/package')" "$GH_LOG" \
+    || fail "@org/package not escaped with a zero-width space"
   # A verdict-only parse falls back to placeholders.
   local out="$work/out.json" dest="$work/dest.json"
   printf '%s' '{"result":"VERDICT: PASS"}' > "$out"
