@@ -76,6 +76,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   in `lint.yml`, `line-audit.yml` and `ruleset-drift.yml`, and that
   `changelog.yml` still has no steps. It fails against `main` and passes here
   (#214).
+- `agents/roles/monitor.md`: the weekly procedure now also runs
+  `scripts/review-bot-metrics.sh --repo adamsuk/software-factory` in Measure
+  and appends its stdout to `metrics/<last-day>.md` in Record (#217), so the
+  write-up carries a CodeRabbit comment acceptance figure. The script is
+  unchanged and read-only. Auto-approve stays off; no setting is touched.
+  Scott must review `agents/roles/monitor.md` because `agents/**` is
+  protected. Covered by the new `scripts/test-monitor-brief.sh`.
 
 ## 2026-11-02
 
