@@ -3,6 +3,16 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-03
+
+### Changed
+
+- `lint.yml`, `line-audit.yml` and `ruleset-drift.yml` now run
+  `step-security/harden-runner` (pinned to the same SHA as gh-factory's
+  `ci.yml`, `egress-policy: audit`) as the first step of every job (#214).
+  `changelog.yml` is a bare reusable-workflow caller with no steps, so it
+  needed no change.
+
 ## 2026-11-02
 
 ### Fixed

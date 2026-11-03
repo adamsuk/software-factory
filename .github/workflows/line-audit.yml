@@ -61,6 +61,9 @@ jobs:
       GUIDE_VERSION: ${{ vars.AUDITOR_GUIDE_VERSION }}
       CLI_VERSION: ${{ vars.AUDITOR_CLI_VERSION }}
     steps:
+      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          egress-policy: audit
       - name: Check required secret and variables
         run: |
           missing=()
