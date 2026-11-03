@@ -1,10 +1,21 @@
 name: Line audit
 
-# Monthly re-audit against the Line guide (#21). Runs the read-only `auditor`
+# Re-audit against the Line guide (#21), monthly and at the end of a research
+# cycle (#211): closing the last open sub-issue of a `research-cycle` parent
+# starts it, with that parent's number in the auditor's context. Runs the read-only `auditor`
 # role through scripts/station-run.sh, compares the scorecard with the newest
 # file under audits/, and opens a pull request adding audits/YYYY-MM-DD.md when
 # something changed. Gaps appear as a list of issue CANDIDATES in the PR body;
-# nothing is filed. Scott decides which become work.
+# nothing is filed by the audit. After a research-cycle run only, the `triage`
+# job (scripts/audit-triage.sh, not the read-only auditor) comments on matching
+# open `factory` issues, files up to 5 new `factory`+`factory:triage` issues,
+# posts a summary on the parent and closes it. Monthly runs triage nothing:
+# Scott decides which candidates become work.
+#
+# The issues:closed trigger only sees issues of THIS repo. A research repo
+# elsewhere starts the audit with workflow_dispatch (inputs parent_repo,
+# parent_issue); acting on another repo needs a token that can write there,
+# which GITHUB_TOKEN cannot, so that wiring is Scott's call.
 #
 # NOT YET RUNNABLE. This workflow needs things a builder cannot provision. The
 # first step fails with the name of whichever is missing rather than skipping:
@@ -37,20 +48,81 @@ name: Line audit
 on:
   schedule:
     - cron: "17 6 1 * *" # 06:17 UTC on the 1st
+  issues:
+    types: [closed]
   workflow_dispatch:
+    inputs:
+      parent_repo:
+        description: "owner/repo of the research-cycle parent (default: this repo)"
+        required: false
+      parent_issue:
+        description: "Research-cycle parent issue number, to triage and close it afterwards"
+        required: false
 
 permissions:
   contents: read
 
-concurrency:
-  group: line-audit
-  cancel-in-progress: false
-
 jobs:
+  # Cheap decision job: every closed issue fires this workflow, and only the
+  # last sub-issue of a research-cycle parent may start the audit. Anything
+  # else ends here with exit 0 and the audit job is skipped.
+  gate:
+    name: Should the audit run
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: read
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+      parent_repo: ${{ steps.decide.outputs.parent_repo }}
+      parent_issue: ${{ steps.decide.outputs.parent_issue }}
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      EVENT: ${{ github.event_name }}
+      ISSUE: ${{ github.event.issue.number }}
+      INPUT_REPO: ${{ inputs.parent_repo }}
+      INPUT_ISSUE: ${{ inputs.parent_issue }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Decide
+        id: decide
+        run: |
+          set -euo pipefail
+          out() { printf 'run=%s\nparent_repo=%s\nparent_issue=%s\n' "$1" "${2:-}" "${3:-}" >> "$GITHUB_OUTPUT"; }
+          case "$EVENT" in
+            issues)
+              status=0
+              parent=$(scripts/sub-issues-all-closed.sh --parent-of "$GITHUB_REPOSITORY" "$ISSUE") || status=$?
+              if [ "$status" -eq 1 ]; then echo "Not a research-cycle sub-issue; nothing to do."; out no; exit 0; fi
+              [ "$status" -eq 0 ] || { echo "::error::could not look up the parent of #$ISSUE"; exit 1; }
+              status=0
+              scripts/sub-issues-all-closed.sh "$GITHUB_REPOSITORY" "$parent" || status=$?
+              if [ "$status" -eq 1 ]; then echo "Sub-issues of #$parent are still open; nothing to do."; out no; exit 0; fi
+              [ "$status" -eq 0 ] || { echo "::error::could not check the sub-issues of #$parent"; exit 1; }
+              out yes "$GITHUB_REPOSITORY" "$parent"
+              ;;
+            workflow_dispatch)
+              if [ -n "$INPUT_ISSUE" ] && ! [[ "$INPUT_ISSUE" =~ ^[1-9][0-9]*$ ]]; then
+                echo "::error::parent_issue must be a number"; exit 1
+              fi
+              out yes "${INPUT_REPO:-$GITHUB_REPOSITORY}" "$INPUT_ISSUE"
+              ;;
+            *) out yes ;;
+          esac
+
   audit:
     name: Line audit
+    needs: gate
+    if: needs.gate.outputs.run == 'yes'
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    concurrency:
+      group: line-audit
+      cancel-in-progress: false
+    outputs:
+      pr_url: ${{ steps.pr.outputs.url }}
+      candidates: ${{ steps.candidates.outputs.text }}
     permissions:
       contents: write
       pull-requests: write
@@ -60,6 +132,7 @@ jobs:
       GUIDE_URL: ${{ vars.AUDITOR_GUIDE_URL }}
       GUIDE_VERSION: ${{ vars.AUDITOR_GUIDE_VERSION }}
       CLI_VERSION: ${{ vars.AUDITOR_CLI_VERSION }}
+      PARENT_ISSUE: ${{ needs.gate.outputs.parent_issue }}
     steps:
       - name: Check required secret and variables
         run: |
@@ -88,6 +161,7 @@ jobs:
             echo "Repo: $GITHUB_REPOSITORY"
             echo "Run date (UTC): $(date -u +%F)"
             echo "Previous audit: $prev"
+            if [ -n "$PARENT_ISSUE" ]; then echo "Research cycle parent: #$PARENT_ISSUE"; fi
           } > "$context"
           scripts/station-run.sh --read-only --provider claudecode \
             --repo "$GITHUB_REPOSITORY" auditor "$context" \
@@ -107,6 +181,13 @@ jobs:
           sed -n '/^<!-- audit:end -->$/,$p' "$out" | sed '1d' > "$RUNNER_TEMP/candidates.md"
           grep -q '^## (a) Scorecard' "$RUNNER_TEMP/new-audit.md" \
             || { echo "::error::audit has no '## (a) Scorecard' section"; exit 1; }
+      - name: Export the candidates for triage
+        id: candidates
+        run: |
+          set -euo pipefail
+          scripts/check-candidate-size.sh "$RUNNER_TEMP/candidates.md"
+          delim="EOF_$(openssl rand -hex 8)"
+          { echo "text<<$delim"; head -c 60000 "$RUNNER_TEMP/candidates.md"; echo; echo "$delim"; } >> "$GITHUB_OUTPUT"
       - name: Compare with the latest audit
         id: diff
         run: |
@@ -123,6 +204,7 @@ jobs:
             diff <(card "$prev") <(card "$RUNNER_TEMP/new-audit.md") > "$RUNNER_TEMP/scorecard.diff" || true
           fi
       - name: Open the pull request
+        id: pr
         if: steps.diff.outputs.changed == 'yes'
         run: |
           set -euo pipefail
@@ -131,6 +213,7 @@ jobs:
           file="audits/$date.md"
           if gh pr list --head "$branch" --state open --json number --jq '.[0].number' | grep -q .; then
             echo "A pull request for $branch is already open."
+            echo "url=$(gh pr list --head "$branch" --state open --json url --jq '.[0].url')" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           cp "$RUNNER_TEMP/new-audit.md" "$file"
@@ -158,5 +241,42 @@ jobs:
             echo "---"
             echo "Review needed: this PR adds a file under \`audits/\` only, but the workflow that produced it is itself protected (AGENTS.md section 5)."
           } > "$RUNNER_TEMP/pr-body.md"
-          gh pr create --base main --head "$branch" \
-            --title "docs: Line audit $date (#21)" --label skip-changelog --body-file "$RUNNER_TEMP/pr-body.md"
+          url=$(gh pr create --base main --head "$branch" \
+            --title "docs: Line audit $date (#21)" --label skip-changelog --body-file "$RUNNER_TEMP/pr-body.md")
+          echo "$url"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+  # Only after a research cycle (a parent number is known). Separate from the
+  # read-only auditor on purpose: this job may write issues, the audit may not.
+  triage:
+    name: Triage the findings
+    needs: [gate, audit]
+    if: needs.audit.result == 'success' && needs.gate.outputs.parent_issue != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      CLI_VERSION: ${{ vars.AUDITOR_CLI_VERSION }}
+      PARENT_REPO: ${{ needs.gate.outputs.parent_repo }}
+      PARENT_ISSUE: ${{ needs.gate.outputs.parent_issue }}
+      AUDIT_PR: ${{ needs.audit.outputs.pr_url }}
+      CANDIDATES: ${{ needs.audit.outputs.candidates }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the Claude Code CLI
+        run: npm install -g "@anthropic-ai/claude-code@${CLI_VERSION}"
+      - name: Triage candidates, summarise and close the parent
+        env:
+          # The matcher only reads a prompt and answers NEW or MATCH <n>; the
+          # script validates the answer. No tools are allowed to it.
+          AUDIT_TRIAGE_MATCHER: claude -p --max-turns 1 --disallowedTools "Bash,Edit,Write,Read,Glob,Grep,WebFetch,WebSearch,Task"
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$CANDIDATES" > "$RUNNER_TEMP/candidates.md"
+          args=(--repo "$PARENT_REPO" --parent "$PARENT_ISSUE" --candidates "$RUNNER_TEMP/candidates.md")
+          if [ -n "$AUDIT_PR" ]; then args+=(--audit-pr "$AUDIT_PR"); fi
+          scripts/audit-triage.sh "${args[@]}"

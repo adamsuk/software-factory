@@ -7,6 +7,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- `scripts/audit-triage.sh` now exits 7 when the candidates section has list
+  items but none parse (e.g. `1) Title`), and accepts `MATCH #<n>`; the
+  auditor brief names the accepted title forms, and the research brief skips
+  the parent whenever zero sub-issues will be filed (#211).
+- The 60,000-byte candidate guard moved out of `line-audit.yml` into
+  `scripts/check-candidate-size.sh` with a boundary test, and
+  `scripts/audit-triage.sh` now rejects exactly 1000 open `factory` issues
+  too, since the search API caps results at 1000 and may have truncated (#211).
+- The Line audit now fails loudly when `candidates.md` is over 60,000 bytes
+  instead of silently truncating it, and `scripts/audit-triage.sh` now asks
+  `gh issue list` for up to 1000 open `factory` issues (`gh issue list` has no
+  `--paginate`; `--limit` pages internally, so the old `--limit 200` was the
+  cap) and exits 7 if that is exceeded (#211).
+- The `triage` job in `line-audit.yml` now runs even when the audit finds zero
+  candidates, so a clean research-cycle audit still gets its summary comment and
+  closes the parent issue (#211).
 - The scheduled ruleset-drift run now lists only `--owner adamsuk`, and
   `scripts/ruleset-drift-check.sh` now names the missing required checks in a
   `required_status_checks` drift report, for example
@@ -19,6 +35,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   ruleset exists. Scott must review the workflow and `factory.yml` (protected
   paths) and set the `FACTORY_READ_TOKEN` secret.
 - Existing tests: new case only, no existing assertion changed.
+
+### Added
+
+- Research and the Line audit run as one repeating cycle (#211). Research
+  Scout opens a weekly `Research cycle YYYY-MM-DD` parent issue (labels
+  `factory`, `research-cycle`) with each finding as a GitHub sub-issue, even
+  if last week's parent is still open. Closing the last open sub-issue starts
+  the `Line audit` workflow (new `issues: closed` trigger plus `parent_repo`
+  and `parent_issue` dispatch inputs; the monthly cron is unchanged). The
+  automatic start works only for a parent in `adamsuk/software-factory`
+  itself; for a parent on another repo, start the audit by hand with
+  `workflow_dispatch` (`parent_repo`, `parent_issue`) until
+  adamsuk/software-factory#258 makes it automatic.
+- `scripts/sub-issues-all-closed.sh` (exit 0 all closed, 1 some open, 2 error)
+  and `--parent-of` mode, tested by `scripts/test-sub-issues-all-closed.sh`.
+- `scripts/audit-triage.sh`, run by a new `triage` job after a research-cycle
+  audit: comments on a matching open `factory` issue or files up to 5 new
+  `factory` + `factory:triage` issues, posts a summary on the parent and closes
+  it. It never edits another issue's body. The auditor stays read-only. Tested
+  by `scripts/test-audit-triage.sh`.
+- Scott must review: `.github/workflows/line-audit.yml` and `agents/**` are
+  protected. The workflow still needs `ANTHROPIC_API_KEY`, the
+  `AUDITOR_GUIDE_URL`, `AUDITOR_GUIDE_VERSION` and `AUDITOR_CLI_VERSION`
+  variables and the Actions PR setting; none of that is new.
 
 ## 2026-11-02
 
