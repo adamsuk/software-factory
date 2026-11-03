@@ -5,7 +5,7 @@ issue_repo: adamsuk/software-factory
 title: "fix: make the candidate-size guard testable, close the search-API 1000-cap off-by-one"
 branch: factory/211-research-audit-cycle
 base: main
-test_command: "shellcheck scripts/*.sh adapters/*/run.sh && bash scripts/test-audit-triage.sh && bash scripts/test-sub-issues-all-closed.sh"
+test_command: "shellcheck scripts/*.sh adapters/*/run.sh && bash scripts/test-audit-triage.sh && bash scripts/test-sub-issues-all-closed.sh && bash scripts/test-check-candidate-size.sh"
 setup_command: ""
 changelog: true
 merge_allowed: false

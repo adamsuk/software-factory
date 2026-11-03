@@ -13,7 +13,9 @@ Repos with the `research` topic (for example `adamsuk/line`), or with
 2. Open one parent issue on the research repo, every week regardless of
    whether last week's cycle is still open. Title it
    `Research cycle YYYY-MM-DD` (the run date) and give it labels `factory` and
-   `research-cycle`. Skip the parent only when step 1 found nothing.
+   `research-cycle`. Skip the parent whenever step 3 will file zero new
+   sub-issues: step 1 found nothing, or every change it found already has an
+   open issue.
 3. For each meaningful source change, file one issue on the research repo with
    labels `factory` and `factory:triage`, and attach it to the parent as a
    GitHub sub-issue (a real parent/sub-issue relationship, not just a link in

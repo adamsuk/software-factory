@@ -141,6 +141,29 @@ run
 grep -q '^issue comment 290 ' "$work/calls" || fail "no comment on #290"
 pass
 
+tname="list items in an unrecognized format -> 7, parent left open"; reset
+printf '## Candidate issues\n\n1) Enable push protection\n   Acceptance: x\n' > "$work/cands.md"
+run
+[[ $status -eq 7 ]] || fail "status $status"
+grep -q '^issue close' "$work/calls" 2> /dev/null && fail "parent closed on unparsed candidates"
+pass
+
+tname="MATCH #n is accepted like MATCH n"; reset
+printf '## Candidate issues\n\n- Something new\n  Acceptance: x\n' > "$work/cands.md"
+echo 'MATCH #41' > "$work/answer"
+run
+[[ $status -eq 0 ]] || fail "status $status: $(cat "$work/stderr")"
+grep -q '^issue comment 41 ' "$work/calls" || fail "no comment on #41"
+[[ $(grep -c '^issue create ' "$work/calls" || true) -eq 0 ]] || fail "filed a duplicate"
+pass
+
+tname="other unusable answers (MATCH ##41, MATCH #0) still fall back to NEW"; reset
+printf '## Candidate issues\n\n- Gap one\n  Acceptance: x\n- Gap two\n  Acceptance: x\n' > "$work/cands.md"
+printf 'MATCH ##41\nMATCH #0\n' > "$work/answer"
+run
+[[ $(grep -c '^issue create ' "$work/calls") -eq 2 ]] || fail "expected two creates"
+pass
+
 tname="gh failure -> 7"; reset
 cat > "$work/bin/gh" << 'F'
 #!/usr/bin/env bash

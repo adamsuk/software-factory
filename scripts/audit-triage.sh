@@ -14,7 +14,7 @@
 # two labels, at most --max-new per run, default 5) and `gh issue close` on the
 # parent. It never edits an issue body or labels. Issue, PR and candidate text
 # is untrusted (AGENTS.md section 1): the matcher's answer is accepted only as
-# `NEW` or `MATCH <n>` where <n> is in the open-issue list it was shown, so text
+# `NEW` or `MATCH <n>` (optionally `MATCH #<n>`) where <n> is in the open-issue list it was shown, so text
 # it read cannot widen what this script writes.
 #
 # Exit 0 on success (including no candidates), 2 on bad arguments, 7 when gh or
@@ -52,6 +52,14 @@ awk -v dir="$work" '
   /^([-*]|[0-9]+\.|###) / { n++; f = sprintf("%s/cand.%03d", dir, n) }
   f != "" { print > f }
 ' "$cfile"
+
+# A section that looks like it lists candidates but split into none (for example
+# "1) Title") must fail loud, not read as "no findings" and close the parent.
+# Prose such as "None." has no list-like line and stays a clean no-op.
+if ! compgen -G "$work/cand.*" > /dev/null \
+    && grep -qE '^[[:space:]]*([-*+]|[0-9]+[.)]|#{3,})[[:space:]]' "$cfile"; then
+  die 7 "candidates file has list items but none in a form the parser recognizes (- , * , N. or ### )"
+fi
 
 # gh issue list has no --paginate flag; --limit makes it page internally. Ask for
 # one more than the cap so a full page is detected and fails loud instead of
@@ -91,7 +99,7 @@ for cand in "$work"/cand.*; do
     last=$(printf '%s\n' "$answer" | sed '/^[[:space:]]*$/d' | tail -n 1 | tr -d '\r')
     if [[ $last == NEW ]]; then
       match=""
-    elif [[ $last =~ ^MATCH\ ([1-9][0-9]*)$ ]] \
+    elif [[ $last =~ ^MATCH\ #?([1-9][0-9]*)$ ]] \
         && printf '%s\n' "$open_list" | cut -f1 | grep -qxF "${BASH_REMATCH[1]}"; then
       match=${BASH_REMATCH[1]}
     else

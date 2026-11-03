@@ -36,7 +36,9 @@ opens no pull request. It prints the audit; the workflow records it.
 3. Say what moved against the last audit, in either direction, and give the
    reason. Do not carry a score over unchecked.
 4. After the audit, print `## Candidate issues`: gaps worth turning into work,
-   each with a one-line title, the recommendation id, and the acceptance
+   each starting with a one-line title on a line that begins `- `, `* `, a
+   numbered `N. ` or `### ` (the only forms the triage parser recognizes),
+   then the recommendation id, and the acceptance
    criteria it would need. Never file them. A separate step, outside this role
    (`scripts/audit-triage.sh`, run by the workflow after a research cycle),
    compares them with open issues and files or comments; the auditor does not

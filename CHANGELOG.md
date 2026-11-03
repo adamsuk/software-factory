@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- `scripts/audit-triage.sh` now exits 7 when the candidates section has list
+  items but none parse (e.g. `1) Title`), and accepts `MATCH #<n>`; the
+  auditor brief names the accepted title forms, and the research brief skips
+  the parent whenever zero sub-issues will be filed (#211).
 - The 60,000-byte candidate guard moved out of `line-audit.yml` into
   `scripts/check-candidate-size.sh` with a boundary test, and
   `scripts/audit-triage.sh` now rejects exactly 1000 open `factory` issues
