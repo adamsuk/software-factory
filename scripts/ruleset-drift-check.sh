@@ -43,14 +43,44 @@ jq -e '[.[] | select(.enrolled)] | length > 0' "$plan" > /dev/null || {
 # with more than one page of rulesets. source_type excludes an inherited org ruleset that
 # happens to share the name -- without it, two matching IDs would break the lookup below.
 # Same two filters gh-factory's own plan.py uses to find the repo's managed ruleset.
+ruleset_id() {
+  gh api --paginate "repos/$1/rulesets" \
+    --jq '[.[] | select(.name == "factory-main" and (.source_type // "Repository") == "Repository")] | .[0].id // empty' \
+    2> /dev/null
+}
 bypass_hidden() {
   local repo=$1 id
-  id=$(gh api --paginate "repos/$repo/rulesets" \
-    --jq '[.[] | select(.name == "factory-main" and (.source_type // "Repository") == "Repository")] | .[0].id // empty' \
-    2> /dev/null) || return 0
+  id=$(ruleset_id "$repo") || return 0
   [[ -n "$id" ]] || return 1
   gh api "repos/$repo/rulesets/$id" --jq 'has("bypass_actors")' 2> /dev/null | grep -qx true && return 1
   return 0
+}
+
+# The contexts the live ruleset's required_status_checks rule lists, comma-separated, or
+# ABSENT when the rule is not there. Fails when the live ruleset cannot be read. A plain
+# read-only GET, like bypass_hidden above.
+live_checks() {
+  local id
+  id=$(ruleset_id "$1") && [[ -n "$id" ]] || return 1
+  gh api "repos/$1/rulesets/$id" --jq 'if any(.rules[]?; .type == "required_status_checks")
+    then ([.rules[] | select(.type == "required_status_checks") | .parameters.required_status_checks[]?.context] | join(","))
+    else "ABSENT" end' 2> /dev/null
+}
+
+# Names the checks behind a required_status_checks drift: $2 is the plan's desired
+# contexts (comma-separated); for an update, the ones the live ruleset lacks, else all.
+missing_checks() {
+  local repo=$1 desired=$2 action=$3 live c out=""
+  [[ -n "$desired" ]] || return 0
+  if [[ "$action" == update ]] && live=$(live_checks "$repo") && [[ "$live" != ABSENT ]]; then
+    for c in ${desired//,/ }; do
+      [[ ",$live," == *",$c,"* ]] || out+="${out:+, }$c"
+    done
+    [[ -n "$out" ]] || { echo "all desired checks are present, other parameters differ"; return 0; }
+  else
+    out=${desired//,/, }
+  fi
+  echo "missing: $out"
 }
 
 # A ruleset change names its differing keys in `detail` as
@@ -67,19 +97,25 @@ while IFS= read -r repo; do
   lines=$(jq -r --arg repo "$repo" '
     .[] | select(.enrolled and .repo == $repo) | . as $r
     | .changes[] | select(.item == "ruleset") | . as $c
+    | ([$c.payload.body.rules[]? | select(.type == "required_status_checks")
+        | .parameters.required_status_checks[]?.context] | join(",")) as $want
     | if .action == "create" then
         ("bypass_actors", "required_status_checks") as $k
-        | "\($r.repo): \($k) differs (ruleset \($c.target) is missing)"
+        | "\($r.repo): \($k) differs (ruleset \($c.target) is missing)|\(if $k == "required_status_checks" then $want else "" end)|create"
       elif .action == "update" then
         ("bypass_actors", "required_status_checks") as $k
         | select($c.detail | test("differs:.*" + $k))
-        | "\($r.repo): \($k) differs (ruleset \($c.target))"
+        | "\($r.repo): \($k) differs (ruleset \($c.target))|\(if $k == "required_status_checks" then $want else "" end)|update"
       else empty end' "$plan")
   hidden=0
   bypass_hidden "$repo" && hidden=1
   [[ $hidden -eq 1 ]] && unverified+="$repo: bypass_actors cannot be verified (the token cannot see bypass_actors; GitHub shows it only to write access)"$'\n'
-  while IFS= read -r line; do
+  while IFS='|' read -r line want action; do
     [[ -n "$line" ]] || continue
+    if [[ -n "$want" ]]; then
+      detail=$(missing_checks "$repo" "$want" "$action")
+      [[ -z "$detail" ]] || line="${line%)}; $detail)"
+    fi
     if [[ $hidden -eq 1 && "$line" == *": bypass_actors differs"* ]]; then
       continue # a hidden field always looks different; already reported as unverifiable
     fi

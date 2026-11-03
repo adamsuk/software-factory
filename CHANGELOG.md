@@ -8,13 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - The scheduled ruleset-drift run now lists only `--owner adamsuk`, and
-  `scripts/test-ruleset-drift-check.sh` has a new case that fails when a plan
-  shows `required_status_checks` drift for missing `test` and `changelog`
-  (#219). That script's report names the key only, not those two checks, so
-  the "names both checks" criterion is not met. `.github/factory.yml` no
-  longer says GitHub enforces nothing until a ruleset exists. Scott must
-  review the workflow and `factory.yml` (protected paths) and set the
-  `FACTORY_READ_TOKEN` secret.
+  `scripts/ruleset-drift-check.sh` now names the missing required checks in a
+  `required_status_checks` drift report, for example
+  `o/line: required_status_checks differs (ruleset factory-main; missing: test, changelog)`.
+  The desired checks come from the plan's `payload.body.rules[]`, diffed against
+  one extra read-only `gh api` read of the live ruleset (the full desired list
+  when the rule or ruleset is absent). `scripts/test-ruleset-drift-check.sh` has
+  new cases that fail unless the report names both `test` and `changelog`
+  (#219). `.github/factory.yml` no longer says GitHub enforces nothing until a
+  ruleset exists. Scott must review the workflow and `factory.yml` (protected
+  paths) and set the `FACTORY_READ_TOKEN` secret.
 - Existing tests: new case only, no existing assertion changed.
 
 ## 2026-11-02

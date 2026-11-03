@@ -12,6 +12,7 @@ trap 'rm -rf "$work"' EXIT
 BIN=$work/bin
 mkdir -p "$BIN"
 export MOCK_GH="$work"
+printf '%s' '{"rules":[]}' > "$work/live.json"
 
 tname="startup"
 fail() { echo "FAIL ($tname): $*" >&2; exit 1; }
@@ -43,7 +44,13 @@ if [[ "$1" == "api" ]]; then
       [[ -e "$MOCK_GH/dup_inherited" ]] && list='[{"id":5,"name":"other-ruleset"},{"id":2,"name":"factory-main","source_type":"Organization"},{"id":1,"name":"factory-main"}]'
       printf '%s' "$list" | jq -r "$jqf"
       ;;
-    */rulesets/1) [[ -e "$MOCK_GH/hide_bypass" ]] && echo false || echo true ;;
+    # The live-read of the ruleset's required_status_checks rule runs the real jq filter
+    # against live.json (default: a ruleset with no rules).
+    */rulesets/1)
+      if [[ "$jqf" == *required_status_checks* ]]; then
+        jq -r "$jqf" "$MOCK_GH/live.json"
+      elif [[ -e "$MOCK_GH/hide_bypass" ]]; then echo false; else echo true; fi
+      ;;
     # The inherited duplicate (id 2) always shows bypass_actors, unlike id 1 above, so
     # probing the wrong one is a detectably different (wrong) outcome, not a coincidence.
     */rulesets/2) echo true ;;
@@ -86,20 +93,32 @@ rc=0; out=$(run) || rc=$?
 [[ "$out" == *"o/b: required_status_checks differs"* ]] || fail "got [$out]"
 pass
 
-tname="a ruleset missing factory.yml required checks fails (line's miss)"
-# line's factory.yml requires `test` and `changelog`; its ruleset requires neither, so
-# gh-factory's plan shows the required_status_checks rule differing. Fake gh output only.
-# ruleset-drift-check.sh prints the differing key only. For this fixture the report is
-# "o/line: required_status_checks differs (ruleset factory-main)". It does not name
-# `test` or `changelog`, so this case does not treat that criterion as met.
-set_plan '[{"repo":"o/line","enrolled":true,"changes":[{"item":"ruleset","action":"update","target":"factory-main","detail":"x (differs: required_status_checks; ruleset lacks test, changelog)"}]}]'
+tname="a ruleset missing factory.yml required checks names them (line's miss)"
+# line's factory.yml requires `test` and `changelog`; its live ruleset requires neither.
+# The plan names the desired checks in payload.body.rules[] (gh-factory's plan shape), and
+# the live ruleset is read once more, read-only, to diff against.
+rules='[{"type":"pull_request","parameters":{}},{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"test"},{"context":"changelog"}]}}]'
+set_plan '[{"repo":"o/line","enrolled":true,"changes":[{"item":"ruleset","action":"update","target":"factory-main","detail":"x (differs: required_status_checks)","payload":{"body":{"rules":'"$rules"'}}}]}]'
 rc=0; out=$(run) || rc=$?
 [[ $rc -eq 1 ]] || fail "expected exit 1, got $rc"
 [[ "$out" == *"o/line: required_status_checks differs"* ]] || fail "got [$out]"
 [[ "$out" != *"No ruleset drift"* ]] || fail "said clean though required checks were missing: [$out]"
-if [[ "$out" != *"test"* || "$out" != *"changelog"* ]]; then
-  echo "GAP ($tname): output does not name both test and changelog; naming criterion not met: [$out]" >&2
-fi
+[[ "$out" == *"missing: test, changelog"* ]] || fail "output does not name both test and changelog: [$out]"
+pass
+
+tname="only the checks the live ruleset lacks are named"
+printf '%s' '{"rules":[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"test"}]}}]}' > "$work/live.json"
+rc=0; out=$(run) || rc=$?
+[[ "$out" == *"(ruleset factory-main; missing: changelog)"* ]] || fail "got [$out]"
+[[ "$out" != *"missing: test"* ]] || fail "named a check the live ruleset has: [$out]"
+printf '%s' '{"rules":[]}' > "$work/live.json"
+pass
+
+tname="a missing ruleset names the full desired check list"
+set_plan '[{"repo":"o/new","enrolled":true,"changes":[{"item":"ruleset","action":"create","target":"factory-main","detail":"x","payload":{"body":{"rules":'"$rules"'}}}]}]'
+rc=0; out=$(run) || rc=$?
+[[ $rc -eq 1 && "$out" == *"o/new: required_status_checks differs (ruleset factory-main is missing; missing: test, changelog)"* ]] || fail "got [$out]"
+[[ "$out" != *"bypass_actors differs (ruleset factory-main is missing;"* ]] || fail "bypass_actors line got a check list: [$out]"
 pass
 
 tname="ignores other differing keys"
