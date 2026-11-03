@@ -23,6 +23,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The `triage` job in `line-audit.yml` now runs even when the audit finds zero
   candidates, so a clean research-cycle audit still gets its summary comment and
   closes the parent issue (#211).
+- `scripts/test-harden-runner.sh` now ignores `#`-comment lines when matching a
+  job's first step, so a commented-out Harden-Runner line is no false pass, and
+  fails when `changelog.yml` is missing or unreadable. Two fixture self-tests
+  fail without these fixes (#214).
 - The scheduled ruleset-drift run now lists only `--owner adamsuk`, and
   `scripts/ruleset-drift-check.sh` now names the missing required checks in a
   `required_status_checks` drift report, for example
@@ -59,6 +63,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   protected. The workflow still needs `ANTHROPIC_API_KEY`, the
   `AUDITOR_GUIDE_URL`, `AUDITOR_GUIDE_VERSION` and `AUDITOR_CLI_VERSION`
   variables and the Actions PR setting; none of that is new.
+
+### Changed
+
+- `lint.yml`, `line-audit.yml` and `ruleset-drift.yml` now run
+  `step-security/harden-runner` (pinned to the same SHA as gh-factory's
+  `ci.yml`, `egress-policy: audit`) as the first step of every job (#214).
+  `changelog.yml` is a bare reusable-workflow caller with no steps, so it
+  needed no change.
+- New `scripts/test-harden-runner.sh` (offline, read-only) asserts the pinned
+  Harden-Runner step with `egress-policy: audit` is the first step of every job
+  in `lint.yml`, `line-audit.yml` and `ruleset-drift.yml`, and that
+  `changelog.yml` still has no steps. It fails against `main` and passes here
+  (#214).
 
 ## 2026-11-02
 
