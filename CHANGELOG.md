@@ -39,6 +39,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   ruleset exists. Scott must review the workflow and `factory.yml` (protected
   paths) and set the `FACTORY_READ_TOKEN` secret.
 - Existing tests: new case only, no existing assertion changed.
+- The watcher's independent-review comment now carries the four
+  review-record fields (agreed behaviour, checks that ran, behaviour nobody
+  asked for, blast radius) and the full 40-character head SHA as visible
+  text (#232). `watch.sh` and `watch.new.sh` change identically.
 
 ### Added
 

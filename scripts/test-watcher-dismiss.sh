@@ -818,6 +818,39 @@ t_lanes() {
   grep -F -q 'skip step_build: build lane holds' "$n" || fail "watch.new.sh lost the build-lane skip"
 }
 
+# The independent-review comment carries the four review-record fields and
+# the full head SHA. A fake result file stands in for the Grok output.
+t_ir_record() {
+  local repo=adamsuk/software-factory pr=7 sha f body
+  sha=0123456789abcdef0123456789abcdef01234567
+  f=$(ir_result_file "$repo" "$pr" "$sha")
+  jq -nc --arg sha "$sha" '{verdict:"PASS", summary:"Looks fine.",
+    agreed_behaviour:"AGREED-TEXT", checks_ran:"CHECKS-TEXT",
+    unasked_behaviour:"none", blast_radius:"BLAST-TEXT",
+    fix:[], dismissed:[], escalate:[], sha:$sha, at:"2026-11-03T00:00:00Z"}' > "$f"
+  ir_post_comment "$repo" "$pr" "$sha" || fail "ir_post_comment failed"
+  body=$(cat "$GH_LOG")
+  for want in "$sha" "Agreed behaviour:" "AGREED-TEXT" "Checks that ran:" "CHECKS-TEXT" \
+    "Behaviour nobody asked for:" "Blast radius:" "BLAST-TEXT"; do
+    grep -F -q -- "$want" <<< "$body" || fail "comment lacks: $want"
+  done
+  grep -F -q -- "Behaviour nobody asked for:** none" <<< "$body" || fail "unasked behaviour not rendered as none"
+  grep -E -q -i 'ghp_|gho_|ghs_|github_pat_|xai-|sk-[A-Za-z0-9]|BEGIN [A-Z ]*PRIVATE KEY|token=' <<< "$body" && fail "comment looks like it carries a secret"
+  # A result saved by an older watcher has no record fields: the comment still posts.
+  sha=fedcba9876543210fedcba9876543210fedcba98
+  f=$(ir_result_file "$repo" "$pr" "$sha")
+  jq -nc --arg sha "$sha" '{verdict:"PASS",summary:"Old.",fix:[],dismissed:[],escalate:[],sha:$sha}' > "$f"
+  ir_post_comment "$repo" "$pr" "$sha" || fail "old-format result did not post"
+  grep -F -q -- "$sha" "$GH_LOG" || fail "old-format comment lacks full sha"
+  # A verdict-only parse falls back to placeholders.
+  local out="$work/out.json" dest="$work/dest.json"
+  printf '%s' '{"result":"VERDICT: PASS"}' > "$out"
+  ir_save_result "$out" "$dest" "$sha"
+  [[ $(jq -r '.blast_radius' "$dest") == "not available" ]] || fail "fallback lacks placeholder"
+  ir_save_result "$work/missing.json" "$dest" "$sha"
+  [[ $(jq -r '.agreed_behaviour' "$dest") == "not available" ]] || fail "missing-output fallback lacks placeholder"
+}
+
 cases=(
   t_helpers
   t_dismiss_set
@@ -834,6 +867,7 @@ cases=(
   t_plan_focus
   t_cap
   t_gate_work_focus
+  t_ir_record
 )
 for script in "$root/scripts/watcher/watch.sh" "$root/scripts/watcher/watch.new.sh"; do
   for name in "${cases[@]}"; do
