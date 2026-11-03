@@ -818,6 +818,85 @@ t_lanes() {
   grep -F -q 'skip step_build: build lane holds' "$n" || fail "watch.new.sh lost the build-lane skip"
 }
 
+# The independent-review comment carries the four review-record fields and
+# the full head SHA. A fake result file stands in for the Grok output.
+t_ir_record() {
+  local repo=adamsuk/software-factory pr=7 sha f body
+  sha=0123456789abcdef0123456789abcdef01234567
+  f=$(ir_result_file "$repo" "$pr" "$sha")
+  jq -nc --arg sha "$sha" '{verdict:"PASS", summary:"Looks fine.",
+    agreed_behaviour:"AGREED-TEXT", checks_ran:"CHECKS-TEXT",
+    unasked_behaviour:"none", blast_radius:"BLAST-TEXT",
+    fix:[], dismissed:[], escalate:[], sha:$sha, at:"2026-11-03T00:00:00Z"}' > "$f"
+  ir_post_comment "$repo" "$pr" "$sha" || fail "ir_post_comment failed"
+  body=$(cat "$GH_LOG")
+  for want in "$sha" "Agreed behaviour:" "AGREED-TEXT" "Checks that ran:" "CHECKS-TEXT" \
+    "Behaviour nobody asked for:" "Blast radius:" "BLAST-TEXT"; do
+    grep -F -q -- "$want" <<< "$body" || fail "comment lacks: $want"
+  done
+  grep -F -q -- "Behaviour nobody asked for:** none" <<< "$body" || fail "unasked behaviour not rendered as none"
+  grep -E -q -i 'ghp_|gho_|ghs_|github_pat_|xai-|sk-[A-Za-z0-9]|BEGIN [A-Z ]*PRIVATE KEY|token=' <<< "$body" && fail "comment looks like it carries a secret"
+  # A result saved by an older watcher has no record fields: the comment still posts.
+  sha=fedcba9876543210fedcba9876543210fedcba98
+  f=$(ir_result_file "$repo" "$pr" "$sha")
+  jq -nc --arg sha "$sha" '{verdict:"PASS",summary:"Old.",fix:[],dismissed:[],escalate:[],sha:$sha}' > "$f"
+  ir_post_comment "$repo" "$pr" "$sha" || fail "old-format result did not post"
+  grep -F -q -- "$sha" "$GH_LOG" || fail "old-format comment lacks full sha"
+  # A token-shaped string in a field is redacted; @org/package stays readable.
+  sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  f=$(ir_result_file "$repo" "$pr" "$sha")
+  local tok
+  tok="ghp_$(printf 'A1b2%.0s' {1..9})"
+  jq -nc --arg sha "$sha" --arg tok "$tok" '{verdict:"PASS",summary:"S.",
+    agreed_behaviour:"uses @org/package", checks_ran:("CI printed " + $tok),
+    unasked_behaviour:"none", blast_radius:"x", fix:[],dismissed:[],escalate:[],sha:$sha}' > "$f"
+  : > "$GH_LOG"
+  ir_post_comment "$repo" "$pr" "$sha" || fail "redaction case did not post"
+  grep -F -q -- "$tok" "$GH_LOG" && fail "token reached the posted comment"
+  grep -F -q -- "[redacted]" "$GH_LOG" || fail "token not shown as [redacted]"
+  grep -F -q -- "org/package" "$GH_LOG" || fail "@org/package lost its name"
+  grep -F -q -- "@org/package" "$GH_LOG" && fail "bare mention left in comment"
+  # The exact escape is @ + U+200B + org/package; stripping @ outright must fail.
+  grep -F -q -- "$(printf '@\xe2\x80\x8borg/package')" "$GH_LOG" \
+    || fail "@org/package not escaped with a zero-width space"
+  # The full head SHA is inline code, so GitHub shows all 40 characters.
+  grep -F -q -- "Head: \`$sha\`" "$GH_LOG" || fail "head sha is not backtick-wrapped"
+  # sk-/xai- shaped keys are redacted; ordinary hyphenated words are not.
+  sha=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  f=$(ir_result_file "$repo" "$pr" "$sha")
+  local sk="sk-Test_0123456789abcdef" xai="xai-Test_0123456789abcdef"
+  jq -nc --arg sha "$sha" --arg sk "$sk" --arg xai "$xai" '{verdict:"PASS",summary:"S.",
+    agreed_behaviour:"risk-based review", checks_ran:("keys " + $sk + " and " + $xai),
+    unasked_behaviour:"", blast_radius:"   ", fix:[],dismissed:[],escalate:[],sha:$sha}' > "$f"
+  : > "$GH_LOG"
+  ir_post_comment "$repo" "$pr" "$sha" || fail "key redaction case did not post"
+  grep -F -q -- "$sk" "$GH_LOG" && fail "sk- key reached the posted comment"
+  grep -F -q -- "$xai" "$GH_LOG" && fail "xai- key reached the posted comment"
+  grep -F -q -- "keys [redacted] and [redacted]" "$GH_LOG" || fail "sk-/xai- keys not shown as [redacted]"
+  grep -F -q -- "risk-based review" "$GH_LOG" || fail "risk-based was swallowed by redaction"
+  # Empty and whitespace-only fields read as not available, not a blank line.
+  grep -F -q -- "Behaviour nobody asked for:** not available" "$GH_LOG" || fail "empty field not rendered as not available"
+  grep -F -q -- "Blast radius:** not available" "$GH_LOG" || fail "blank field not rendered as not available"
+  # The 600-character cap counts original characters: escaping @ must not push the last one out.
+  sha=cccccccccccccccccccccccccccccccccccccccc
+  f=$(ir_result_file "$repo" "$pr" "$sha")
+  local long
+  long="$(printf 'a%.0s' {1..598})@Z"
+  jq -nc --arg sha "$sha" --arg long "$long" '{verdict:"PASS",summary:"S.",
+    agreed_behaviour:$long, checks_ran:"c", unasked_behaviour:"none", blast_radius:"x",
+    fix:[],dismissed:[],escalate:[],sha:$sha}' > "$f"
+  : > "$GH_LOG"
+  ir_post_comment "$repo" "$pr" "$sha" || fail "600-character case did not post"
+  grep -F -q -- "$(printf '@\xe2\x80\x8bZ')" "$GH_LOG" || fail "600-character field lost its last character to @ escaping"
+  # A verdict-only parse falls back to placeholders.
+  local out="$work/out.json" dest="$work/dest.json"
+  printf '%s' '{"result":"VERDICT: PASS"}' > "$out"
+  ir_save_result "$out" "$dest" "$sha"
+  [[ $(jq -r '.blast_radius' "$dest") == "not available" ]] || fail "fallback lacks placeholder"
+  ir_save_result "$work/missing.json" "$dest" "$sha"
+  [[ $(jq -r '.agreed_behaviour' "$dest") == "not available" ]] || fail "missing-output fallback lacks placeholder"
+}
+
 cases=(
   t_helpers
   t_dismiss_set
@@ -834,6 +913,7 @@ cases=(
   t_plan_focus
   t_cap
   t_gate_work_focus
+  t_ir_record
 )
 for script in "$root/scripts/watcher/watch.sh" "$root/scripts/watcher/watch.new.sh"; do
   for name in "${cases[@]}"; do
