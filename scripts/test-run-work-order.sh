@@ -1519,7 +1519,7 @@ export GROK_ENV_DUMP
   export GH_HOST=github.example
   export XAI_API_KEY=scrub-207-xai-api-key
   export PATH="$scrub_dir/bin:$ORIG_PATH"
-  dir=$scrub_dir/clone order=/dev/null rules=/dev/null
+  dir=$scrub_dir/clone order=/dev/null rules=/dev/null gh_config_dir=$scrub_dir/ghconfig
   eval "$grok_cmd"
   true
 ) || fail "mock grok invocation failed"

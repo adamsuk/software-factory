@@ -553,6 +553,24 @@ resolve_llm_backend() {
   fi
 }
 
+# Belt-and-suspenders on the box's secrets directory: if it is readable or
+# writable by anyone but its owner, tighten it to 0700 and warn. This narrows
+# an accidental misconfiguration, not a real boundary — the builder (grok or
+# claude) runs as this same OS user, so any subprocess it starts can still
+# read anything that user can read, secrets directory included. Real
+# isolation needs a separate OS account or sandbox (AGENTS.md's "Run
+# environment" in agents/grok-build.md), which this script does not provide.
+check_secrets_dir_perms() {
+  local secrets_dir=${FACTORY_SECRETS_DIR:-$HOME/.factory-secrets} mode
+  [[ -d "$secrets_dir" ]] || return 0
+  mode=$(stat -c '%a' "$secrets_dir" 2> /dev/null) || return 0
+  if (( 8#$mode & 077 )); then
+    echo "run-work-order: $secrets_dir is mode $mode (group/other access); tightening to 0700" >&2
+    chmod 0700 "$secrets_dir" 2> /dev/null \
+      || echo "run-work-order: could not chmod $secrets_dir to 0700" >&2
+  fi
+}
+
 main() {
   local push=false
   if [[ "${1:-}" == "--push" ]]; then push=true; shift; fi
@@ -566,6 +584,7 @@ main() {
   for tool in git gh jq; do command -v "$tool" > /dev/null || die 2 "$tool not found"; done
   resolve_llm_backend
   git var GIT_COMMITTER_IDENT > /dev/null 2>&1 || die 2 "set git user.name and user.email (the identity agent commits use)"
+  check_secrets_dir_perms
 
   repo=$(field repo); issue=$(field issue); branch=$(field branch)
   base=$(field base); tests=$(field test_command); title=$(field title)
@@ -595,10 +614,21 @@ main() {
   start=$(git rev-parse HEAD)
 
   status=0
+  # An empty GH_CONFIG_DIR for the builder child, so even a bypassed/missing
+  # deny can't read the box's real gh config (~/.config/gh, tokens included).
+  # Belt-and-suspenders on top of the env scrub and the deny/disallow rules
+  # below, which are the real guard. Cleaned up on every exit path, normal or
+  # signalled, the same way run_setup_command's snapshot file is.
+  gh_config_dir=$(mktemp -d) || die 2 "could not create a temporary GH_CONFIG_DIR"
+  prev_llm_traps=$(trap -p INT TERM EXIT)
+  trap 'rm -rf "$gh_config_dir"' EXIT
+  trap 'rm -rf "$gh_config_dir"; exit 130' INT
+  trap 'rm -rf "$gh_config_dir"; exit 143' TERM
   if [[ "$llm_backend" != "claude" ]]; then
     # Scrub only this child. Clone, setup and --push keep their credentials, and
     # apply_factory_gh_app_token runs again before --push. The inner env is the
     # call-site form scripts/test-gh-app-token.sh locks; it is what runs grok.
+    GH_CONFIG_DIR="$gh_config_dir" \
     env -u GH_TOKEN -u GITHUB_TOKEN \
       -u GH_ENTERPRISE_TOKEN \
       -u GITHUB_ENTERPRISE_TOKEN \
@@ -629,11 +659,17 @@ main() {
     # the same rules-plus-order text grok gets via --rules/--prompt-file,
     # read from a file over stdin. --permission-mode bypassPermissions
     # mirrors grok's --always-approve; --disallowedTools keeps the box's
-    # /home/box/.factory-secrets out of reach and drops WebSearch/WebFetch,
-    # the parity for grok's --disable-web-search. The raw result is
-    # normalised (stopReason added) into $dir.grok.json: callers that read
-    # that file for total_cost_usd/num_turns need no change (AGENTS.md
-    # section 3; see agents/grok-build.md).
+    # /home/box/.factory-secrets out of reach (the leading `//` anchors an
+    # absolute path for Claude Code, a single `/` would anchor at the project
+    # dir instead), blocks `git push`/`gh` the same way grok's --deny does
+    # (bypassPermissions alone would let either run), and drops
+    # WebSearch/WebFetch, the parity for grok's --disable-web-search.
+    # GH_CONFIG_DIR and GIT_TERMINAL_PROMPT=0 (with GIT_ASKPASS/SSH_AUTH_SOCK
+    # scrubbed below) are the same belt-and-suspenders as the grok branch,
+    # against a gh/git call that bypasses --disallowedTools somehow. The raw
+    # result is normalised (stopReason added) into $dir.grok.json: callers
+    # that read that file for total_cost_usd/num_turns need no change
+    # (AGENTS.md section 3; see agents/grok-build.md).
     claude_prompt="$dir.claude-prompt.txt"
     { cat "$rules"; printf '\n\n'; cat "$order"; } > "$claude_prompt"
     # shellcheck disable=SC2016  # $1.."$4" below expand in the inner bash -c, not this script
@@ -653,10 +689,13 @@ main() {
       -u CLOUDSDK_AUTH_ACCESS_TOKEN \
       -u AZURE_CLIENT_SECRET \
       -u ANTHROPIC_API_KEY \
+      -u GIT_ASKPASS -u SSH_AUTH_SOCK \
       env -u GH_TOKEN -u GITHUB_TOKEN \
+      GH_CONFIG_DIR="$gh_config_dir" GIT_TERMINAL_PROMPT=0 \
       bash -c 'cd "$1" && exec "$2" -p --output-format json --max-turns "$3" \
         --permission-mode bypassPermissions \
-        --disallowedTools "Read(/home/box/.factory-secrets/**)" "Bash(*factory-secrets*)" "WebSearch" "WebFetch" \
+        --disallowedTools "Read(//home/box/.factory-secrets/**)" "Bash(*factory-secrets*)" \
+          "Bash(git push*)" "Bash(gh *)" "Bash(gh)" "WebSearch" "WebFetch" \
         < "$4"' _ "$dir" "$claude_bin" "${CLAUDE_MAX_TURNS:-${GROK_MAX_TURNS:-60}}" "$claude_prompt" \
       > "$dir.claude-raw.json" || status=$?
     jq '. + {stopReason: (
@@ -666,6 +705,8 @@ main() {
           end)}' "$dir.claude-raw.json" > "$dir.grok.json" 2> /dev/null \
       || cp "$dir.claude-raw.json" "$dir.grok.json"
   fi
+  rm -rf "$gh_config_dir"
+  restore_traps "$prev_llm_traps"
   stop=$(jq -r '.stopReason // "none"' "$dir.grok.json" 2> /dev/null || echo none)
   [[ $status -eq 0 && "$stop" == "end_turn" ]] || die 3 "$llm_backend exit $status, stopReason $stop; see $dir.grok.json"
 

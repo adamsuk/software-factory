@@ -70,25 +70,37 @@ command above, unchanged. `FACTORY_LLM=claude` runs Claude Code headless
 instead, in `scripts/run-work-order.sh`:
 
 ```sh
+GH_CONFIG_DIR="$empty_tmp_dir" GIT_TERMINAL_PROMPT=0 \
 claude -p --output-format json --max-turns "$turns" \
   --permission-mode bypassPermissions \
-  --disallowedTools "Read(/home/box/.factory-secrets/**)" "Bash(*factory-secrets*)" "WebSearch" "WebFetch" \
+  --disallowedTools "Read(//home/box/.factory-secrets/**)" "Bash(*factory-secrets*)" \
+    "Bash(git push*)" "Bash(gh *)" "Bash(gh)" "WebSearch" "WebFetch" \
   < "$prompt_file"
 ```
 
 run with `cd "$dir"` first (`claude` has no `--cwd`), scrubbed the same way as
-the `grok` call plus `ANTHROPIC_API_KEY` (so the box's existing Claude login
-is used, never a billed key). `claude` must be on `PATH`; `CLAUDE_BIN`
-overrides the binary name, the same way `FACTORY_WORKSPACE` overrides the
-clone root. `--max-turns` reads `CLAUDE_MAX_TURNS`, falling back to
-`GROK_MAX_TURNS`, then `60`.
+the `grok` call (plus `ANTHROPIC_API_KEY`, so the box's existing Claude login
+is used, never a billed key, and `GIT_ASKPASS`/`SSH_AUTH_SOCK`). `claude` must
+be on `PATH`; `CLAUDE_BIN` overrides the binary name, the same way
+`FACTORY_WORKSPACE` overrides the clone root. `--max-turns` reads
+`CLAUDE_MAX_TURNS`, falling back to `GROK_MAX_TURNS`, then `60`.
+
+Note the leading `//` in the `Read` path: Claude Code's permission rules
+anchor a single leading `/` to the project directory, so
+`Read(/home/box/.factory-secrets/**)` would never match that absolute path at
+all. `//` is how an absolute path is spelled in this syntax. The same `//`
+form belongs anywhere else this guard is written (this file, the wrapper
+script, any other doc that repeats it) — a single `/` silently does nothing.
 
 | grok | claude | Why |
 | --- | --- | --- |
 | `--prompt-file`/`--rules` | same text, concatenated, read over stdin | `claude` has one prompt input, not two |
 | `--always-approve` | `--permission-mode bypassPermissions` | both skip interactive approval |
 | `--disable-web-search` | `--disallowedTools ... "WebSearch" "WebFetch"` | same fewer-untrusted-inputs reason |
-| (none; the `--factory-secrets` guard is the env scrub) | `--disallowedTools "Read(/home/box/.factory-secrets/**)" "Bash(*factory-secrets*)"` | belt-and-suspenders on top of the env scrub, which is the real guard for both backends |
+| `--deny 'Bash(git push*)' --deny 'Bash(gh *)'` | `--disallowedTools ... "Bash(git push*)" "Bash(gh *)" "Bash(gh)"` | `bypassPermissions` on its own would let Claude run `git push` or `gh` itself; the bare `Bash(gh)` form catches a no-argument call the `gh *` glob misses |
+| (none; the `--factory-secrets` guard is the env scrub) | `--disallowedTools "Read(//home/box/.factory-secrets/**)" "Bash(*factory-secrets*)"` | belt-and-suspenders on top of the env scrub, which is the real guard for both backends |
+| (none) | `GH_CONFIG_DIR` set to a fresh empty directory, removed after the run | stops a `gh` call that somehow runs anyway from reading the box's real `~/.config/gh` (tokens included); applied to both backends |
+| (none) | `GIT_TERMINAL_PROMPT=0`, `GIT_ASKPASS`/`SSH_AUTH_SOCK` unset | stops a `git` call that somehow runs anyway from prompting for or finding real credentials |
 
 The result is normalised into `$dir.grok.json` — **that file name does not
 change**, so `write_bench_handoff` and every other caller that reads
@@ -131,10 +143,41 @@ decision is #7):
   sets a fake sentinel on each scrubbed name and checks the child environment.
 - **Forbidden.** The builder must not `git push`, call `gh`, or see the
   secrets listed above. Push and the pull request stay in the wrapper. Keep
-  `--deny 'Bash(git push*)' --deny 'Bash(gh *)'`.
-- **A guardrail, not isolation.** The on-disk `gh` config and the Grok session
-  stay readable. That is a guardrail, not isolation. Sandboxing, an egress
-  allowlist, and a separate bot identity (#7) stay later work.
+  `--deny 'Bash(git push*)' --deny 'Bash(gh *)'` for grok, and the matching
+  `--disallowedTools "Bash(git push*)" "Bash(gh *)" "Bash(gh)"` for claude
+  (`bypassPermissions` has no deny list of its own, so without it Claude could
+  push or call `gh` directly).
+- **The on-disk `gh` config.** `GH_CONFIG_DIR` is pointed at a fresh empty
+  directory for the duration of the run, for both backends, removed
+  afterwards, so a `gh` call that runs despite the rule above still can't read
+  the box's real `~/.config/gh` (tokens included). For claude,
+  `GIT_TERMINAL_PROMPT=0` and unsetting `GIT_ASKPASS`/`SSH_AUTH_SOCK` do the
+  same for a stray `git` call that needs credentials.
+- **`--restricted` was considered and rejected here.** `claude --help`
+  documents a `--restricted` mode that confines file tools to the working
+  directories and refuses `bypassPermissions`. That conflicts with this
+  wrapper's design (parity with grok's `--always-approve`, so the builder
+  never stops for an interactive prompt headless has no one to answer), so it
+  is not used. If that trade-off ever changes, check `claude --help` again
+  first — flags on an installed `claude` build are the only ones safe to
+  add; this file predates several of them.
+- **The secrets directory's own permissions.** Before each run, the wrapper
+  checks `$HOME/.factory-secrets` (`FACTORY_SECRETS_DIR` to override) is mode
+  `0700` or tighter, and tightens it if not. That only catches an
+  accidentally loosened directory; it is not a defence against a process that
+  can already read as this user (see below).
+- **A guardrail, not isolation.** All of the above — the deny/disallow rules,
+  `GH_CONFIG_DIR`, the secrets-permission check, the `Read`/`Bash` rules
+  guarding `.factory-secrets` — are guardrails, not isolation: the builder
+  (grok or claude) runs as the **same OS user** as the wrapper. Any subprocess
+  it starts, however it starts it, can still read and write anything that
+  user can read and write, `.factory-secrets` and the real `gh`/git
+  credentials included, because nothing here changes the OS-level
+  permissions that process is running under. Real isolation needs a separate
+  OS account or an OS-level sandbox (a container, Landlock/seccomp profile
+  broader than grok's own `--sandbox workspace`, or similar) — that stays
+  later work, tracked with the egress allowlist and separate bot identity
+  (#7).
 - **Review.** Scott must review this file because `agents/**` is protected
   (AGENTS.md §5).
 

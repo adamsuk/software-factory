@@ -212,6 +212,8 @@ MOCK
   CLAUDE_PWD_DUMP=$work/pwd.txt
   CLAUDE_STDIN_DUMP=$work/stdin.txt
   export CLAUDE_ENV_DUMP CLAUDE_ARGS_DUMP CLAUDE_PWD_DUMP CLAUDE_STDIN_DUMP
+  local gh_config_dir=$work/ghconfig
+  mkdir -p "$gh_config_dir"
 
   (
     export GH_TOKEN=sentinel-gh-token GITHUB_TOKEN=sentinel-github-token
@@ -225,6 +227,7 @@ MOCK
     export GOOGLE_APPLICATION_CREDENTIALS=sentinel-google-creds
     export CLOUDSDK_AUTH_ACCESS_TOKEN=sentinel-cloudsdk CLOUDSDK_AUTH_ACCESS_TOKEN=sentinel-cloudsdk
     export AZURE_CLIENT_SECRET=sentinel-azure-secret
+    export GIT_ASKPASS=sentinel-git-askpass SSH_AUTH_SOCK=sentinel-ssh-auth-sock
     export GH_REPO=acme/widgets GH_HOST=github.example
     claude_bin=claude
     PATH="$work/bin:$ORIG_PATH"
@@ -242,10 +245,25 @@ MOCK
     || fail "a scrubbed token value leaked into claude's environment"
   grep -qxF 'GH_REPO=acme/widgets' "$work/env.txt" || fail "GH_REPO missing from claude's environment"
   grep -qxF 'GH_HOST=github.example' "$work/env.txt" || fail "GH_HOST missing from claude's environment"
+  grep -qxF "GH_CONFIG_DIR=$gh_config_dir" "$work/env.txt" || fail "GH_CONFIG_DIR not passed to claude"
+  grep -qxF 'GIT_TERMINAL_PROMPT=0' "$work/env.txt" || fail "GIT_TERMINAL_PROMPT not set to 0 for claude"
+  if grep -qE '^GIT_ASKPASS=' "$work/env.txt"; then
+    fail "GIT_ASKPASS leaked into claude's environment"
+  fi
+  if grep -qE '^SSH_AUTH_SOCK=' "$work/env.txt"; then
+    fail "SSH_AUTH_SOCK leaked into claude's environment"
+  fi
+  ! grep -qE 'sentinel-(git-askpass|ssh-auth-sock)' "$work/env.txt" \
+    || fail "a scrubbed GIT_ASKPASS/SSH_AUTH_SOCK value leaked into claude's environment"
 
   grep -qF -- "--max-turns" "$work/args.txt" || fail "--max-turns was not passed to claude"
   grep -qF -- "--permission-mode bypassPermissions" "$work/args.txt" || fail "permission mode missing"
-  grep -qF -- "factory-secrets" "$work/args.txt" || fail "factory-secrets guard missing from args"
+  grep -qF -- "Read(//home/box/.factory-secrets/**)" "$work/args.txt" \
+    || fail "claude branch does not //-anchor the factory-secrets Read deny"
+  grep -qF -- "Bash(*factory-secrets*)" "$work/args.txt" || fail "factory-secrets Bash guard missing from args"
+  grep -qF -- "Bash(git push*)" "$work/args.txt" || fail "git push deny missing from disallowedTools"
+  grep -qF -- "Bash(gh *)" "$work/args.txt" || fail "gh deny missing from disallowedTools"
+  grep -qF -- "Bash(gh)" "$work/args.txt" || fail "bare gh deny missing from disallowedTools"
   grep -qF -- "WebSearch" "$work/args.txt" || fail "WebSearch not disallowed"
   grep -qF -- "WebFetch" "$work/args.txt" || fail "WebFetch not disallowed"
 
@@ -286,6 +304,7 @@ CLAUDE_ARGS_DUMP=$work/args.txt
 export CLAUDE_ARGS_DUMP
 (
   claude_bin=claude
+  gh_config_dir=$work/ghconfig
   CLAUDE_MAX_TURNS=17
   export CLAUDE_MAX_TURNS
   GROK_MAX_TURNS=99
@@ -314,6 +333,7 @@ export CLAUDE_ARGS_DUMP
 (
   unset CLAUDE_MAX_TURNS
   claude_bin=claude
+  gh_config_dir=$work/ghconfig
   GROK_MAX_TURNS=33
   export GROK_MAX_TURNS
   PATH="$work/bin:$ORIG_PATH"
@@ -324,6 +344,109 @@ export CLAUDE_ARGS_DUMP
 args=$(cat "$work/args.txt")
 [[ "$args" == *"--max-turns 33"* ]] || fail "GROK_MAX_TURNS fallback was not used: $args"
 unset CLAUDE_ARGS_DUMP
+
+# --- gh_config_dir: created fresh, exported as GH_CONFIG_DIR, removed after -
+# the run, for both backends (and its INT/TERM/EXIT cleanup trap). Extract the
+# whole dispatch block, from where gh_config_dir is created to the final
+# restore_traps call, out of declare -f main and eval it for real, same
+# technique as run_claude_block above.
+
+main_src=$(declare -f main)
+dispatch_block=$(printf '%s\n' "$main_src" | awk '
+  /gh_config_dir=\$\(mktemp -d\)/ { on = 1 }
+  on { print }
+  on && /restore_traps "\$prev_llm_traps"/ { exit }
+')
+[[ -n "$dispatch_block" ]] || fail "could not extract the gh_config_dir dispatch block from main"
+# shellcheck disable=SC2016  # literal source text, not expansion
+[[ "$dispatch_block" == *'GH_CONFIG_DIR="$gh_config_dir"'* ]] \
+  || fail "dispatch block does not export GH_CONFIG_DIR"
+grok_dispatch=$(printf '%s\n' "$dispatch_block" | awk '/if \[\[ "\$llm_backend" != "claude" \]\]; then/,/^[[:space:]]*else[[:space:]]*$/')
+# shellcheck disable=SC2016  # literal source text, not expansion
+[[ "$grok_dispatch" == *'GH_CONFIG_DIR="$gh_config_dir"'* ]] \
+  || fail "grok branch does not export GH_CONFIG_DIR"
+
+run_dispatch_block() {
+  local backend=$1 bin_name=$2
+  tname="gh-config-dir-$backend"
+  local work=$ROOT/gh-config-dir-$backend
+  mkdir -p "$work/bin"
+  dir=$work/clone
+  mkdir -p "$dir"
+  order=$work/order.md
+  printf '%s\n' '---' 'repo: acme/widgets' '---' 'do the thing' > "$order"
+  rules=$work/AGENTS.md
+  printf '%s\n' 'rules' > "$rules"
+
+  if [[ "$backend" == grok ]]; then
+    cat > "$work/bin/$bin_name" << MOCK
+#!/usr/bin/env bash
+env > "\$LLM_ENV_DUMP"
+[[ -d "\$GH_CONFIG_DIR" ]] && echo exists > "\$LLM_DIR_CHECK" || echo missing > "\$LLM_DIR_CHECK"
+printf '%s\n' '{"stopReason":"end_turn"}'
+MOCK
+  else
+    cat > "$work/bin/$bin_name" << MOCK
+#!/usr/bin/env bash
+env > "\$LLM_ENV_DUMP"
+[[ -d "\$GH_CONFIG_DIR" ]] && echo exists > "\$LLM_DIR_CHECK" || echo missing > "\$LLM_DIR_CHECK"
+cat > /dev/null
+printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"num_turns":1,"total_cost_usd":0.01}'
+MOCK
+  fi
+  chmod +x "$work/bin/$bin_name"
+
+  LLM_ENV_DUMP=$work/env.txt
+  LLM_DIR_CHECK=$work/dircheck.txt
+  export LLM_ENV_DUMP LLM_DIR_CHECK
+
+  (
+    llm_backend=$backend
+    claude_bin=$bin_name
+    PATH="$work/bin:$ORIG_PATH"
+    export PATH
+    status=0
+    eval "$dispatch_block"
+  ) || fail "dispatch block eval failed for $backend"
+
+  [[ -s "$work/env.txt" ]] || fail "mock $bin_name did not run"
+  assert_eq "$(cat "$work/dircheck.txt")" "exists"
+  local gh_config_line captured_dir
+  gh_config_line=$(grep '^GH_CONFIG_DIR=' "$work/env.txt") || fail "GH_CONFIG_DIR not set for $backend"
+  captured_dir=${gh_config_line#GH_CONFIG_DIR=}
+  [[ -n "$captured_dir" ]] || fail "GH_CONFIG_DIR was empty for $backend"
+  [[ "$captured_dir" == /* ]] || fail "GH_CONFIG_DIR ($captured_dir) is not an absolute path for $backend"
+  [[ "$captured_dir" != "$HOME/.config/gh" && "$captured_dir" != "${XDG_CONFIG_HOME:-}/gh" ]] \
+    || fail "GH_CONFIG_DIR points at the real gh config for $backend"
+  [[ ! -e "$captured_dir" ]] || fail "GH_CONFIG_DIR ($captured_dir) was not removed after the $backend run"
+
+  unset LLM_ENV_DUMP LLM_DIR_CHECK
+}
+
+run_dispatch_block grok grok
+run_dispatch_block claude claude
+
+# --- check_secrets_dir_perms: tightens a loose secrets dir, leaves a tight --
+# one alone, and is a no-op when the directory does not exist.
+
+tname="secrets-dir-perms-tightened"
+loose_dir=$ROOT/loose-secrets
+mkdir -p "$loose_dir"
+chmod 0755 "$loose_dir"
+FACTORY_SECRETS_DIR=$loose_dir check_secrets_dir_perms
+assert_eq "$(stat -c '%a' "$loose_dir")" "700"
+
+tname="secrets-dir-perms-already-tight"
+tight_dir=$ROOT/tight-secrets
+mkdir -p "$tight_dir"
+chmod 0700 "$tight_dir"
+FACTORY_SECRETS_DIR=$tight_dir check_secrets_dir_perms
+assert_eq "$(stat -c '%a' "$tight_dir")" "700"
+
+tname="secrets-dir-perms-missing-is-noop"
+missing_dir=$ROOT/no-such-secrets-dir
+FACTORY_SECRETS_DIR=$missing_dir check_secrets_dir_perms
+[[ ! -e "$missing_dir" ]] || fail "check_secrets_dir_perms created $missing_dir"
 
 PATH=$ORIG_PATH
 echo "ok  run-work-order llm backend tests"
