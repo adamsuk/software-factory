@@ -62,6 +62,42 @@ grok --no-auto-update \
 
 Optional: `-m <model>` (see `grok models`), `--effort <level>`.
 
+## Backend: a setting, not a label
+
+The headless coding step is a setting, `FACTORY_LLM`, not a per-work-order
+label on the factory. `FACTORY_LLM=grok` (unset behaves the same) runs the
+command above, unchanged. `FACTORY_LLM=claude` runs Claude Code headless
+instead, in `scripts/run-work-order.sh`:
+
+```sh
+claude -p --output-format json --max-turns "$turns" \
+  --permission-mode bypassPermissions \
+  --disallowedTools "Read(/home/box/.factory-secrets/**)" "Bash(*factory-secrets*)" "WebSearch" "WebFetch" \
+  < "$prompt_file"
+```
+
+run with `cd "$dir"` first (`claude` has no `--cwd`), scrubbed the same way as
+the `grok` call plus `ANTHROPIC_API_KEY` (so the box's existing Claude login
+is used, never a billed key). `claude` must be on `PATH`; `CLAUDE_BIN`
+overrides the binary name, the same way `FACTORY_WORKSPACE` overrides the
+clone root. `--max-turns` reads `CLAUDE_MAX_TURNS`, falling back to
+`GROK_MAX_TURNS`, then `60`.
+
+| grok | claude | Why |
+| --- | --- | --- |
+| `--prompt-file`/`--rules` | same text, concatenated, read over stdin | `claude` has one prompt input, not two |
+| `--always-approve` | `--permission-mode bypassPermissions` | both skip interactive approval |
+| `--disable-web-search` | `--disallowedTools ... "WebSearch" "WebFetch"` | same fewer-untrusted-inputs reason |
+| (none; the `--factory-secrets` guard is the env scrub) | `--disallowedTools "Read(/home/box/.factory-secrets/**)" "Bash(*factory-secrets*)"` | belt-and-suspenders on top of the env scrub, which is the real guard for both backends |
+
+The result is normalised into `$dir.grok.json` — **that file name does not
+change**, so `write_bench_handoff` and every other caller that reads
+`.total_cost_usd`/`.num_turns` for cost need no change. The raw Claude Code
+result (`subtype`, `is_error`, …) is mapped to the same `.stopReason` field
+`grok` already has: `success` with no error becomes `end_turn`;
+`error_max_turns` becomes `max_turn_requests`; anything else passes the
+`subtype` straight through, so it still fails the `end_turn` check below.
+
 ## Reading the result
 
 - Exit code `0` is success, `1` is an auth, network or runtime error, `130`/`143`

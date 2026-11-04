@@ -22,7 +22,7 @@ agents:
   #   test-factory-pr-metrics.sh    BSD date vs GNU date
   #   test-factory-label-metrics.sh same class, undiagnosed
   # A green local test_command is therefore weaker evidence than a green `tests` check.
-  test_command: shellcheck scripts/*.sh adapters/*/run.sh && bash scripts/test-adapters.sh && bash scripts/test-check-test-assertions.sh && bash scripts/test-factory-flagged.sh && bash scripts/test-run-work-order.sh && bash scripts/test-station-run.sh && bash scripts/test-wait-for-review-bot.sh && bash scripts/test-research-brief.sh
+  test_command: shellcheck scripts/*.sh adapters/*/run.sh && bash scripts/test-adapters.sh && bash scripts/test-check-test-assertions.sh && bash scripts/test-factory-flagged.sh && bash scripts/test-run-work-order.sh && bash scripts/test-run-work-order-llm.sh && bash scripts/test-station-run.sh && bash scripts/test-wait-for-review-bot.sh && bash scripts/test-research-brief.sh
 
 # The ShellCheck check means shellcheck 0.11.0, pinned and checksum-verified in
 # .github/workflows/lint.yml (#155); install the same version locally (see README.md).
