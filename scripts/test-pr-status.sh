@@ -27,6 +27,19 @@ read -r shebang < "$script"
 
 root=$(mktemp -d)
 trap 'rm -rf "$root"' EXIT
+
+# Found with the real HOME still in place, before it's replaced below: the
+# fake HOME hides any PyYAML installed under the real one (user
+# site-packages), so without this, fetch_required_checks always falls back
+# to its minimal parser and the YAML-dict validation path it shares with
+# gate-issue.sh never runs under test. PYTHONPATH carries no credentials, so
+# restoring it doesn't weaken the HOME sandbox below.
+PYYAML_DIR=$(python3 -c 'import yaml, os; print(os.path.dirname(os.path.dirname(yaml.__file__)))' 2>/dev/null || true)
+if [[ -n "$PYYAML_DIR" ]]; then
+  PYTHONPATH="$PYYAML_DIR${PYTHONPATH:+:$PYTHONPATH}"
+  export PYTHONPATH
+fi
+
 HOME=$(mktemp -d)
 export HOME
 bin=$root/bin
@@ -286,6 +299,28 @@ run_script o/lambda2
 assert_status 0
 grep -Fqx "o/lambda2#11 author=adamsuk head=${SHA:0:7} checks=pending reviews=- threads=0 verdict=pending" "$stdout_file" \
   || fail "expected the missing required check to read as pending, got: $(cat "$stdout_file")"
+pass
+
+tname="a required_checks list with a non-string item is rejected whole, falling back to judging every check"
+prs '[{"number":12,"author":{"login":"adamsuk"},"headRefOid":"'"$SHA"'","baseRefName":"main"}]' o/xi
+factory_yml "$(printf 'required_checks:\n  - tests\n  - true\n')" o/xi main
+checks '[{"name":"tests","bucket":"pass"},{"name":"extra-check","bucket":"fail"}]' o/xi 12
+checks_rc 1 o/xi 12
+gql "$(gql_body "" "")" o xi 12
+run_script o/xi
+assert_status 0
+grep -Fqx "o/xi#12 author=adamsuk head=${SHA:0:7} checks=failing(extra-check) reviews=- threads=0 verdict=failing-ci" "$stdout_file" \
+  || fail "expected the invalid required_checks list to fall back to judging every check, got: $(cat "$stdout_file")"
+pass
+
+tname="a COMMENTED-only review on the head is needs-review, not ready"
+prs '[{"number":13,"author":{"login":"adamsuk"},"headRefOid":"'"$SHA"'"}]' o/omicron
+checks '[{"name":"tests","bucket":"pass"}]' o/omicron 13
+gql "$(gql_body "$(review coderabbitai COMMENTED 2026-11-01T00:00:00Z "$SHA")" "")" o omicron 13
+run_script o/omicron
+assert_status 0
+grep -Fqx "o/omicron#13 author=adamsuk head=${SHA:0:7} checks=green reviews=coderabbitai:COMMENTED threads=0 verdict=needs-review" "$stdout_file" \
+  || fail "expected a comment-only review to leave the pull request needs-review, got: $(cat "$stdout_file")"
 pass
 
 tname="reviews and reviewThreads each paginate past their first page with their own cursor"

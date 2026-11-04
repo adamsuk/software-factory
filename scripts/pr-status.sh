@@ -47,13 +47,15 @@
 # approval), changes-requested (the latest review on the head commit, from
 # any reviewer, is CHANGES_REQUESTED), pending (required checks still
 # running, missing, or none have reported), needs-review (required checks
-# green, zero unresolved threads, but no review at all on the head commit),
+# green, zero unresolved threads, but no reviewer's latest review on the
+# head commit is APPROVED — including no review at all, and a COMMENTED-only
+# review, since a comment never establishes that its feedback was addressed),
 # ready (required checks green, zero unresolved threads, and at least one
-# review on the head commit, none of them CHANGES_REQUESTED as their
-# latest). A pull request is ready only with all of that; one reviewer's
-# approval never overrides another reviewer's open thread or a different
-# reviewer's change request, because threads and per-reviewer state are
-# both counted independently.
+# reviewer's latest review on the head commit is APPROVED, with none of them
+# CHANGES_REQUESTED as their latest). A pull request is ready only with all
+# of that; one reviewer's approval never overrides another reviewer's open
+# thread or a different reviewer's change request, because threads and
+# per-reviewer state are both counted independently.
 #
 # Exit 2: a repo argument is not owner/name shaped. No gh call, no stdout.
 # Exit 7: a gh read failed, or returned something other than the expected
@@ -235,9 +237,13 @@ else:
 
 if not isinstance(checks, list):
     sys.exit(0)
+if not all(
+    isinstance(item, str) and "\n" not in item and "\r" not in item
+    for item in checks
+):
+    sys.exit(0)
 for item in checks:
-    if isinstance(item, str) and "\n" not in item and "\r" not in item:
-        print(item)
+    print(item)
 ' 2> /dev/null || true
 }
 
@@ -421,7 +427,7 @@ def verdict(checks_state, unresolved, latest_states):
         return "changes-requested"
     if checks_state != "green":
         return "pending"
-    if not latest_states:
+    if "APPROVED" not in latest_states:
         return "needs-review"
     return "ready"
 
