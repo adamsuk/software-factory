@@ -40,6 +40,15 @@ if [[ -n "$PYYAML_DIR" ]]; then
   export PYTHONPATH
 fi
 
+# Required, not just preferred: pr-status.sh's minimal fallback parser (used
+# when PyYAML isn't importable) reads an unquoted YAML scalar like `true` as
+# the literal string "true", not a rejected non-string item, so the
+# non-string-item test below would silently pass for the wrong reason
+# without PyYAML actually backing the YAML-dict validation path.
+tname=pyyaml-required
+python3 -c 'import yaml' 2>/dev/null \
+  || fail "PyYAML is required to run this suite (pip install -r requirements.txt)"
+
 HOME=$(mktemp -d)
 export HOME
 bin=$root/bin
@@ -94,7 +103,16 @@ case "$1 $2" in
     repopart=${rest%%/contents/*}
     refpart=${rest##*ref=}
     file="${GH_DIR:?}/factory-${repopart//\//_}-${refpart}.json"
-    if [[ -f "$file" ]]; then cat "$file"; else exit 1; fi
+    fail_file="${GH_DIR:?}/factory-${repopart//\//_}-${refpart}.fail"
+    if [[ -f "$file" ]]; then
+      cat "$file"
+    elif [[ -f "$fail_file" ]]; then
+      cat "$fail_file" >&2
+      exit 1
+    else
+      echo "gh: Not Found (HTTP 404)" >&2
+      exit 1
+    fi
     ;;
   "api graphql")
     owner="" name="" number="" cursor=""
@@ -151,6 +169,9 @@ checks_rc() { printf '%s' "$1" > "$root/checks-${2//\//_}-${3}.rc"; }
 gql() { printf '%s' "$1" > "$root/gql-${2}_${3}-${4}.json"; }
 gql_page() { printf '%s' "$1" > "$root/gql-${2}_${3}-${4}-${5}.json"; }
 factory_yml() { printf '%s' "$1" > "$root/factory-${2//\//_}-${3}.json"; }
+# A failed factory.yml read that is not a confirmed 404: $1 is the stderr
+# text the fake gh emits (anything other than containing "Not Found").
+factory_yml_fail() { printf '%s' "$1" > "$root/factory-${2//\//_}-${3}.fail"; }
 
 thread() { printf '{"isResolved":%s}' "$1"; }
 review() { printf '{"state":"%s","submittedAt":"%s","author":{"login":"%s"},"commit":{"oid":"%s"}}' "$2" "$3" "$1" "$4"; }
@@ -313,6 +334,27 @@ grep -Fqx "o/xi#12 author=adamsuk head=${SHA:0:7} checks=failing(extra-check) re
   || fail "expected the invalid required_checks list to fall back to judging every check, got: $(cat "$stdout_file")"
 pass
 
+tname="a failed factory.yml read that is not a confirmed 404 is pending, not ready, even with every reported check green and an approval"
+prs '[{"number":14,"author":{"login":"adamsuk"},"headRefOid":"'"$SHA"'","baseRefName":"main"}]' o/pi
+factory_yml_fail "gh: Bad Gateway (HTTP 502)" o/pi main
+checks '[{"name":"tests","bucket":"pass"}]' o/pi 14
+gql "$(gql_body "$(review adamsuk APPROVED 2026-11-01T00:00:00Z "$SHA")" "")" o pi 14
+run_script o/pi
+assert_status 0
+grep -Fqx "o/pi#14 author=adamsuk head=${SHA:0:7} checks=pending reviews=adamsuk:APPROVED threads=0 verdict=pending" "$stdout_file" \
+  || fail "expected an unknown required-check set (not a confirmed-missing file) to read as pending, got: $(cat "$stdout_file")"
+pass
+
+tname="a confirmed-missing factory.yml (404) still falls back to judging every reported check"
+prs '[{"number":15,"author":{"login":"adamsuk"},"headRefOid":"'"$SHA"'","baseRefName":"main"}]' o/rho
+checks '[{"name":"tests","bucket":"pass"}]' o/rho 15
+gql "$(gql_body "$(review adamsuk APPROVED 2026-11-01T00:00:00Z "$SHA")" "")" o rho 15
+run_script o/rho
+assert_status 0
+grep -Fqx "o/rho#15 author=adamsuk head=${SHA:0:7} checks=green reviews=adamsuk:APPROVED threads=0 verdict=ready" "$stdout_file" \
+  || fail "expected a confirmed-missing factory.yml to fall back to judging every reported check, got: $(cat "$stdout_file")"
+pass
+
 tname="a COMMENTED-only review on the head is needs-review, not ready"
 prs '[{"number":13,"author":{"login":"adamsuk"},"headRefOid":"'"$SHA"'"}]' o/omicron
 checks '[{"name":"tests","bucket":"pass"}]' o/omicron 13
@@ -333,6 +375,15 @@ run_script o/mu
 assert_status 0
 grep -Fqx "o/mu#1 author=adamsuk head=${SHA:0:7} checks=green reviews=alice:APPROVED,bob:CHANGES_REQUESTED threads=1 verdict=open-threads" "$stdout_file" \
   || fail "expected both pages merged (bob's review and the second unresolved thread), got: $(cat "$stdout_file")"
+pass
+
+tname="a repeated pagination cursor on reviews is a hard failure, not an infinite loop"
+prs '[{"number":16,"author":{"login":"adamsuk"},"headRefOid":"'"$SHA"'"}]' o/sigma
+checks '[{"name":"tests","bucket":"pass"}]' o/sigma 16
+gql "$(gql_body "$(review alice APPROVED 2026-11-01T00:00:00Z "$SHA")" "" 1 rcur1)" o sigma 16
+gql_page "$(reviews_page_body "$(review bob CHANGES_REQUESTED 2026-11-02T00:00:00Z "$SHA")" 1 rcur1)" o sigma 16 rcur1
+run_script o/sigma
+assert_status 7
 pass
 
 tname="a full page of open pull requests (at or past the old 200-item cap) is not treated as an error"

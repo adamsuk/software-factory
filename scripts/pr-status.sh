@@ -31,9 +31,14 @@
 # check run is pending, same as one still running; pending always wins over
 # a failing required check, the same rule scripts/gate-issue.sh uses for its
 # own required checks. An empty check list, or no required_checks list at
-# all (missing file, unreadable file, or the key absent), is `none` and
-# judges every reported check instead, so a plain repo still gets a status
-# line. reviews and threads come from one or more `gh api graphql` calls per
+# all (a confirmed-missing factory.yml, an unparseable required_checks
+# value, or the key absent), is `none` and judges every reported check
+# instead, so a plain repo still gets a status line. A failed read that
+# is *not* a confirmed-missing file (a network or API error, say) is
+# treated as unknown rather than `none`: it reports pending instead of
+# falling back to judging every reported check, since a required check
+# this script failed to read about is not the same as a repo that
+# declares none. reviews and threads come from one or more `gh api graphql` calls per
 # pull request, paginated to completion with their own cursors: reviews is
 # the latest review (by submittedAt) per author login, kept only when that
 # review's commit is the pull request's current head (an older commit's
@@ -61,9 +66,10 @@
 # Exit 7: a gh read failed, or returned something other than the expected
 # JSON. Lines for pull requests already processed may already be on stdout.
 # The only gh calls are read-only: `gh pr list`, `gh pr checks`,
-# `gh api -H ... contents/.github/factory.yml` (best-effort: a failure here
-# falls back to judging every check, it never exits 7), and
-# `gh api graphql` (reviews and reviewThreads queries only).
+# `gh api -H ... contents/.github/factory.yml` (best-effort, it never exits
+# 7: a confirmed-missing file falls back to judging every check, any other
+# failed read reports pending instead), and `gh api graphql` (reviews and
+# reviewThreads queries only).
 set -euo pipefail
 
 export LC_ALL=C
@@ -145,19 +151,45 @@ print(("1" if info.get("hasNextPage") else "0") + "\t" + (info.get("endCursor") 
 # scripts/gate-issue.sh reads them (contents API, raw media type, base64
 # fallback, top-level required_checks list), with PyYAML when it's
 # importable. Unlike gate-issue.sh, which gates a merge and so must fail
-# loudly, this is a best-effort status read: any failure (no such file, bad
-# YAML, not a list of strings) prints nothing, which the caller treats as
-# "judge every reported check". When PyYAML itself isn't importable (a
-# documented gap on some hosts, see .github/factory.yml's required_checks
-# comment), fall back to a minimal parser for the one shape this key
-# actually takes: a top-level `required_checks:` block or flow list of
-# plain strings.
+# loudly, this is a best-effort status read: a confirmed-missing file (the
+# contents API's own 404) prints nothing, which the caller treats as "no
+# declared list, judge every reported check" -- that's the only case where
+# falling back to the reported checks is safe, since the repo plainly has no
+# required_checks to miss. Any other failed read (network error, a non-404
+# API error, an unparseable response) returns 2 instead: the required set is
+# merely unknown, not confirmed absent, so the caller must not let that be
+# mistaken for "nothing required" and must never call the pull request ready
+# on the strength of reported checks alone. Bad YAML or a required_checks
+# value that isn't a list of strings prints nothing with exit 0, same as
+# before: the file was read fine, it just doesn't declare a usable list.
+# When PyYAML itself isn't importable (a documented gap on some hosts, see
+# .github/factory.yml's required_checks comment), fall back to a minimal
+# parser for the one shape this key actually takes: a top-level
+# `required_checks:` block or flow list of plain strings.
 fetch_required_checks() {
-  local repo=$1 ref=$2 ref_q raw
+  local repo=$1 ref=$2 ref_q raw err_file api_status
   ref_q=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$ref") \
-    || return 0
+    || return 2
+  err_file=$(mktemp) || return 2
+  api_status=0
   raw=$(gh api -H "Accept: application/vnd.github.raw" \
-    "repos/${repo}/contents/.github/factory.yml?ref=${ref_q}" 2> /dev/null) || return 0
+    "repos/${repo}/contents/.github/factory.yml?ref=${ref_q}" 2> "$err_file") || api_status=$?
+  if [[ "$api_status" -ne 0 ]]; then
+    if grep -q 'Not Found' "$err_file" 2> /dev/null \
+      || printf '%s' "$raw" | python3 -c 'import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+sys.exit(0 if isinstance(d, dict) and d.get("message") == "Not Found" else 1)' \
+      > /dev/null 2>&1; then
+      rm -f "$err_file"
+      return 0
+    fi
+    rm -f "$err_file"
+    return 2
+  fi
+  rm -f "$err_file"
   if printf '%s' "$raw" | python3 -c 'import json, sys
 try:
     d = json.load(sys.stdin)
@@ -254,6 +286,7 @@ manifest="$tmp/manifest.txt"
 : > "$manifest"
 
 declare -A required_cache=()
+declare -A required_unknown_cache=()
 
 idx=0
 for repo in "${repos[@]}"; do
@@ -293,9 +326,18 @@ sys.exit(0 if isinstance(data, list) else 1)' "$checks_file" 2> /dev/null; then
 
     cache_key="${repo}"$'\x1f'"${base}"
     if [[ -z "${required_cache[$cache_key]+x}" ]]; then
-      required_cache[$cache_key]=$(fetch_required_checks "$repo" "$base")
+      required_rc=0
+      required_cache[$cache_key]=$(fetch_required_checks "$repo" "$base") || required_rc=$?
+      if [[ "$required_rc" -eq 2 ]]; then
+        required_unknown_cache[$cache_key]=1
+      fi
     fi
     printf '%s' "${required_cache[$cache_key]}" > "$tmp/${idx}.${number}.required.txt"
+    if [[ -n "${required_unknown_cache[$cache_key]+x}" ]]; then
+      printf 'unknown' > "$tmp/${idx}.${number}.required_status.txt"
+    else
+      printf 'known' > "$tmp/${idx}.${number}.required_status.txt"
+    fi
 
     gql_file="$tmp/${idx}.${number}.gql.json"
     if ! gh api graphql -f query="$review_query" \
@@ -308,6 +350,7 @@ sys.exit(0 if isinstance(data, list) else 1)' "$checks_file" 2> /dev/null; then
     rpage=0
     IFS=$'\t' read -r has cursor < <(conn_page_info "$gql_file" reviews)
     while [[ "$has" == "1" ]]; do
+      [[ -n "$cursor" ]] || die 7 "empty pagination cursor reading reviews for $repo#$number"
       rpage=$((rpage + 1))
       page_file="$tmp/${idx}.${number}.gql.reviews.${rpage}.json"
       if ! gh api graphql -f query="$reviews_page_query" \
@@ -316,13 +359,18 @@ sys.exit(0 if isinstance(data, list) else 1)' "$checks_file" 2> /dev/null; then
         die 7 "could not read reviews for $repo#$number"
       fi
       reviews_extra+="${reviews_extra:+,}${page_file}"
+      prev_cursor=$cursor
       IFS=$'\t' read -r has cursor < <(conn_page_info "$page_file" reviews)
+      if [[ "$has" == "1" && "$cursor" == "$prev_cursor" ]]; then
+        die 7 "pagination cursor did not advance reading reviews for $repo#$number"
+      fi
     done
 
     threads_extra=""
     tpage=0
     IFS=$'\t' read -r has cursor < <(conn_page_info "$gql_file" reviewThreads)
     while [[ "$has" == "1" ]]; do
+      [[ -n "$cursor" ]] || die 7 "empty pagination cursor reading review threads for $repo#$number"
       tpage=$((tpage + 1))
       page_file="$tmp/${idx}.${number}.gql.threads.${tpage}.json"
       if ! gh api graphql -f query="$threads_page_query" \
@@ -331,7 +379,11 @@ sys.exit(0 if isinstance(data, list) else 1)' "$checks_file" 2> /dev/null; then
         die 7 "could not read review threads for $repo#$number"
       fi
       threads_extra+="${threads_extra:+,}${page_file}"
+      prev_cursor=$cursor
       IFS=$'\t' read -r has cursor < <(conn_page_info "$page_file" reviewThreads)
+      if [[ "$has" == "1" && "$cursor" == "$prev_cursor" ]]; then
+        die 7 "pagination cursor did not advance reading review threads for $repo#$number"
+      fi
     done
 
     printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
@@ -364,8 +416,16 @@ def classify_all_checks(entries):
     return "green", []
 
 
-def classify_required_checks(entries, required):
+def classify_required_checks(entries, required, required_known):
     if not required:
+        if not required_known:
+            # The required-check set could not be read for a reason other
+            # than a confirmed-missing factory.yml (a network or API
+            # failure, say). Falling back to judging only the reported
+            # checks could call a pull request ready while an actual
+            # required check that just failed to be read never shows up.
+            # Unknown must never look like "nothing required".
+            return "pending", []
         return classify_all_checks(entries)
     pending = False
     bad = []
@@ -440,7 +500,9 @@ for repo, number, head, author, idx, reviews_extra, threads_extra in rows:
         entries = json.load(handle)
     with open(f"{tmp}/{idx}.{number}.required.txt", encoding="utf-8") as handle:
         required = [line.strip() for line in handle if line.strip()]
-    checks_state, bad_names = classify_required_checks(entries, required)
+    with open(f"{tmp}/{idx}.{number}.required_status.txt", encoding="utf-8") as handle:
+        required_known = handle.read().strip() == "known"
+    checks_state, bad_names = classify_required_checks(entries, required, required_known)
 
     with open(f"{tmp}/{idx}.{number}.gql.json", encoding="utf-8") as handle:
         gql = json.load(handle)
