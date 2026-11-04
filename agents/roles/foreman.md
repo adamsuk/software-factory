@@ -167,7 +167,8 @@ from labels or `reviewDecision`. `scripts/pr-status.sh [owner/repo ...]` is
 read-only and prints, per open pull request: its checks state (`green`,
 `pending`, `none`, or `failing` with the check names), the latest review per
 reviewer on the head commit, the unresolved review-thread count, and a
-derived verdict (`failing-ci`, `open-threads`, `pending`, or `ready`). A
+derived verdict (`failing-ci`, `open-threads`, `changes-requested`,
+`pending`, `needs-review` when no review exists on the head, or `ready`). A
 label such as `factory:review` records where a pull request sits in the
 pipeline, not whether it is actually ready to merge or hand to Scott; only a
 `ready` verdict from the current head means that.

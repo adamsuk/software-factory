@@ -38,7 +38,11 @@ mkdir -p "$bin"
 SHA=1a2b3c4d5e6f7890abcdef1234567890abcdef12
 
 # The fake dispatches on the gh subcommand and records every call (joined by
-# \x1f so a test can assert on exact arguments) to $GH_LOG.
+# \x1f so a test can assert on exact arguments) to $GH_LOG. "pr checks" and
+# "api graphql" fall back to an empty/default fixture when no per-call one
+# was written, the same way "pr list" already did, so a test that only
+# cares about one thing (e.g. the pull request list itself) doesn't have to
+# wire up every downstream call too.
 cat > "$bin/gh" << 'FAKE'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -65,20 +69,42 @@ case "$1 $2" in
     done
     file="${GH_DIR:?}/checks-${repo//\//_}-${num}.json"
     rc_file="${GH_DIR:?}/checks-${repo//\//_}-${num}.rc"
-    cat "$file"
+    if [[ -f "$file" ]]; then cat "$file"; else echo "[]"; fi
     if [[ -f "$rc_file" ]]; then exit "$(cat "$rc_file")"; fi
     ;;
+  "api -H")
+    path=""
+    for arg in "$@"; do
+      case "$arg" in repos/*) path=$arg ;; esac
+    done
+    rest=${path#repos/}
+    repopart=${rest%%/contents/*}
+    refpart=${rest##*ref=}
+    file="${GH_DIR:?}/factory-${repopart//\//_}-${refpart}.json"
+    if [[ -f "$file" ]]; then cat "$file"; else exit 1; fi
+    ;;
   "api graphql")
-    repo="" owner="" name="" number=""
+    owner="" name="" number="" cursor=""
     for arg in "$@"; do
       case "$arg" in
         owner=*) owner=${arg#owner=} ;;
         name=*) name=${arg#name=} ;;
         number=*) number=${arg#number=} ;;
+        cursor=*) cursor=${arg#cursor=} ;;
       esac
     done
-    file="${GH_DIR:?}/gql-${owner}_${name}-${number}.json"
-    if [[ -f "$file" ]]; then cat "$file"; else exit 1; fi
+    if [[ -n "$cursor" ]]; then
+      file="${GH_DIR:?}/gql-${owner}_${name}-${number}-${cursor}.json"
+    else
+      file="${GH_DIR:?}/gql-${owner}_${name}-${number}.json"
+    fi
+    if [[ -f "$file" ]]; then
+      cat "$file"
+    elif [[ -f "${GH_DIR:?}/gql-default.json" ]]; then
+      cat "${GH_DIR:?}/gql-default.json"
+    else
+      exit 1
+    fi
     ;;
   *)
     exit 99
@@ -87,7 +113,7 @@ esac
 FAKE
 chmod +x "$bin/gh"
 
-for tool in bash mktemp rm cat grep chmod; do
+for tool in bash mktemp rm cat grep chmod seq base64 wc; do
   ln -s "$(command -v "$tool")" "$bin/$tool"
 done
 # Resolve through shims (asdf, pyenv) so the symlink still runs.
@@ -110,16 +136,42 @@ prs() { printf '%s' "$1" > "$root/prs-${2//\//_}.json"; }
 checks() { printf '%s' "$1" > "$root/checks-${2//\//_}-${3}.json"; }
 checks_rc() { printf '%s' "$1" > "$root/checks-${2//\//_}-${3}.rc"; }
 gql() { printf '%s' "$1" > "$root/gql-${2}_${3}-${4}.json"; }
+gql_page() { printf '%s' "$1" > "$root/gql-${2}_${3}-${4}-${5}.json"; }
+factory_yml() { printf '%s' "$1" > "$root/factory-${2//\//_}-${3}.json"; }
 
 thread() { printf '{"isResolved":%s}' "$1"; }
 review() { printf '{"state":"%s","submittedAt":"%s","author":{"login":"%s"},"commit":{"oid":"%s"}}' "$2" "$3" "$1" "$4"; }
 
 gql_body() {
-  # gql_body <reviews-json-array-no-brackets-or-empty> <threads-json-array-no-brackets-or-empty>
-  printf '{"data":{"repository":{"pullRequest":{"reviews":{"pageInfo":{"hasNextPage":false},"nodes":[%s]},"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[%s]}}}}}' "$1" "$2"
+  # gql_body <reviews-nodes> <threads-nodes> [reviews-hasNext 0/1] \
+  #   [reviews-cursor] [threads-hasNext 0/1] [threads-cursor]
+  local rhn="${3:-0}" rcur="${4:-}" thn="${5:-0}" tcur="${6:-}"
+  local rhnj="false" thnj="false" rcj="null" tcj="null"
+  [[ "$rhn" == 1 ]] && rhnj=true
+  [[ "$thn" == 1 ]] && thnj=true
+  [[ -n "$rcur" ]] && rcj="\"$rcur\""
+  [[ -n "$tcur" ]] && tcj="\"$tcur\""
+  printf '{"data":{"repository":{"pullRequest":{"reviews":{"pageInfo":{"hasNextPage":%s,"endCursor":%s},"nodes":[%s]},"reviewThreads":{"pageInfo":{"hasNextPage":%s,"endCursor":%s},"nodes":[%s]}}}}}' \
+    "$rhnj" "$rcj" "$1" "$thnj" "$tcj" "$2"
 }
 
-tname="green checks and zero unresolved threads is ready"
+reviews_page_body() {
+  # reviews_page_body <nodes> <hasNext 0/1> <cursor-or-empty>
+  local hnj="false" cj="null"
+  [[ "$2" == 1 ]] && hnj=true
+  [[ -n "$3" ]] && cj="\"$3\""
+  printf '{"data":{"repository":{"pullRequest":{"reviews":{"pageInfo":{"hasNextPage":%s,"endCursor":%s},"nodes":[%s]}}}}}' "$hnj" "$cj" "$1"
+}
+
+threads_page_body() {
+  # threads_page_body <nodes> <hasNext 0/1> <cursor-or-empty>
+  local hnj="false" cj="null"
+  [[ "$2" == 1 ]] && hnj=true
+  [[ -n "$3" ]] && cj="\"$3\""
+  printf '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":%s,"endCursor":%s},"nodes":[%s]}}}}}' "$hnj" "$cj" "$1"
+}
+
+tname="green checks and zero unresolved threads, with an approval on the head, is ready"
 prs '[{"number":1,"author":{"login":"adamsuk"},"headRefOid":"'"$SHA"'"}]' o/alpha
 checks '[{"name":"tests","bucket":"pass"},{"name":"lint","bucket":"pass"}]' o/alpha 1
 gql "$(gql_body "$(review coderabbitai APPROVED 2026-11-01T00:00:00Z "$SHA")" "")" o alpha 1
@@ -139,7 +191,7 @@ grep -Fqx "o/beta#2 author=adamsuk head=${SHA:0:7} checks=green reviews=coderabb
   || fail "expected an open-threads line, got: $(cat "$stdout_file")"
 pass
 
-tname="a failing check is failing-ci, naming the check"
+tname="a failing check is failing-ci, naming the check (no factory.yml: every reported check is judged)"
 prs '[{"number":3,"author":{"login":"adamsuk"},"headRefOid":"'"$SHA"'"}]' o/gamma
 checks '[{"name":"tests","bucket":"pass"},{"name":"ShellCheck","bucket":"fail"}]' o/gamma 3
 checks_rc 1 o/gamma 3
@@ -172,25 +224,25 @@ grep -Fqx "o/epsilon#5 author=adamsuk head=${SHA:0:7} checks=none reviews=- thre
   || fail "expected a none/pending line, got: $(cat "$stdout_file")"
 pass
 
-tname="a Dependabot-authored pull request is listed with its author"
+tname="green checks, zero threads, but no review at all on the head is needs-review, not ready"
 prs '[{"number":6,"author":{"login":"dependabot[bot]"},"headRefOid":"'"$SHA"'"}]' o/zeta
 checks '[{"name":"tests","bucket":"pass"}]' o/zeta 6
 gql "$(gql_body "" "")" o zeta 6
 run_script o/zeta
 assert_status 0
-grep -Fqx "o/zeta#6 author=dependabot[bot] head=${SHA:0:7} checks=green reviews=- threads=0 verdict=ready" "$stdout_file" \
-  || fail "expected the Dependabot line, got: $(cat "$stdout_file")"
+grep -Fqx "o/zeta#6 author=dependabot[bot] head=${SHA:0:7} checks=green reviews=- threads=0 verdict=needs-review" "$stdout_file" \
+  || fail "expected the needs-review line, got: $(cat "$stdout_file")"
 pass
 
-tname="an older commit's approval never counts"
+tname="an older commit's approval never counts, so this reads as needs-review too"
 OTHER=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 prs '[{"number":7,"author":{"login":"adamsuk"},"headRefOid":"'"$SHA"'"}]' o/eta
 checks '[{"name":"tests","bucket":"pass"}]' o/eta 7
 gql "$(gql_body "$(review coderabbitai APPROVED 2026-11-01T00:00:00Z "$OTHER")" "")" o eta 7
 run_script o/eta
 assert_status 0
-grep -Fqx "o/eta#7 author=adamsuk head=${SHA:0:7} checks=green reviews=- threads=0 verdict=ready" "$stdout_file" \
-  || fail "expected the stale-approval line to show no reviews, got: $(cat "$stdout_file")"
+grep -Fqx "o/eta#7 author=adamsuk head=${SHA:0:7} checks=green reviews=- threads=0 verdict=needs-review" "$stdout_file" \
+  || fail "expected the stale-approval line to show no reviews and needs-review, got: $(cat "$stdout_file")"
 pass
 
 tname="only the latest review per author on the head commit counts"
@@ -203,13 +255,77 @@ grep -Fqx "o/theta#8 author=adamsuk head=${SHA:0:7} checks=green reviews=coderab
   || fail "expected the latest review to win, got: $(cat "$stdout_file")"
 pass
 
+tname="a latest CHANGES_REQUESTED review on the head blocks ready, even with zero threads"
+prs '[{"number":9,"author":{"login":"adamsuk"},"headRefOid":"'"$SHA"'"}]' o/iota
+checks '[{"name":"tests","bucket":"pass"}]' o/iota 9
+gql "$(gql_body "$(review coderabbitai CHANGES_REQUESTED 2026-11-01T00:00:00Z "$SHA")" "")" o iota 9
+run_script o/iota
+assert_status 0
+grep -Fqx "o/iota#9 author=adamsuk head=${SHA:0:7} checks=green reviews=coderabbitai:CHANGES_REQUESTED threads=0 verdict=changes-requested" "$stdout_file" \
+  || fail "expected a changes-requested line, got: $(cat "$stdout_file")"
+pass
+
+tname="a failing optional check (not in factory.yml's required_checks) is ignored"
+prs '[{"number":10,"author":{"login":"adamsuk"},"headRefOid":"'"$SHA"'","baseRefName":"main"}]' o/kappa2
+factory_yml "$(printf 'required_checks:\n  - tests\n')" o/kappa2 main
+checks '[{"name":"tests","bucket":"pass"},{"name":"optional-lint","bucket":"fail"}]' o/kappa2 10
+checks_rc 1 o/kappa2 10
+gql "$(gql_body "$(review adamsuk APPROVED 2026-11-01T00:00:00Z "$SHA")" "")" o kappa2 10
+run_script o/kappa2
+assert_status 0
+grep -Fqx "o/kappa2#10 author=adamsuk head=${SHA:0:7} checks=green reviews=adamsuk:APPROVED threads=0 verdict=ready" "$stdout_file" \
+  || fail "expected the optional check's failure to be ignored, got: $(cat "$stdout_file")"
+pass
+
+tname="a required check (from factory.yml) that never reported is pending, not ignored"
+prs '[{"number":11,"author":{"login":"adamsuk"},"headRefOid":"'"$SHA"'","baseRefName":"main"}]' o/lambda2
+factory_yml "$(printf 'required_checks:\n  - tests\n  - lint\n')" o/lambda2 main
+checks '[{"name":"tests","bucket":"pass"}]' o/lambda2 11
+gql "$(gql_body "" "")" o lambda2 11
+run_script o/lambda2
+assert_status 0
+grep -Fqx "o/lambda2#11 author=adamsuk head=${SHA:0:7} checks=pending reviews=- threads=0 verdict=pending" "$stdout_file" \
+  || fail "expected the missing required check to read as pending, got: $(cat "$stdout_file")"
+pass
+
+tname="reviews and reviewThreads each paginate past their first page with their own cursor"
+prs '[{"number":1,"author":{"login":"adamsuk"},"headRefOid":"'"$SHA"'"}]' o/mu
+checks '[{"name":"tests","bucket":"pass"}]' o/mu 1
+gql "$(gql_body "$(review alice APPROVED 2026-11-01T00:00:00Z "$SHA")" "$(thread true)" 1 rcur1 1 tcur1)" o mu 1
+gql_page "$(reviews_page_body "$(review bob CHANGES_REQUESTED 2026-11-02T00:00:00Z "$SHA")" 0 "")" o mu 1 rcur1
+gql_page "$(threads_page_body "$(thread false)" 0 "")" o mu 1 tcur1
+run_script o/mu
+assert_status 0
+grep -Fqx "o/mu#1 author=adamsuk head=${SHA:0:7} checks=green reviews=alice:APPROVED,bob:CHANGES_REQUESTED threads=1 verdict=open-threads" "$stdout_file" \
+  || fail "expected both pages merged (bob's review and the second unresolved thread), got: $(cat "$stdout_file")"
+pass
+
+tname="a full page of open pull requests (at or past the old 200-item cap) is not treated as an error"
+lambda_prs="["
+for n in $(seq 1 205); do
+  [[ "$n" -gt 1 ]] && lambda_prs+=","
+  lambda_prs+="{\"number\":$n,\"author\":{\"login\":\"adamsuk\"},\"headRefOid\":\"$SHA\"}"
+done
+lambda_prs+="]"
+printf '%s' "$lambda_prs" > "$root/prs-o_nu.json"
+printf '%s' "$(gql_body "" "")" > "$root/gql-default.json"
+run_script o/nu
+assert_status 0
+line_count=$(wc -l < "$stdout_file")
+[[ "$line_count" -eq 205 ]] || fail "expected 205 lines, got $line_count"
+grep -Fqx "o/nu#1 author=adamsuk head=${SHA:0:7} checks=none reviews=- threads=0 verdict=pending" "$stdout_file" \
+  || fail "expected the first pull request's line, got: $(head -n3 "$stdout_file")"
+grep -Fqx "o/nu#205 author=adamsuk head=${SHA:0:7} checks=none reviews=- threads=0 verdict=pending" "$stdout_file" \
+  || fail "expected the last pull request's line, got: $(tail -n3 "$stdout_file")"
+pass
+
 tname="default repos, no arguments"
 : > "$log"
 status=0
 "$script" > "$stdout_file" 2> "$stderr_file" || status=$?
 assert_status 0
 for r in adamsuk/software-factory adamsuk/line adamsuk/gh-factory adamsuk/activity-feed; do
-  grep -qF "$(printf 'pr\x1flist\x1f--repo\x1f%s\x1f--state\x1fopen\x1f--limit\x1f200\x1f--json\x1fnumber,author,headRefOid' "$r")" "$log" \
+  grep -qF "$(printf 'pr\x1flist\x1f--repo\x1f%s\x1f--state\x1fopen\x1f--limit\x1f1000\x1f--json\x1fnumber,author,headRefOid,baseRefName' "$r")" "$log" \
     || fail "did not list $r by default"
 done
 pass
@@ -222,30 +338,31 @@ assert_no_output
 pass
 
 tname="read-only: no gh write call is ever made"
-prs '[{"number":9,"author":{"login":"adamsuk"},"headRefOid":"'"$SHA"'"}]' o/iota
-checks '[{"name":"tests","bucket":"pass"}]' o/iota 9
-gql "$(gql_body "" "")" o iota 9
-run_script o/iota
+prs '[{"number":9,"author":{"login":"adamsuk"},"headRefOid":"'"$SHA"'"}]' o/xi2
+checks '[{"name":"tests","bucket":"pass"}]' o/xi2 9
+gql "$(gql_body "" "")" o xi2 9
+run_script o/xi2
 assert_status 0
 [[ -s "$log" ]] || fail "gh was never called"
 # One of the logged calls carries the GraphQL query body, which can contain
 # a real newline, so a per-newline scan is unsafe here. None of this
-# script's allowed calls (pr list, pr checks, api graphql reviews/threads
-# reads) ever carries one of these write verbs as a \x1f-delimited token,
-# so their presence anywhere in the log means an unexpected call was made.
+# script's allowed calls (pr list, pr checks, the factory.yml contents
+# read, api graphql reviews/threads reads) ever carries one of these write
+# verbs as a \x1f-delimited token, so their presence anywhere in the log
+# means an unexpected call was made.
 if grep -Eq $'(^|\x1f)(comment|edit|merge|close|label|delete|push|ready|mutation)($|\x1f)' "$log"; then
   fail "gh log has a write-shaped call: $(cat "$log")"
 fi
 pass
 
 tname="a gh pr list failure is reported"
-rm -f "$root/prs-o_kappa.json"
+rm -f "$root/prs-o_omicron.json"
 cat > "$bin/gh" << 'FAKE2'
 #!/usr/bin/env bash
 exit 1
 FAKE2
 chmod +x "$bin/gh"
-run_script o/kappa
+run_script o/omicron
 assert_status 7
 assert_no_output
 pass
