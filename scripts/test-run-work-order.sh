@@ -1488,6 +1488,9 @@ for scrub_spec in "${scrub_pairs[@]}"; do
   scrub_name=${scrub_spec%%=*}
   [[ "$grok_cmd" == *"-u ${scrub_name}"* ]] || fail "grok invocation does not unset ${scrub_name}"
 done
+[[ "$grok_cmd" == *"-u GIT_ASKPASS"* ]] || fail "grok invocation does not unset GIT_ASKPASS"
+[[ "$grok_cmd" == *"-u SSH_AUTH_SOCK"* ]] || fail "grok invocation does not unset SSH_AUTH_SOCK"
+[[ "$grok_cmd" == *"GIT_TERMINAL_PROMPT=0"* ]] || fail "grok invocation does not set GIT_TERMINAL_PROMPT=0"
 [[ "$grok_cmd" != *"-u GH_REPO"* ]] || fail "grok invocation unsets GH_REPO"
 [[ "$grok_cmd" != *"-u GH_HOST"* ]] || fail "grok invocation unsets GH_HOST"
 [[ "$grok_cmd" != *"-u XAI_API_KEY"* ]] || fail "grok invocation unsets XAI_API_KEY"
@@ -1518,8 +1521,9 @@ export GROK_ENV_DUMP
   export GH_REPO=acme/widgets
   export GH_HOST=github.example
   export XAI_API_KEY=scrub-207-xai-api-key
+  export GIT_ASKPASS=sentinel-git-askpass SSH_AUTH_SOCK=sentinel-ssh-auth-sock
   export PATH="$scrub_dir/bin:$ORIG_PATH"
-  dir=$scrub_dir/clone order=/dev/null rules=/dev/null
+  dir=$scrub_dir/clone order=/dev/null rules=/dev/null gh_config_dir=$scrub_dir/ghconfig
   eval "$grok_cmd"
   true
 ) || fail "mock grok invocation failed"
@@ -1542,6 +1546,15 @@ done
 grep -qxF 'GH_REPO=acme/widgets' "$scrub_dir/env.txt" || fail "GH_REPO missing from Grok's environment"
 grep -qxF 'GH_HOST=github.example' "$scrub_dir/env.txt" || fail "GH_HOST missing from Grok's environment"
 grep -qxF 'XAI_API_KEY=scrub-207-xai-api-key' "$scrub_dir/env.txt" || fail "XAI_API_KEY missing from Grok's environment"
+grep -qxF 'GIT_TERMINAL_PROMPT=0' "$scrub_dir/env.txt" || fail "GIT_TERMINAL_PROMPT not set to 0 for grok"
+if grep -qE '^GIT_ASKPASS=' "$scrub_dir/env.txt"; then
+  fail "GIT_ASKPASS leaked into Grok's environment"
+fi
+if grep -qE '^SSH_AUTH_SOCK=' "$scrub_dir/env.txt"; then
+  fail "SSH_AUTH_SOCK leaked into Grok's environment"
+fi
+! grep -qE 'sentinel-(git-askpass|ssh-auth-sock)' "$scrub_dir/env.txt" \
+  || fail "a scrubbed GIT_ASKPASS/SSH_AUTH_SOCK value leaked into Grok's environment"
 unset GROK_ENV_DUMP
 
 PATH=$ORIG_PATH

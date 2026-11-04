@@ -3,6 +3,28 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-04
+
+### Added
+
+- `scripts/run-work-order.sh` can now run the headless coding step with
+  Claude Code instead of Grok Build: `FACTORY_LLM=grok` (unset behaves the
+  same) or `FACTORY_LLM=claude`. The backend is a setting, not a label on the
+  work. The `claude` path requires the `claude` CLI on `PATH` (`CLAUDE_BIN`
+  overrides the binary name), runs `claude -p` headless with the same
+  rules-plus-work-order prompt the `grok` path builds, `--max-turns` from
+  `CLAUDE_MAX_TURNS` falling back to `GROK_MAX_TURNS`, the same env scrub as
+  the `grok` call plus `ANTHROPIC_API_KEY`, and `cd`s into the clone first
+  (`claude` has no `--cwd`). `--permission-mode bypassPermissions` and
+  `--disallowedTools` (denying `/home/box/.factory-secrets`, `WebSearch` and
+  `WebFetch`) are the parity for `grok`'s `--always-approve` and
+  `--disable-web-search`. The result is normalised into `$dir.grok.json` --
+  that file name is unchanged, so `write_bench_handoff` and every other
+  caller that reads `.total_cost_usd`/`.num_turns` need no change; see
+  `agents/grok-build.md`. Tested by the new
+  `scripts/test-run-work-order-llm.sh`, added to `.github/factory.yml`'s
+  `agents.test_command` (protected path; Scott should review).
+
 ## 2026-11-03
 
 ### Fixed
