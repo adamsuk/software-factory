@@ -258,6 +258,8 @@ MOCK
 
   grep -qF -- "--max-turns" "$work/args.txt" || fail "--max-turns was not passed to claude"
   grep -qF -- "--permission-mode bypassPermissions" "$work/args.txt" || fail "permission mode missing"
+  grep -qF -- "--setting-sources user" "$work/args.txt" \
+    || fail "claude branch does not restrict setting sources to user (cloned repo could run a startup hook)"
   grep -qF -- "Read(//home/box/.factory-secrets/**)" "$work/args.txt" \
     || fail "claude branch does not //-anchor the factory-secrets Read deny"
   grep -qF -- "Bash(*factory-secrets*)" "$work/args.txt" || fail "factory-secrets Bash guard missing from args"

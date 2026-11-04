@@ -628,7 +628,9 @@ main() {
     # Scrub only this child. Clone, setup and --push keep their credentials, and
     # apply_factory_gh_app_token runs again before --push. The inner env is the
     # call-site form scripts/test-gh-app-token.sh locks; it is what runs grok.
-    GH_CONFIG_DIR="$gh_config_dir" \
+    # GIT_TERMINAL_PROMPT=0 and unsetting GIT_ASKPASS/SSH_AUTH_SOCK match the
+    # claude branch below: stops a stray `git` call from prompting for or
+    # finding real credentials, or reaching the box's ssh-agent.
     env -u GH_TOKEN -u GITHUB_TOKEN \
       -u GH_ENTERPRISE_TOKEN \
       -u GITHUB_ENTERPRISE_TOKEN \
@@ -644,6 +646,8 @@ main() {
       -u GOOGLE_APPLICATION_CREDENTIALS \
       -u CLOUDSDK_AUTH_ACCESS_TOKEN \
       -u AZURE_CLIENT_SECRET \
+      -u GIT_ASKPASS -u SSH_AUTH_SOCK \
+      GH_CONFIG_DIR="$gh_config_dir" GIT_TERMINAL_PROMPT=0 \
       env -u GH_TOKEN -u GITHUB_TOKEN grok --no-auto-update \
       --cwd "$dir" --trust \
       --prompt-file "$order" --rules "$(cat "$rules")" \
@@ -658,11 +662,13 @@ main() {
     # --cwd, so cwd is set with `cd` in a dedicated subshell. The prompt is
     # the same rules-plus-order text grok gets via --rules/--prompt-file,
     # read from a file over stdin. --permission-mode bypassPermissions
-    # mirrors grok's --always-approve; --disallowedTools keeps the box's
-    # /home/box/.factory-secrets out of reach (the leading `//` anchors an
-    # absolute path for Claude Code, a single `/` would anchor at the project
-    # dir instead), blocks `git push`/`gh` the same way grok's --deny does
-    # (bypassPermissions alone would let either run), and drops
+    # mirrors grok's --always-approve; --setting-sources user stops a cloned
+    # repo's own .claude/settings.json (e.g. a SessionStart hook) from running,
+    # since bypassPermissions does not gate hooks; --disallowedTools keeps the
+    # box's /home/box/.factory-secrets out of reach (the leading `//` anchors
+    # an absolute path for Claude Code, a single `/` would anchor at the
+    # project dir instead), blocks `git push`/`gh` the same way grok's --deny
+    # does (bypassPermissions alone would let either run), and drops
     # WebSearch/WebFetch, the parity for grok's --disable-web-search.
     # GH_CONFIG_DIR and GIT_TERMINAL_PROMPT=0 (with GIT_ASKPASS/SSH_AUTH_SOCK
     # scrubbed below) are the same belt-and-suspenders as the grok branch,
@@ -693,7 +699,7 @@ main() {
       env -u GH_TOKEN -u GITHUB_TOKEN \
       GH_CONFIG_DIR="$gh_config_dir" GIT_TERMINAL_PROMPT=0 \
       bash -c 'cd "$1" && exec "$2" -p --output-format json --max-turns "$3" \
-        --permission-mode bypassPermissions \
+        --permission-mode bypassPermissions --setting-sources user \
         --disallowedTools "Read(//home/box/.factory-secrets/**)" "Bash(*factory-secrets*)" \
           "Bash(git push*)" "Bash(gh *)" "Bash(gh)" "WebSearch" "WebFetch" \
         < "$4"' _ "$dir" "$claude_bin" "${CLAUDE_MAX_TURNS:-${GROK_MAX_TURNS:-60}}" "$claude_prompt" \

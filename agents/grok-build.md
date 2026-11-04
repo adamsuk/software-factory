@@ -96,11 +96,12 @@ script, any other doc that repeats it) — a single `/` silently does nothing.
 | --- | --- | --- |
 | `--prompt-file`/`--rules` | same text, concatenated, read over stdin | `claude` has one prompt input, not two |
 | `--always-approve` | `--permission-mode bypassPermissions` | both skip interactive approval |
+| (none; `--trust` is the target repo's own settings, needed for its `AGENTS.md`) | `--setting-sources user` | stops a cloned repo's own `.claude/settings.json` (for example a `SessionStart` hook) from running; `bypassPermissions` has no deny list for hooks, so without this a repo-controlled hook would run unconstrained |
 | `--disable-web-search` | `--disallowedTools ... "WebSearch" "WebFetch"` | same fewer-untrusted-inputs reason |
 | `--deny 'Bash(git push*)' --deny 'Bash(gh *)'` | `--disallowedTools ... "Bash(git push*)" "Bash(gh *)" "Bash(gh)"` | `bypassPermissions` on its own would let Claude run `git push` or `gh` itself; the bare `Bash(gh)` form catches a no-argument call the `gh *` glob misses |
 | (none; the `--factory-secrets` guard is the env scrub) | `--disallowedTools "Read(//home/box/.factory-secrets/**)" "Bash(*factory-secrets*)"` | belt-and-suspenders on top of the env scrub, which is the real guard for both backends |
-| (none) | `GH_CONFIG_DIR` set to a fresh empty directory, removed after the run | stops a `gh` call that somehow runs anyway from reading the box's real `~/.config/gh` (tokens included); applied to both backends |
-| (none) | `GIT_TERMINAL_PROMPT=0`, `GIT_ASKPASS`/`SSH_AUTH_SOCK` unset | stops a `git` call that somehow runs anyway from prompting for or finding real credentials |
+| `GH_CONFIG_DIR` set to a fresh empty directory, removed after the run | same | stops a `gh` call that somehow runs anyway from reading the box's real `~/.config/gh` (tokens included); applied to both backends |
+| `GIT_TERMINAL_PROMPT=0`, `GIT_ASKPASS`/`SSH_AUTH_SOCK` unset | same | stops a `git` call that somehow runs anyway from prompting for or finding real credentials, or reaching the box's ssh-agent; applied to both backends |
 
 The result is normalised into `$dir.grok.json` — **that file name does not
 change**, so `write_bench_handoff` and every other caller that reads
@@ -150,9 +151,13 @@ decision is #7):
 - **The on-disk `gh` config.** `GH_CONFIG_DIR` is pointed at a fresh empty
   directory for the duration of the run, for both backends, removed
   afterwards, so a `gh` call that runs despite the rule above still can't read
-  the box's real `~/.config/gh` (tokens included). For claude,
-  `GIT_TERMINAL_PROMPT=0` and unsetting `GIT_ASKPASS`/`SSH_AUTH_SOCK` do the
-  same for a stray `git` call that needs credentials.
+  the box's real `~/.config/gh` (tokens included). `GIT_TERMINAL_PROMPT=0` and
+  unsetting `GIT_ASKPASS`/`SSH_AUTH_SOCK`, for both backends, do the same for a
+  stray `git` call that needs credentials or the box's ssh-agent.
+- **Claude's own startup hooks.** A cloned repo can ship `.claude/settings.json`
+  with a `SessionStart` hook; `bypassPermissions` does not gate hooks, only
+  tools. `--setting-sources user` keeps Claude from loading that repo's
+  project/local settings, so a repo-controlled hook never runs.
 - **`--restricted` was considered and rejected here.** `claude --help`
   documents a `--restricted` mode that confines file tools to the working
   directories and refuses `bypassPermissions`. That conflicts with this
