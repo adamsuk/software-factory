@@ -55,18 +55,25 @@ TOKEN=$(bash scripts/gh-app-token.sh)
 # exits 0 (not non-zero) on a missing or invalid value, so an empty $TOKEN
 # is silent unless checked explicitly — and GH_TOKEN="" just falls back to
 # the current (human) gh login, which would reopen the PR as the same
-# identity all over again. Confirm the token actually authenticates as the
-# installation before closing anything.
+# identity all over again. A token that merely authenticates isn't enough
+# either — check it specifically covers <owner>/<repo> (the installation
+# may not include every repo), since discovering that only after closing
+# the original PR is worse than finding out now.
 [[ -n "$TOKEN" ]] || { echo "token mint failed — check FACTORY_GH_APP_*" >&2; exit 1; }
-GH_TOKEN="$TOKEN" gh api /installation/repositories --jq '.repositories | length' > /dev/null \
-  || { echo "minted token does not authenticate — stopping before closing the old PR" >&2; exit 1; }
+GH_TOKEN="$TOKEN" gh api /installation/repositories --jq '.repositories[].full_name' 2>/dev/null \
+    | grep -qx "<owner>/<repo>" \
+  || { echo "minted token cannot access <owner>/<repo> — stopping before closing the old PR" >&2; exit 1; }
 
 gh pr close <old-PR> --repo <owner>/<repo> --comment "Superseded: reopening as software-factory-line[bot] so the required approving review isn't blocked by self-authorship."
 
-GH_TOKEN="$TOKEN" gh pr create --repo <owner>/<repo> \
+if ! GH_TOKEN="$TOKEN" gh pr create --repo <owner>/<repo> \
   --base main --head <branch> \
   --title "<same title>" \
-  --body "<same body>"
+  --body "<same body>"; then
+  echo "pr create failed after closing <old-PR> — reopening it" >&2
+  gh pr reopen <old-PR> --repo <owner>/<repo>
+  exit 1
+fi
 
 unset TOKEN
 ```

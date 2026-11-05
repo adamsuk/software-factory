@@ -267,6 +267,9 @@ esac
 base=$(gh pr view <PR> --repo "<repo>" --json baseRefName --jq '.baseRefName')
 
 (
+  set -e   # a failed clone must not fall through to a bare `cd` that fails
+           # silently and leaves every later command running in whatever
+           # directory the subshell started in — this repo's own checkout
   git clone --quiet "https://github.com/<repo>" /tmp/<tag>
   cd /tmp/<tag>
   git fetch --quiet origin "$branch" "$base"
