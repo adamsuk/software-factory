@@ -132,13 +132,27 @@ in **this** repo, builds the target repo, and opens the pull request
 sometimes doesn't land** (see Step 0's provider note for why). Check for it
 after the run regardless of provider — cheap to check, expensive to assume:
 
+Check the **specific ref** the file would actually be read from later
+(Step 5), not history in general — searching all refs risks finding a
+same-named file on an unrelated or stale branch and wrongly concluding
+there's nothing to reconstruct:
+
 ```bash
-ls agents/work-orders/ | grep -E -- "-<issue>\.md$"
-git log --all --oneline -- "agents/work-orders/*-<issue>.md"
+# Same-repo ticket: the file would be on the PR branch itself.
+git fetch origin "<branch>" --quiet
+git cat-file -e "origin/<branch>:agents/work-orders/adamsuk_software-factory-<issue>.md" 2>/dev/null \
+  && echo "found on <branch>" || echo "missing"
+
+# Cross-repo ticket: check main (a chore PR may already be merged) and
+# whether a chore PR is still open.
+git fetch origin main --quiet
+git cat-file -e "origin/main:agents/work-orders/<owner>_<repo-name>-<issue>.md" 2>/dev/null \
+  && echo "found on main" || echo "not on main"
+gh pr list --repo adamsuk/software-factory --head "chore/<issue>-work-order" --state open --json number
 ```
 
-(Match the exact filename suffix, not a loose substring — issue `12` would
-otherwise also match a file or commit for issue `112`.)
+(Match the exact expected filename, not a loose substring — issue `12`
+would otherwise also match a file or commit for issue `112`.)
 
 If it's missing, reconstruct it from the issue's triage comment + the PR's
 own diff/title (same front-matter shape foreman.md documents — `repo`,
@@ -225,8 +239,13 @@ git fetch --quiet origin "$branch"
 git checkout --quiet "$branch"
 git merge origin/main --no-commit --no-ff
 git status --short | grep '^UU'
-cd - && rm -rf /tmp/<tag>
 ```
+
+**Don't clean up the clone yet** — if there's a conflict, the resolution
+steps below still need it (edit the non-protected file, commit, push).
+Only remove `/tmp/<tag>` once you're actually done with it: right away if
+`git status` showed no conflict at all, or after the resolution has been
+committed and pushed if it did.
 
 Quote every expansion of `$branch` (and any other PR-derived value) in every
 command you run, here and elsewhere in this skill — never splice an
