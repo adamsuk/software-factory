@@ -3,6 +3,22 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-05
+
+### Added
+
+- A `run-factory` Claude Code skill (`.claude/skills/run-factory/`) that
+  drives a backlog ticket through the defined stations (intake, foreman
+  pick/build, gate, review), narrating each step and stopping only at
+  genuine human decision points (a protected-path change, a fix-loop
+  judgment call, an escalation, or anything merge/approve-shaped) instead of
+  re-deriving the pipeline's mechanics from `AGENTS.md`/`stations/README.md`
+  each time. It picks a station provider (`grok`, `claudecode`, or
+  `opencode`) based on what's actually available, and a `references/quirks.md`
+  file records known gotchas: the GitHub self-approval identity wrinkle and
+  its "reopen as the bot" fix, the CodeRabbit-skip-on-bot-PRs bug (#209),
+  the work-order-paperwork gap, and the protected-paths list.
+
 ## 2026-11-04
 
 ### Added
