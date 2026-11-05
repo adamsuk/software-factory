@@ -7,6 +7,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `scripts/pr-status.sh`, a read-only script that prints each open pull
+  request's checks state, latest review per reviewer on the head commit,
+  and unresolved review-thread count from the gate's view, with a derived
+  verdict (`failing-ci`, `open-threads`, `pending`, or `ready`), covering
+  non-factory pull requests such as Dependabot's. `agents/roles/foreman.md`
+  now reports status from this view instead of labels or `reviewDecision`,
+  requires every review comment to be fixed or answered and its thread
+  resolved before a re-review or a "ready" report, and covers non-factory
+  pull requests the same way (#275).
 - `scripts/run-work-order.sh` can now run the headless coding step with
   Claude Code instead of Grok Build: `FACTORY_LLM=grok` (unset behaves the
   same) or `FACTORY_LLM=claude`. The backend is a setting, not a label on the
