@@ -1523,7 +1523,7 @@ export GROK_ENV_DUMP
   export XAI_API_KEY=scrub-207-xai-api-key
   export GIT_ASKPASS=sentinel-git-askpass SSH_AUTH_SOCK=sentinel-ssh-auth-sock
   export PATH="$scrub_dir/bin:$ORIG_PATH"
-  dir=$scrub_dir/clone order=/dev/null rules=/dev/null gh_config_dir=$scrub_dir/ghconfig
+  dir=$scrub_dir/clone order=/dev/null rules=/dev/null fenced_order=/dev/null gh_config_dir=$scrub_dir/ghconfig
   eval "$grok_cmd"
   true
 ) || fail "mock grok invocation failed"
