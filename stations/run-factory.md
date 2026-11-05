@@ -125,8 +125,19 @@ issue forward yourself; intake is deliberately forbidden from doing that too.
 ## Step 3 — foreman pick / build (once `factory:ready`)
 
 ```bash
-scripts/foreman-orchestrate.sh pick --provider "$PROVIDER"
+scripts/foreman-orchestrate.sh pick --provider "$PROVIDER" --issue <N> --repo adamsuk/software-factory
 ```
+
+**Pass the Step 1 issue explicitly — `pick` with no `--issue` does not
+operate on it.** The foreman's own job on `pick` is "oldest open
+`factory:ready` issue," self-selected; without `--issue` it's free to build
+a *different* ready ticket than the one Steps 1–2 just worked, especially
+whenever the backlog has more than one `factory:ready` issue at once. Even
+with `--issue` passed through, that's a strong hint via context rather than
+a hard constraint the foreman's own role brief is written to obey — so
+after this step, confirm the PR it opened and the work order it wrote both
+actually name issue `<N>` before moving on. If they don't, stop; something
+else got built instead.
 
 This writes the work order to `agents/work-orders/<owner>_<repo>-<issue>.md`
 in **this** repo, builds the target repo, and opens the pull request
@@ -250,13 +261,25 @@ case "$branch" in
   *) echo "unexpected branch shape: $branch" >&2; exit 1 ;;
 esac
 
-git clone --quiet "https://github.com/<repo>" /tmp/<tag>
-cd /tmp/<tag>
-git fetch --quiet origin "$branch"
-git checkout --quiet "$branch"
-git merge origin/main --no-commit --no-ff
-git diff --name-only --diff-filter=U
+# Merge against the PR's actual base, not an assumed "main" — the work
+# order and the PR both carry this, and nothing guarantees every PR in
+# every repo is based on main.
+base=$(gh pr view <PR> --repo "<repo>" --json baseRefName --jq '.baseRefName')
+
+(
+  git clone --quiet "https://github.com/<repo>" /tmp/<tag>
+  cd /tmp/<tag>
+  git fetch --quiet origin "$branch" "$base"
+  git checkout --quiet "$branch"
+  git merge "origin/$base" --no-commit --no-ff
+  git diff --name-only --diff-filter=U
+)
 ```
+
+Run the clone-and-check in a subshell, as above — the `cd` inside it then
+can't leave you sitting in `/tmp/<tag>` by the time you reach Step 5, which
+resolves everything (`../software-factory.venv`, `origin`,
+`scripts/gate-issue.sh`) relative to *this* repo's checkout, not the clone.
 
 (List every unmerged path, not just ones git happens to report as `UU` —
 a conflict can also show as `AA`, `DD`, `AU`, `UA`, `DU`, or `UD` depending
@@ -264,10 +287,11 @@ on which side added/deleted/modified the file, and
 `--diff-filter=U` catches all of those.)
 
 **Don't clean up the clone yet** — if there's a conflict, the resolution
-steps below still need it (edit the non-protected file, commit, push).
-Only remove `/tmp/<tag>` once you're actually done with it: right away if
-`git status` showed no conflict at all, or after the resolution has been
-committed and pushed if it did.
+steps below still need it (edit the non-protected file, commit, push), and
+they also need to run `cd`'d into it — do that in its own subshell too, for
+the same reason. Only remove `/tmp/<tag>` once you're actually done with
+it: right away if the diff above showed no conflict at all, or after the
+resolution has been committed and pushed if it did.
 
 Quote every expansion of `$branch` (and any other PR-derived value) in every
 command you run, here and elsewhere in this playbook — never splice an

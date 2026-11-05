@@ -51,6 +51,16 @@ export FACTORY_GH_APP_INSTALLATION_ID="<the installation ID>"
 export FACTORY_GH_APP_KEY_FILE="<path to the App's private key>"
 TOKEN=$(bash scripts/gh-app-token.sh)
 
+# Fail closed, before touching the existing PR: gh-app-token.sh warns and
+# exits 0 (not non-zero) on a missing or invalid value, so an empty $TOKEN
+# is silent unless checked explicitly — and GH_TOKEN="" just falls back to
+# the current (human) gh login, which would reopen the PR as the same
+# identity all over again. Confirm the token actually authenticates as the
+# installation before closing anything.
+[[ -n "$TOKEN" ]] || { echo "token mint failed — check FACTORY_GH_APP_*" >&2; exit 1; }
+GH_TOKEN="$TOKEN" gh api /installation/repositories --jq '.repositories | length' > /dev/null \
+  || { echo "minted token does not authenticate — stopping before closing the old PR" >&2; exit 1; }
+
 gh pr close <old-PR> --repo <owner>/<repo> --comment "Superseded: reopening as software-factory-line[bot] so the required approving review isn't blocked by self-authorship."
 
 GH_TOKEN="$TOKEN" gh pr create --repo <owner>/<repo> \
