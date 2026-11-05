@@ -214,3 +214,13 @@ FACTORY_PROVIDER=opencode ./scripts/station-run.sh intake issue-context.md
 
 What you see on the issue is whatever `scripts/station-post.sh` posted.
 A run that only talks in its own transcript is not a finished station.
+
+## Driving one ticket end to end
+
+[`run-factory.md`](run-factory.md) is the operational playbook for taking a
+single backlog ticket through intake → foreman pick/build → gate → review:
+which script to run at each step, how to read each one's output, where a
+person has to decide instead of an agent, and the gotchas picked up the hard
+way ([`run-factory-quirks.md`](run-factory-quirks.md)). It's provider- and
+tool-agnostic — follow it whether you're `grok`, `opencode`, `claudecode`,
+or a person running the commands by hand.
