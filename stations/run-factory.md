@@ -142,17 +142,28 @@ same-named file on an unrelated or stale branch and wrongly concluding
 there's nothing to reconstruct:
 
 ```bash
-# Same-repo ticket: the file would be on the PR branch itself.
-git fetch origin "<branch>" --quiet
+# Same-repo ticket: the file would be on the PR branch itself. Check the
+# fetch itself, not just the cat-file — a failed fetch leaves whatever was
+# already in origin/<branch> locally (possibly nothing, possibly stale),
+# and silently proceeding on that is how this ends up checking the wrong
+# content.
+git fetch origin "<branch>" --quiet || { echo "fetch failed" >&2; exit 1; }
 git cat-file -e "origin/<branch>:agents/work-orders/adamsuk_software-factory-<issue>.md" 2>/dev/null \
   && echo "found on <branch>" || echo "missing"
 
-# Cross-repo ticket: check main (a chore PR may already be merged) and
-# whether a chore PR is still open.
-git fetch origin main --quiet
+# Cross-repo ticket: check main (a chore PR may already be merged), and —
+# if a chore PR is still open — check the file on *that* ref too, not just
+# whether the PR exists. A chore PR can be open without the file yet (for
+# example if only the PR itself landed but not its commit).
+git fetch origin main --quiet || { echo "fetch failed" >&2; exit 1; }
 git cat-file -e "origin/main:agents/work-orders/<owner>_<repo-name>-<issue>.md" 2>/dev/null \
   && echo "found on main" || echo "not on main"
-gh pr list --repo adamsuk/software-factory --head "chore/<issue>-work-order" --state open --json number
+chore_pr=$(gh pr list --repo adamsuk/software-factory --head "chore/<issue>-work-order" --state open --json number --jq '.[0].number // empty')
+if [[ -n "$chore_pr" ]]; then
+  git fetch origin "chore/<issue>-work-order" --quiet || { echo "fetch failed" >&2; exit 1; }
+  git cat-file -e "origin/chore/<issue>-work-order:agents/work-orders/<owner>_<repo-name>-<issue>.md" 2>/dev/null \
+    && echo "found on chore PR #$chore_pr" || echo "missing on chore PR #$chore_pr"
+fi
 ```
 
 (Match the exact expected filename, not a loose substring — issue `12`
@@ -244,8 +255,13 @@ cd /tmp/<tag>
 git fetch --quiet origin "$branch"
 git checkout --quiet "$branch"
 git merge origin/main --no-commit --no-ff
-git status --short | grep '^UU'
+git diff --name-only --diff-filter=U
 ```
+
+(List every unmerged path, not just ones git happens to report as `UU` —
+a conflict can also show as `AA`, `DD`, `AU`, `UA`, `DU`, or `UD` depending
+on which side added/deleted/modified the file, and
+`--diff-filter=U` catches all of those.)
 
 **Don't clean up the clone yet** — if there's a conflict, the resolution
 steps below still need it (edit the non-protected file, commit, push).
@@ -262,7 +278,8 @@ config (`.github/workflows/**`, `.github/actions/**`, `.github/factory.yml`,
 `.coderabbit.yaml`), lockfiles, and agent-instruction files (`AGENTS.md`,
 `agents/**`, `CODEOWNERS` — note `agents/work-orders/**` is explicitly
 **not** protected). A PR touching one of those files overall doesn't mean
-the *conflict itself* does — check which file(s) actually show `UU`.
+the *conflict itself* does — check which file(s) the `--diff-filter=U`
+output above actually lists.
 
 - If the conflicting file(s) are **not** protected (very often just
   `CHANGELOG.md`, since two branches both add a dated entry near the top —
