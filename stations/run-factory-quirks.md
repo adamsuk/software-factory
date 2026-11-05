@@ -1,5 +1,10 @@
 # Known gotchas (learned the hard way — don't rediscover these)
 
+Companion to `run-factory.md`, which walks through driving a ticket end to
+end and links here at each relevant step. This file is the detail behind
+those pointers — read a section when the main playbook sends you here,
+rather than up front.
+
 ## The identity wrinkle (#210, but broader than filed)
 
 Every station in this environment writes to GitHub using whatever `gh`
@@ -28,7 +33,7 @@ classifier blocked every variant outright — it reads as a hard security
 boundary (using a credential specifically to route around a platform
 self-approval restriction), not a soft "ask me" block that settings can
 lift. Don't spend time retrying variants of this; report the wall to the
-user instead (it's one of the decision points in `SKILL.md`).
+user instead (it's one of the decision points in `run-factory.md`).
 
 **What does work: reopen the PR as the bot.** Minting and *using* a GitHub
 App installation token to open a brand-new, otherwise-identical PR (not to
@@ -65,7 +70,7 @@ installation covering several `adamsuk/*` repos. The App ID, installation
 ID, and private key location are specific to the user's own setup — they
 are not committed anywhere in this repo, by design (see `scripts/gh-app-token.sh`'s
 own header comment for exactly which environment variables it reads). If
-this skill doesn't already have those three values available in the
+this playbook doesn't already have those three values available in the
 session (ask the user, or check whether they've mentioned a key file path
 earlier in the conversation), ask the user for them rather than guessing or
 inventing a path — and never print the key's contents or the minted token
@@ -81,7 +86,7 @@ wall and move to the "reopen as the bot" option instead.
 Once a PR is reopened as `software-factory-line[bot]` (or opened that way by
 the station in the first place), CodeRabbit's check often reports
 `skipping` instead of running. This is a filed bug (#209), not something
-this skill should treat as a real gate failure — judge readiness from the
+this playbook should treat as a real gate failure — judge readiness from the
 repo's own `required_checks` (from `.github/factory.yml`) plus the
 independent review verdict, not from CodeRabbit's own check state.
 
@@ -110,11 +115,14 @@ eyeballing the list above when in doubt.
 More than once, the foreman has built and opened a PR but never committed
 the work-order file anywhere — not in the work tree, not on `main`, not in
 the PR's own diff. `scripts/gate-issue.sh` needs that file to do anything,
-so always check for it (`ls agents/work-orders/ | grep -i <issue>` and
-`git log --all --oneline | grep -i <issue>`) before assuming gate will "just
-work." Reconstructing it is squarely in-scope for this skill to do directly
-(it's explicitly non-protected), following the cross-repo-vs-same-repo
-landing rule in `SKILL.md` step 3.
+so always check the specific ref it would actually be read from (see
+`run-factory.md` step 3 for the exact commands — matching an exact filename
+suffix, not a loose substring, and a specific ref rather than `git log
+--all`, both matter: a substring match on issue `12` will also hit `112`,
+and searching all history can find a same-named file on an unrelated
+branch) before assuming gate will "just work." Reconstructing the file
+yourself is squarely in-scope (it's explicitly non-protected), following
+the cross-repo-vs-same-repo landing rule in `run-factory.md` step 3.
 
 ## `scripts/station-post.sh pr` as a label-repair tool
 
