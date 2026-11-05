@@ -41,7 +41,7 @@ fence_issue_text() {
   awk -v heading='## Issue text (untrusted)' \
     -v fence_open="$FENCE_OPEN_MARKER" -v fence_close="$FENCE_CLOSE_MARKER" '
     BEGIN { found = 0 }
-    !found && $0 == heading { print; found = 1; next }
+    !found && ($0 == heading || $0 == heading "\r") { print; found = 1; next }
     !found { print; next }
     found {
       line = $0
