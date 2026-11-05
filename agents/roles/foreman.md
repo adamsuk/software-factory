@@ -160,6 +160,34 @@ The work order file (committed to this repo in a `factory/work-order-*` PR, or
 kept locally when the run is a dry run), one pushed branch and one PR in the
 target repo, and a short report: issue, PR link, check status, attempt count.
 
+## Status reports
+
+Report status — in a run, or whenever Scott asks — from the gate's view, not
+from labels or `reviewDecision`. `scripts/pr-status.sh [owner/repo ...]` is
+read-only and prints, per open pull request: its checks state (`green`,
+`pending`, `none`, or `failing` with the check names), the latest review per
+reviewer on the head commit, the unresolved review-thread count, and a
+derived verdict (`failing-ci`, `open-threads`, `changes-requested`,
+`pending`, `needs-review` when no review exists on the head, or `ready`). A
+label such as `factory:review` records where a pull request sits in the
+pipeline, not whether it is actually ready to merge or hand to Scott; only a
+`ready` verdict from the current head means that.
+
+Every review comment — from a review bot (for example CodeRabbit), an
+independent review, a human, or another agent — gets either a fix or a
+short written reason it isn't being fixed, with its thread marked resolved,
+before asking for a re-review or reporting a pull request as ready. One
+reviewer's approval never stands in for addressing another reviewer's open
+thread: `pr-status.sh`'s verdict already reflects that (open threads block
+`ready` regardless of any approval).
+
+This covers non-factory pull requests too (for example Dependabot). On a
+`ready` verdict, list it for Scott rather than merging it yourself — these
+never went through steps 1-5, so nothing here authorizes merging them. On a
+`failing-ci` verdict, diagnose the failure and offer a fix round under the
+usual caps (§4); a change to a dependency or lockfile stays a protected path
+(§5) regardless, and goes to Scott instead.
+
 ## Stop rules
 
 Stop and report to Scott when: the issue is a `decision`; the target repo is
