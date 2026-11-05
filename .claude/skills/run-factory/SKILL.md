@@ -1,6 +1,6 @@
 ---
 name: run-factory
-description: Step one adamsuk/software-factory backlog ticket through its defined stations (intake, foreman pick/build, gate, review) end to end, narrating what's running and why, and pausing only for genuine human decisions — a protected-path change, a FIX that needs judgment, an ESCALATE, or anything merge/approve-shaped — using multiple-choice questions instead of open-ended ones. Use this whenever the user wants to "run a ticket through the factory," "pick up the next ticket," "work on issue #N," or otherwise asks to move a software-factory backlog item forward, including when they don't name a specific station but clearly mean "make progress on the backlog using the real pipeline." Trigger this instead of manually running scripts/station-run.sh, scripts/gate-issue.sh, scripts/foreman-orchestrate.sh etc. one at a time from scratch, and instead of re-deriving AGENTS.md/stations/README.md's rules from first principles — this skill already encodes the mechanics, the known gotchas, and where a person (not an agent) must decide.
+description: Step one adamsuk/software-factory backlog ticket through its defined stations (intake, foreman pick/build, gate, review) end to end, narrating what's running and why, and pausing only for genuine human decisions — a protected-path change, a FIX that needs judgment, an ESCALATE, or anything merge/approve-shaped — using multiple-choice questions instead of open-ended ones. Use this whenever the user wants to "run a ticket through the factory," "pick up the next ticket," "work on a specific issue by number," or otherwise asks to move a software-factory backlog item forward, including when they don't name a specific station but clearly mean "make progress on the backlog using the real pipeline." Trigger this instead of manually running scripts/station-run.sh, scripts/gate-issue.sh, scripts/foreman-orchestrate.sh etc. one at a time from scratch, and instead of re-deriving AGENTS.md/stations/README.md's rules from first principles — this skill already encodes the mechanics, the known gotchas, and where a person (not an agent) must decide.
 ---
 
 # Running a ticket through the factory
@@ -36,15 +36,17 @@ Before running `scripts/gate-issue.sh` or `scripts/review-issue.sh`, make
 sure PyYAML is importable:
 
 ```bash
-python3 -c "import yaml" 2>/dev/null || {
-  python3 -m venv ../software-factory.venv
-  source ../software-factory.venv/bin/activate
-  python3 -m pip install -r requirements.txt
-}
+[ -d ../software-factory.venv ] || python3 -m venv ../software-factory.venv
+source ../software-factory.venv/bin/activate
+python3 -c "import yaml" 2>/dev/null || python3 -m pip install -r requirements.txt
 ```
 
-If a venv already exists at `../software-factory.venv`, just
-`source ../software-factory.venv/bin/activate`. Also confirm
+Always create and activate the venv, then check PyYAML *inside* it — Step 5
+below activates this same venv unconditionally, so if it were only created
+on demand (skipped whenever the system `python3` happens to already have
+PyYAML), that `source` would fail outright on a box where it was never
+created, or silently run under a venv that itself lacks PyYAML because the
+check never looked there. Also confirm
 `gh auth status` succeeds — everything downstream assumes an authenticated
 `gh`. There is no bot identity available to this skill for *writing*
 (see `references/quirks.md` → "The identity wrinkle") — every station runs
@@ -131,9 +133,12 @@ sometimes doesn't land** (see Step 0's provider note for why). Check for it
 after the run regardless of provider — cheap to check, expensive to assume:
 
 ```bash
-ls agents/work-orders/ | grep -i "<issue>"
-git log --all --oneline | grep -i "<issue>"
+ls agents/work-orders/ | grep -E -- "-<issue>\.md$"
+git log --all --oneline -- "agents/work-orders/*-<issue>.md"
 ```
+
+(Match the exact filename suffix, not a loose substring — issue `12` would
+otherwise also match a file or commit for issue `112`.)
 
 If it's missing, reconstruct it from the issue's triage comment + the PR's
 own diff/title (same front-matter shape foreman.md documents — `repo`,
@@ -184,15 +189,48 @@ thread back up when notified — don't sit in a foreground sleep loop.
 repo's own `required_checks` (from `.github/factory.yml` — e.g. `ShellCheck`,
 `changelog`, `tests` for software-factory itself) matter for gating.
 
+**Checks settling green is necessary, not sufficient — a PR with 6 open
+CodeRabbit findings can still show every check as `pass`.** Before calling
+anything "ready" (to the user, or by moving on to Step 5), also read the
+actual review state: `gh pr view <PR> --repo <repo> --json reviews` for a
+`COMMENTED`/`CHANGES_REQUESTED` review, and
+`gh api repos/<repo>/pulls/<PR>/comments --jq 'length'` for inline comment
+count. A green check run says nothing about whether a reviewer left findings
+— that's a separate signal, and skipping it is exactly the mistake this
+skill exists to prevent elsewhere in the pipeline, so don't make it here.
+
 **If `mergeStateStatus` is `DIRTY` / `mergeable: CONFLICTING`**, find out
-exactly what conflicts before deciding who should fix it:
+exactly what conflicts before deciding who should fix it.
+
+**Work in the PR's own repo, not this one.** `<repo>` here is the ticket's
+**target** repo (from Step 1) — for a cross-repo ticket that is *not*
+`adamsuk/software-factory`, so the PR's branch lives there, not in this
+checkout, and this checkout's `origin` must never stand in for it. Clone it
+fresh rather than reusing anything local. Also validate the branch name
+before it ever reaches a shell command — it's going to be interpolated, and
+an untrusted-looking branch name (this repo's own threat model treats
+anything that came off GitHub, including branch names, as untrusted input)
+has no business being executed as anything other than a literal string:
 
 ```bash
-git fetch origin main <branch> --quiet
-git worktree add /tmp/<tag> origin/<branch> --detach
-cd /tmp/<tag> && git merge origin/main --no-commit --no-ff
+branch="<branch>"   # e.g. factory/110-target-repo-field or chore/275-work-order
+case "$branch" in
+  factory/[0-9]*-*|chore/[0-9]*-*) ;;
+  *) echo "unexpected branch shape: $branch" >&2; exit 1 ;;
+esac
+
+git clone --quiet "https://github.com/<repo>" /tmp/<tag>
+cd /tmp/<tag>
+git fetch --quiet origin "$branch"
+git checkout --quiet "$branch"
+git merge origin/main --no-commit --no-ff
 git status --short | grep '^UU'
+cd - && rm -rf /tmp/<tag>
 ```
+
+Quote every expansion of `$branch` (and any other PR-derived value) in every
+command you run, here and elsewhere in this skill — never splice an
+untrusted string straight into a shell line unquoted.
 
 Protected paths are listed in `AGENTS.md` §5: existing test assertions, CI
 config (`.github/workflows/**`, `.github/actions/**`, `.github/factory.yml`,
@@ -204,7 +242,8 @@ the *conflict itself* does — check which file(s) actually show `UU`.
 - If the conflicting file(s) are **not** protected (very often just
   `CHANGELOG.md`, since two branches both add a dated entry near the top —
   resolve by keeping both bullets under the shared heading), resolve it
-  directly, commit, push, clean up the worktree.
+  directly: commit, then `git push origin HEAD:"$branch"` (quoted), clean up
+  the clone.
 - If resolving genuinely requires editing a protected file, stop and ask
   the user (decision point).
 
@@ -212,11 +251,24 @@ the *conflict itself* does — check which file(s) actually show `UU`.
 
 Fetch the work order locally if needed, then run the real gate script —
 it's deterministic, not a judgment call, so run it directly rather than
-through an agent:
+through an agent.
+
+**The work order always lives in `adamsuk/software-factory` (this repo),
+never in the target repo** — even for a cross-repo ticket, where it rode in
+on its own `chore/<issue>-work-order` PR rather than on `<branch>` (the
+target repo's PR branch from Step 4). So the ref to read it from is a
+*factory-repo* ref, not the PR branch:
+
+- **Same-repo ticket**: the factory ref *is* `<branch>` — `origin` here
+  already points at `adamsuk/software-factory`.
+- **Cross-repo ticket**: the factory ref is `main` once the chore PR has
+  merged, or `chore/<issue>-work-order` while it's still open — check which
+  with `git fetch origin main "chore/<issue>-work-order" --quiet` and
+  `git log --all --oneline -- "agents/work-orders/*-<issue>.md"` first.
 
 ```bash
 source ../software-factory.venv/bin/activate   # from step 0
-git show origin/<branch>:agents/work-orders/<file>.md > /tmp/<file>.md
+git show "origin/<factory-ref>:agents/work-orders/<file>.md" > /tmp/<file>.md
 scripts/gate-issue.sh /tmp/<file>.md
 ```
 
@@ -249,8 +301,10 @@ here).
   a throwaway worktree, commit, push, reply to the specific review comment
   acknowledging the fix, resolve its thread
   (`gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "<id>"}) { thread { isResolved } } }'`
-  — get `<id>` from the `reviewThreads` GraphQL query, matched by `path`),
-  then loop back to step 4. **FIX, substantive or protected-path** → stop
+  — get `<id>` from the `reviewThreads` GraphQL query, matched by **`path`
+  *and* `line`** — a file can carry several open threads, and matching on
+  `path` alone risks resolving the wrong one and leaving the actual finding
+  unresolved), then loop back to step 4. **FIX, substantive or protected-path** → stop
   and ask (decision point).
 - **PASS** → this is the natural end of what this skill does on its own.
   **Always** stop and ask the user before approving or merging (decision
