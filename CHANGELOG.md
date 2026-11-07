@@ -3,6 +3,21 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-07
+
+### Fixed
+
+- `scripts/run-work-order.sh`'s `fence_issue_text` fenced only the quoted
+  "Issue text (untrusted)" section, leaving the work order's title (front
+  matter) and its Goal and Acceptance criteria sections to pass to the
+  builder as unqualified trusted instructions even though the foreman wrote
+  them from the issue and they can still echo its wording. A short label is
+  now inserted right before the issue-text heading saying so: those three
+  are the foreman's own synthesis, not quoted issue text, but AGENTS.md,
+  the role brief and this wrapper always outrank anything inside them that
+  conflicts, the same as for the fenced issue text below.
+  `scripts/test-run-work-order-fence.sh` covers the new label (#212).
+
 ## 2026-11-05
 
 ### Added

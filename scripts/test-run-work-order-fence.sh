@@ -132,6 +132,22 @@ preamble=$(sed -n "$((open_line - 6)),$((open_line - 1))p" "$out")
   || fail "no data-only preamble before the fence: $preamble"
 [[ "$preamble" == *"instruction"* ]] || fail "preamble does not say not to treat it as instructions"
 
+# A second, earlier label (after the trusted Goal/Acceptance text, before
+# the heading) says the title, Goal and Acceptance criteria above may still
+# echo issue wording and that AGENTS.md and the role brief outrank anything
+# in them that conflicts, so issue-derived wording there can never reach
+# the builder as unqualified trusted instructions.
+heading_line=$(grep -Fxn "## Issue text (untrusted)" "$out" | cut -d: -f1)
+criterion_line=$(grep -Fn "TRUSTED_CRITERION_TEXT" "$out" | cut -d: -f1)
+label=$(sed -n "$((criterion_line + 1)),$((heading_line - 1))p" "$out")
+[[ "$label" == *"title"* ]] || fail "head label does not mention the title field: $label"
+[[ "$label" == *"Goal"* && "$label" == *"Acceptance criteria"* ]] \
+  || fail "head label does not name Goal and Acceptance criteria: $label"
+[[ "$label" == *"AGENTS.md"* ]] \
+  || fail "head label does not say AGENTS.md outranks conflicting wording: $label"
+[[ "$label" != *"INJECTED_INSTRUCTION"* ]] \
+  || fail "head label area leaked the fenced body's injected instruction"
+
 tname="fence-escapes-open-marker-too"
 order=$ROOT/order-open.md
 cat > "$order" << EOF
