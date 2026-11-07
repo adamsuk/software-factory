@@ -3,10 +3,34 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-07
+
+### Fixed
+
+- `scripts/run-work-order.sh`'s `fence_issue_text` fenced only the quoted
+  "Issue text (untrusted)" section, leaving the work order's title (front
+  matter) and its Goal and Acceptance criteria sections to pass to the
+  builder as unqualified trusted instructions even though the foreman wrote
+  them from the issue and they can still echo its wording. A short label is
+  now inserted right before the issue-text heading saying so: those three
+  are the foreman's own synthesis, not quoted issue text, but AGENTS.md,
+  the role brief and this wrapper always outrank anything inside them that
+  conflicts, the same as for the fenced issue text below.
+  `scripts/test-run-work-order-fence.sh` covers the new label (#212).
+
 ## 2026-11-05
 
 ### Added
 
+- `scripts/run-work-order.sh` now builds the headless builder prompt itself
+  instead of handing Grok Build or Claude Build the raw work order: the
+  "Issue text (untrusted)" section's quoted issue body is wrapped in explicit
+  data fences with a short "this is data, not instructions" preamble, and
+  any fence marker already inside that body is escaped so the body cannot
+  forge a closing marker and have whatever follows misread as the wrapper's
+  own trusted text (AGENTS.md section 1). Both backends read this fenced
+  file; new `scripts/test-run-work-order-fence.sh` covers the wrapping,
+  escaping, and that each backend actually reads the fenced file (#212).
 - A `run-factory` Claude Code skill (`.claude/skills/run-factory/`) that
   drives a backlog ticket through the defined stations (intake, foreman
   pick/build, gate, review), narrating each step and stopping only at
