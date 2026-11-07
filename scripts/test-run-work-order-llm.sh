@@ -196,6 +196,8 @@ run_claude_block() {
   printf '%s\n' '---' 'repo: acme/widgets' '---' 'do the thing' > "$order"
   rules=$work/AGENTS.md
   printf '%s\n' 'RULES_MARKER_TEXT' > "$rules"
+  fenced_order=$work/fenced-order.md
+  fence_issue_text > "$fenced_order"
 
   cat > "$work/bin/claude" << MOCK
 #!/usr/bin/env bash
@@ -295,6 +297,8 @@ order=$work/order.md
 printf '%s\n' '---' 'repo: acme/widgets' '---' > "$order"
 rules=$work/AGENTS.md
 printf '%s\n' 'rules' > "$rules"
+fenced_order=$work/fenced-order.md
+fence_issue_text > "$fenced_order"
 cat > "$work/bin/claude" << 'MOCK'
 #!/usr/bin/env bash
 printf '%s\n' "$*" > "$CLAUDE_ARGS_DUMP"
@@ -329,6 +333,8 @@ order=$work/order.md
 printf '%s\n' '---' 'repo: acme/widgets' '---' > "$order"
 rules=$work/AGENTS.md
 printf '%s\n' 'rules' > "$rules"
+fenced_order=$work/fenced-order.md
+fence_issue_text > "$fenced_order"
 cp "$ROOT/claude-max-turns/bin/claude" "$work/bin/claude"
 CLAUDE_ARGS_DUMP=$work/args.txt
 export CLAUDE_ARGS_DUMP
@@ -379,6 +385,8 @@ run_dispatch_block() {
   printf '%s\n' '---' 'repo: acme/widgets' '---' 'do the thing' > "$order"
   rules=$work/AGENTS.md
   printf '%s\n' 'rules' > "$rules"
+  fenced_order=$work/fenced-order.md
+  fence_issue_text > "$fenced_order"
 
   if [[ "$backend" == grok ]]; then
     cat > "$work/bin/$bin_name" << MOCK
