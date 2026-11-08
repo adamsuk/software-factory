@@ -10,9 +10,18 @@ setup_command: ""
 changelog: true
 merge_allowed: false
 review_bot: coderabbit
-attempt: 1
+attempt: 2
 created: 2026-11-08
 ---
+
+<!-- review-fix round 1 (PR #287): one CodeRabbit thread on audits/2026-11-03.md:56
+     (per-run-credentials row) and the paired Unknowns-section line (~160) still named
+     a residual detail of the installation-token minting mechanics that the earlier pass
+     had meant to remove. Verified against this work order's own acceptance criteria;
+     reworded both lines to drop that residual detail while keeping the cached-and-reused
+     finding and the repository-scope uncertainty intact. No other source path touched
+     this round. -->
+
 
 ## Goal
 
