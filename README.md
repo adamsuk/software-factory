@@ -27,7 +27,7 @@ here rather than in public tooling.
 | Generic baseline and the `gh factory` CLI | [adamsuk/gh-factory](https://github.com/adamsuk/gh-factory) | public, reusable |
 | The guide audits are scored against | [adamsuk/line](https://github.com/adamsuk/line) | public |
 | Audits, backlog and decisions | this repo, and the "Software Factory" GitHub Project | **private** |
-| Delivery repos | touchlineHQ/clubsPlatform, fulltimeFeeds, touchlineHQ, .github | org |
+| Delivery repos | touchlineHQ's delivery app, the second delivery app, touchlineHQ, .github | org |
 | Agents | Grok Bot: Issue Shipper, PR Reviewer, Signal Issues, Research Scout | — |
 
 A backlog issue in this repo names one target repository. Issue Shipper does
