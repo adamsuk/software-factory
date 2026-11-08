@@ -10,7 +10,7 @@ setup_command: ""
 changelog: true
 merge_allowed: false
 review_bot: coderabbit
-attempt: 1
+attempt: 2
 created: 2026-11-08
 ---
 
