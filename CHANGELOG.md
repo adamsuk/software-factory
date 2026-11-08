@@ -3,6 +3,24 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-08
+
+### Changed
+
+- `README.md` and the three Line audits dated 24/25/26 October 2026 no
+  longer name the org's private delivery-project repos directly; they now
+  describe them generically ("the delivery app", "the second delivery
+  app"). Dates, scores, sample limits, security findings and stated
+  uncertainty in the audits are unchanged, and no audit file was deleted
+  (#282).
+
+### Removed
+
+- 59 generated work-order files under `agents/work-orders/` whose backing
+  pull request is merged and whose filename had no other reference in the
+  repo. Their source issues are not closed by this cleanup and may stay
+  open by design (#282).
+
 ## 2026-11-07
 
 ### Fixed
