@@ -7,6 +7,15 @@ It's private on purpose. The audits record security gaps (agents using the
 owner token, unprotected `main`, no production approval gate), and they belong
 here rather than in public tooling.
 
+The audits linked below describe specific operational details — analytics
+project ids, GitHub ruleset ids, Cloudflare deployment ids, internal service
+names and installation-token mechanics — using generic wording in place of
+the original values, generalised after the fact for publication. That
+wording records that an identifier existed and roughly what kind, not its
+original value, and it is not a claim that any finding below was later
+fixed: every date, score, sample count and finding still reads as it did
+when the audit ran.
+
 ## Long-term aim
 
 - **A generic repo setup:** every repo under touchlineHQ and adamsuk gets the
