@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-09
+
+### Added
+
+- A standard MIT `LICENSE` file at the repo root (#288).
+
 ## 2026-11-08 (publication hardening, second pass)
 
 ### Changed
