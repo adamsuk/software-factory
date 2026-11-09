@@ -8,7 +8,7 @@ set -euo pipefail
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # Private HOME before any factory script runs, so this suite never opens
-# /home/box/.factory-secrets or a real key. Drop ambient secret names too,
+# the host's real secrets directory or a real key. Drop ambient secret names too,
 # without printing their values.
 HOME=$(mktemp -d)
 export HOME

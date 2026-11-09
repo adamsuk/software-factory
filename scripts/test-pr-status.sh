@@ -408,12 +408,33 @@ pass
 tname="default repos, no arguments"
 : > "$log"
 status=0
-"$script" > "$stdout_file" 2> "$stderr_file" || status=$?
+FACTORY_REPOS="adamsuk/software-factory adamsuk/line adamsuk/gh-factory adamsuk/activity-feed" \
+  "$script" > "$stdout_file" 2> "$stderr_file" || status=$?
 assert_status 0
 for r in adamsuk/software-factory adamsuk/line adamsuk/gh-factory adamsuk/activity-feed; do
   grep -qF "$(printf 'pr\x1flist\x1f--repo\x1f%s\x1f--state\x1fopen\x1f--limit\x1f1000\x1f--json\x1fnumber,author,headRefOid,baseRefName' "$r")" "$log" \
     || fail "did not list $r by default"
 done
+pass
+
+tname="FACTORY_REPOS defaults to FACTORY_HOME_REPO"
+: > "$log"
+status=0
+(unset FACTORY_REPOS GITHUB_REPOSITORY; export FACTORY_HOME_REPO=o/home
+  exec "$script" > "$stdout_file" 2> "$stderr_file") || status=$?
+assert_status 0
+grep -qF "$(printf 'pr\x1flist\x1f--repo\x1f%s\x1f--state\x1fopen' o/home)" "$log" \
+  || fail "did not list FACTORY_HOME_REPO by default"
+[[ $(grep -c "$(printf 'pr\x1flist\x1f')" "$log") -eq 1 ]] || fail "listed more than FACTORY_HOME_REPO"
+pass
+
+tname="no default repo is a usage error"
+: > "$log"
+status=0
+(unset FACTORY_REPOS GITHUB_REPOSITORY FACTORY_HOME_REPO
+  exec "$script" > "$stdout_file" 2> "$stderr_file") || status=$?
+assert_status 2
+assert_no_output
 pass
 
 tname="a bad repo argument is a usage error"

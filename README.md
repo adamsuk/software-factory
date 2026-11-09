@@ -91,6 +91,36 @@ environment. Shell lint requires `shellcheck` **0.11.0**, the version CI pins in
 Install it from the [official release](https://github.com/koalaman/shellcheck/releases/tag/v0.11.0)
 (or `brew install shellcheck` if it gives 0.11.0) and check `shellcheck --version`.
 
+## Environment
+
+The scripts and the watcher read their machine paths and owner settings from
+these variables, so they run on any machine and for any owner. Unset means the
+default below.
+
+| Variable | Default | Used for |
+| --- | --- | --- |
+| `FACTORY_HOME` | `${XDG_DATA_HOME:-$HOME/.local/share}/software-factory` | base directory every path below derives from |
+| `FACTORY_WATCH_ROOT` | `$FACTORY_HOME/factory-watch` | watcher root: logs, `state/`, orders |
+| `FACTORY_BUDGET_FILE` | `$FACTORY_HOME/factory-budget.json` | watcher budget |
+| `FACTORY_LEDGER_FILE` | `$FACTORY_HOME/factory-ledger.csv` | run ledger |
+| `FACTORY_CLONE_ROOT` | `$FACTORY_HOME` | parent of the `wo-*` build clones |
+| `FACTORY_WORKSPACE` | `$FACTORY_HOME` | clone root for `scripts/run-work-order.sh` (falls back to a loud temp dir when unusable) |
+| `FACTORY_HOME_REPO` | `$GITHUB_REPOSITORY`, then the `origin` remote of the current checkout, then `gh repo view` | `owner/repo` that holds work orders and epics |
+| `FACTORY_REPOS` | `$FACTORY_HOME_REPO` | space-separated `owner/repo` list the watcher works on; default for `pr-status.sh`, `review-bot-metrics.sh --all` and `factory-flagged.sh` |
+| `FACTORY_APPROVER_LOGIN` | owner part of `FACTORY_HOME_REPO` | human login whose comments count as approval (`<!-- factory:approve -->`) or factory review |
+| `FACTORY_BLOCKED_OWNERS` | empty (none) | space-separated owners the watcher never clones, modifies or merges |
+| `FACTORY_SECRETS_DIR` | `$HOME/.factory-secrets` | secrets directory the Claude Code backend is denied (`Read(/<absolute path>/**)`) |
+| `FACTORY_BOARD_OWNER` | unset (board sync off) | project board owner |
+| `FACTORY_BOARD_NUMBER` | unset (board sync off) | project board number |
+| `FACTORY_BOARD_PROJECT_ID` | unset (board sync off) | project node id |
+| `FACTORY_BOARD_FIELD_ID` | unset (board sync off) | node id of the `factory status` field |
+| `FACTORY_BOARD_OPTIONS` | unset (board sync off) | JSON object: status name to option id |
+| `TMPDIR` | `/tmp` | where `scripts/station-run.sh` makes its temp directories |
+
+With any `FACTORY_BOARD_*` variable unset, `board-sync.sh` prints `board sync
+not configured` and exits 0. More detail on the watcher's variables is in
+[`scripts/watcher/README.md`](scripts/watcher/README.md).
+
 ## Audits
 
 - [`audits/2026-10-24.md`](audits/2026-10-24.md): the first Line audit.
@@ -109,8 +139,8 @@ Audits are read-only and never print secret values.
 ## Working from the board
 
 Your GitHub Project board is the place to work. To set one up, create a GitHub
-Project for the repo owner and point `scripts/watcher/board-sync.sh` at its
-owner and project number. That script keeps the board in step with the labels,
+Project for the repo owner and point `scripts/watcher/board-sync.sh` at it with
+the `FACTORY_BOARD_*` variables (see [Environment](#environment)). That script keeps the board in step with the labels,
 one way only: **labels are the source of truth** (AGENTS.md §9), so nothing the
 board shows can overwrite them, and nothing can loop.
 

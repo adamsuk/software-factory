@@ -14,6 +14,10 @@ fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 export FACTORY_WATCH_ROOT="$work/root"
 export FACTORY_BUDGET_FILE="$work/budget.json"
 export FACTORY_LEDGER_FILE="$work/ledger.csv"
+# Fixture repos. The watcher reads its allowlist and home repo from these.
+export FACTORY_HOME_REPO=adamsuk/software-factory
+export FACTORY_REPOS="adamsuk/software-factory adamsuk/gh-factory adamsuk/activity-feed adamsuk/line adamsuk/adamsuk"
+unset FACTORY_BLOCKED_OWNERS
 export GH_ROOT="$work/gh"
 export GH_LOG="$work/gh.log"
 # The watcher sets these when sourced. t_budget also runs before that.
