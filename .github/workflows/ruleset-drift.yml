@@ -31,6 +31,6 @@ jobs:
           # enrolled private repo. Script extensions pin by commit, not tag (gh's own
           # --pin docs).
           gh extension install adamsuk/gh-factory --pin 5326ede2333944e41e90ab6d7650a7c2b307db0a
-          # Explicit owners: without --owner, plan searches only the token's own account
-          # and can find zero repos. The scheduled run covers adamsuk only.
-          bash scripts/ruleset-drift-check.sh --owner adamsuk
+          # Explicit owner: without --owner, plan searches only the token's own account
+          # and can find zero repos. The scheduled run covers this repo's owner only.
+          bash scripts/ruleset-drift-check.sh --owner "${{ github.repository_owner }}"

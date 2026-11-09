@@ -879,6 +879,11 @@ grep -F -q 'scripts/factory-label-metrics.sh' "$monitor" || fail "monitor omits 
 grep -F -q 'scripts/factory-pr-metrics.sh' "$monitor" || fail "monitor omits pull request metrics"
 grep -F -q 'scripts/factory-delivery-metrics.sh' "$monitor" || fail "monitor omits delivery metrics"
 grep -F -q 'FACTORY_LEDGER_FILE' "$monitor" || fail "monitor omits FACTORY_LEDGER_FILE"
+# shellcheck disable=SC2016 # literal env vars in the brief, not an expansion
+grep -F -q '`$FACTORY_LEDGER_FILE`, defaulting to `$FACTORY_HOME/factory-ledger.csv`, where `$FACTORY_HOME` defaults to `${XDG_DATA_HOME:-$HOME/.local/share}/software-factory`' "$monitor" || fail "monitor omits the configurable ledger default"
+if grep -F -q '/workspace/factory-ledger.csv' "$monitor"; then
+  fail "monitor brief hardcodes the live ledger path"
+fi
 grep -F -q 'factory-ledger.csv' "$monitor" || fail "monitor omits the ledger file"
 readme=$repo_root/README.md
 # shellcheck disable=SC2016  # literal README text, not expansion

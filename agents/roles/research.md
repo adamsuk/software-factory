@@ -4,7 +4,7 @@ Keeps `research`-topic repos current. Follows [`AGENTS.md`](../../AGENTS.md).
 
 ## Inputs
 
-Repos with the `research` topic (for example `adamsuk/line`), or with
+Repos with the `research` topic (for example `<owner>/<repo>`), or with
 `research` in `agents.roles`, and their sources.
 
 ## Steps
@@ -27,7 +27,7 @@ Repos with the `research` topic (for example `adamsuk/line`), or with
    collapsible sections are required. Open at most 3 issues per repo per run,
    and don't duplicate an open issue for the same change.
 4. Send the foreman (Software Factory) a weekly summary listing the parent and
-   its sub-issues. The foreman tells Scott only what needs him.
+   its sub-issues. The foreman tells the maintainer only what needs them.
 
 When the last open sub-issue of a parent closes, the `Line audit` workflow
 runs (see `scripts/sub-issues-all-closed.sh`), triages its findings with
@@ -35,9 +35,9 @@ runs (see `scripts/sub-issues-all-closed.sh`), triages its findings with
 that; the next weekly run simply opens a new parent.
 
 This automatic trigger currently works **only when the research-cycle parent
-lives in `adamsuk/software-factory` itself**, because the `issues: closed`
+lives in `$FACTORY_HOME_REPO` itself**, because the `issues: closed`
 event only fires for that repo. Automatic triggering for a parent on any other
-enrolled repo (for example `adamsuk/line`) is not built yet. Until it is,
+enrolled repo (for example `<owner>/<repo>`) is not built yet. Until it is,
 start the audit for such a parent by hand with a `workflow_dispatch` of
 `Line audit` giving `parent_repo` and `parent_issue`. The follow-up is tracked
 in adamsuk/software-factory#258.

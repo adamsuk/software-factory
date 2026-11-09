@@ -12,12 +12,12 @@ repo's `AGENTS.md` and `.github/factory.yml` (`agents.test_command`,
 
 ## Steps
 
-1. Work in a fresh, uniquely named clone under `/workspace`, on the work
+1. Work in a fresh, uniquely named clone under `$FACTORY_WORKSPACE`, on the work
    order's branch.
 2. Read the relevant code, make the smallest change that meets the acceptance
    criteria, and add tests. You may add fixture or test data to an existing
    test only if no existing assertion is changed, removed or weakened, and the
-   PR body must say so; anything more to an existing test goes to Scott
+   PR body must say so; anything more to an existing test goes to the maintainer
    (AGENTS.md §5).
    **Review comment fixes (§10):** 
    - CodeRabbit may fix via `@coderabbitai fix comments` only on **ordinary PRs**.
