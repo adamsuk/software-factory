@@ -100,7 +100,6 @@ fixed_needles=(
   'github_pat_'
   '/home/'
   '/Users/'
-  'clubsPlatform'
 )
 
 while IFS= read -r -d '' file; do

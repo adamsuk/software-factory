@@ -3,6 +3,53 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-09 (watcher deny-list)
+
+### Changed
+
+- Dropped a private project-name needle from the watcher-tree test's
+  deny-list, so the published tree no longer contains it (#291).
+
+## 2026-11-09
+
+### Added
+
+- A standard MIT `LICENSE` file at the repo root (#288).
+
+## 2026-11-08 (publication hardening, second pass)
+
+### Changed
+
+- `README.md` and the five committed Line audits (`audits/2026-10-24.md`
+  through `audits/2026-11-03.md`) no longer name a handful of operational
+  specifics the first redaction pass (#282) didn't reach: an analytics
+  project id, a database/billing architecture aside, an internal-services
+  list, several GitHub ruleset ids, Cloudflare deployment ids, GitHub
+  Actions workflow-run ids/links, and the mechanics of how an installation
+  token gets minted (the finding that the token is cached and reused, not
+  minted fresh per run, is unchanged). Every date, score, sample count and
+  finding in the audits reads identically to the version before this pass;
+  nothing was deleted or re-scored. `README.md` now also notes that these
+  identifiers were generalised after the fact for publication (#286).
+
+## 2026-11-08
+
+### Changed
+
+- `README.md` and the three Line audits dated 24/25/26 October 2026 no
+  longer name the org's private delivery-project repos directly; they now
+  describe them generically ("the delivery app", "the second delivery
+  app"). Dates, scores, sample limits, security findings and stated
+  uncertainty in the audits are unchanged, and no audit file was deleted
+  (#282).
+
+### Removed
+
+- 59 generated work-order files under `agents/work-orders/` whose backing
+  pull request is merged and whose filename had no other reference in the
+  repo. Their source issues are not closed by this cleanup and may stay
+  open by design (#282).
+
 ## 2026-11-07
 
 ### Fixed
