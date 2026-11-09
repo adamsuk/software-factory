@@ -4,7 +4,7 @@
 #
 # On retry, and on blocked for repeat or cap, the script writes
 # <work-order>.red-record with one line per current red required check, in
-# the same order as the red: list: "<name> <new|seen-before> Scott". A name
+# the same order as the red: list: "<name> <new|seen-before> maintainer". A name
 # is seen-before only when that exact name is an item on the red: line of
 # any earlier <!-- factory:gate --> comment, split on ", ". The sentinel
 # "red: -" is not a check name. Stdout stays the one outcome word, and the
@@ -381,7 +381,7 @@ assert_one_comment "$(cat << 'EOF'
 red: Analyze (javascript-typescript)
 EOF
 )"
-assert_record "Analyze (javascript-typescript) new Scott"
+assert_record "Analyze (javascript-typescript) new maintainer"
 pass
 
 # --- older marker, not the latest; attempt 2 stays retry -------------------
@@ -409,9 +409,9 @@ red: Alpha, Gamma, NewOne
 EOF
 )"
 assert_record \
-  "Alpha seen-before Scott" \
-  "Gamma new Scott" \
-  "NewOne new Scott"
+  "Alpha seen-before maintainer" \
+  "Gamma new maintainer" \
+  "NewOne new maintainer"
 pass
 
 # --- split on ", " ; latest list differs, so retry -------------------------
@@ -437,8 +437,8 @@ red: A,B, C D
 EOF
 )"
 assert_record \
-  "A,B seen-before Scott" \
-  "C D seen-before Scott"
+  "A,B seen-before maintainer" \
+  "C D seen-before maintainer"
 pass
 
 # --- exact name, not a prefix ------------------------------------------------
@@ -462,8 +462,8 @@ red: Shell, ShellCheck
 EOF
 )"
 assert_record \
-  "Shell seen-before Scott" \
-  "ShellCheck new Scott"
+  "Shell seen-before maintainer" \
+  "ShellCheck new maintainer"
 pass
 
 # --- repeat: newest comment by time, not array order ------------------------
@@ -487,12 +487,12 @@ assert_one_comment "$(cat << 'EOF'
 <!-- factory:gate -->
 blocked: repeat
 red: Alpha, Beta
-Scott must act.
+The maintainer must act.
 EOF
 )"
 assert_record \
-  "Alpha seen-before Scott" \
-  "Beta seen-before Scott"
+  "Alpha seen-before maintainer" \
+  "Beta seen-before maintainer"
 pass
 
 # --- cap still caps when the list is new or seen-before ---------------------
@@ -517,13 +517,13 @@ assert_one_comment "$(cat << 'EOF'
 <!-- factory:gate -->
 blocked: cap
 red: Alpha, Beta, Gamma
-Scott must act.
+The maintainer must act.
 EOF
 )"
 assert_record \
-  "Alpha seen-before Scott" \
-  "Beta seen-before Scott" \
-  "Gamma new Scott"
+  "Alpha seen-before maintainer" \
+  "Beta seen-before maintainer" \
+  "Gamma new maintainer"
 pass
 
 # --- sentinel on the latest marker is not a name; older name still counts ---
@@ -549,8 +549,8 @@ red: Beta, Gamma
 EOF
 )"
 assert_record \
-  "Beta seen-before Scott" \
-  "Gamma new Scott"
+  "Beta seen-before maintainer" \
+  "Gamma new maintainer"
 pass
 
 # A required check named "-" repeats when the latest red: line is the
@@ -573,10 +573,10 @@ assert_one_comment "$(cat << 'EOF'
 <!-- factory:gate -->
 blocked: repeat
 red: -
-Scott must act.
+The maintainer must act.
 EOF
 )"
-assert_record "- new Scott"
+assert_record "- new maintainer"
 pass
 
 # --- outcomes that must not write a record ----------------------------------
@@ -644,7 +644,7 @@ assert_one_comment "$(cat << 'EOF'
 <!-- factory:gate -->
 blocked: no-required-checks
 red: -
-Scott must act.
+The maintainer must act.
 EOF
 )"
 assert_no_record

@@ -51,10 +51,19 @@ require_topic "env" "FACTORY_LEDGER_FILE"
 require_topic "env" "FACTORY_CLONE_ROOT"
 require_topic "env" "LANE"
 require_topic "env" "committed default"
-require_topic "env" "/workspace/factory-watch"
-require_topic "env" "/workspace/factory-budget.json"
-require_topic "env" "/workspace/factory-ledger.csv"
-require_topic "env" "\`/workspace\`"
+require_topic "env" "FACTORY_HOME"
+require_topic "env" "FACTORY_WORKSPACE"
+require_topic "env" "| \`FACTORY_HOME\` | \`\${XDG_DATA_HOME:-\$HOME/.local/share}/software-factory\` |"
+require_topic "env" "| \`FACTORY_WATCH_ROOT\` | \`\$FACTORY_HOME/factory-watch\` |"
+require_topic "env" "| \`FACTORY_BUDGET_FILE\` | \`\$FACTORY_HOME/factory-budget.json\` |"
+require_topic "env" "| \`FACTORY_LEDGER_FILE\` | \`\$FACTORY_HOME/factory-ledger.csv\` |"
+require_topic "env" "| \`FACTORY_CLONE_ROOT\` | \`\$FACTORY_HOME\` |"
+require_topic "env" "FACTORY_HOME_REPO"
+require_topic "env" "FACTORY_REPOS"
+require_topic "env" "FACTORY_APPROVER_LOGIN"
+require_topic "env" "<!-- factory:approve -->"
+require_topic "env" "FACTORY_BLOCKED_OWNERS"
+require_topic "env" "# >>> factory env"
 require_topic "env" "committed default is \`main\`"
 require_topic "state" "\$FACTORY_WATCH_ROOT/state/"
 require_topic "state" "per-PR markers"
@@ -79,27 +88,32 @@ require_topic "swap" "live script"
 require_topic "swap" "staged script"
 require_topic "swap" "LANE=build"
 require_topic "uncommitted" "State files, budget contents, ledger contents, and \`webhook.curl\` are not committed."
-require_topic "constants" "committed constants"
-require_topic "constants" "PVT_kwHOAYEAOs4Bo3vn"
-require_topic "constants" "PVTSSF_lAHOAYEAOs4Bo3vnzhnV1ik"
-require_topic "constants" "cdd562ca"
-require_topic "constants" "84a24ea9"
-require_topic "constants" "ed952d58"
-require_topic "constants" "9cfe6bd1"
-require_topic "constants" "befc9395"
-require_topic "constants" "240a84ea"
-require_topic "constants" "d53e0069"
-require_topic "constants" "c59dd1a6"
-require_topic "constants" "037f9c49"
+require_topic "board" "Board settings"
+require_topic "board" "not committed constants"
+require_topic "board" "FACTORY_BOARD_OWNER"
+require_topic "board" "FACTORY_BOARD_NUMBER"
+require_topic "board" "FACTORY_BOARD_PROJECT_ID"
+require_topic "board" "FACTORY_BOARD_FIELD_ID"
+require_topic "board" "FACTORY_BOARD_OPTIONS"
+require_topic "board" "board sync not configured"
 
-# Fixed strings. The word token, a github.com URL, webhook.curl, a
-# /workspace default, and touchlineHQ are not in this list.
+# board-sync.sh reads every board setting from the environment.
+for board_var in FACTORY_BOARD_OWNER FACTORY_BOARD_NUMBER FACTORY_BOARD_PROJECT_ID \
+  FACTORY_BOARD_FIELD_ID FACTORY_BOARD_OPTIONS; do
+  grep -F -q -- "$board_var" "$watch/board-sync.sh" || fail "board-sync.sh does not read ${board_var}"
+done
+
+# Fixed strings. The word token, a github.com URL, webhook.curl, and the
+# FACTORY_HOME defaults are not in this list. Project node ids (PVT_, PVTSSF_)
+# are configuration, never committed.
 fixed_needles=(
   'ghp_'
   'gho_'
   'github_pat_'
   '/home/'
   '/Users/'
+  'PVT_'
+  'PVTSSF_'
 )
 
 while IFS= read -r -d '' file; do

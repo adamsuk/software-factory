@@ -478,7 +478,7 @@ assert_one_comment "$(cat << 'EOF'
 <!-- factory:gate -->
 blocked: repeat
 red: ShellCheck
-Scott must act.
+The maintainer must act.
 EOF
 )"
 
@@ -499,7 +499,7 @@ assert_one_comment "$(cat << 'EOF'
 <!-- factory:gate -->
 blocked: cap
 red: ShellCheck
-Scott must act.
+The maintainer must act.
 EOF
 )"
 
@@ -560,7 +560,7 @@ assert_one_comment "$(cat << 'EOF'
 <!-- factory:gate -->
 blocked: no-required-checks
 red: -
-Scott must act.
+The maintainer must act.
 EOF
 )"
 assert_no_arg checks
@@ -688,7 +688,7 @@ assert_one_comment "$(cat << 'EOF'
 <!-- factory:gate -->
 blocked: repeat
 red: ShellCheck
-Scott must act.
+The maintainer must act.
 EOF
 )"
 

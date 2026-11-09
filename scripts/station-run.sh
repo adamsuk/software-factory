@@ -23,7 +23,7 @@ tree_sum() {
 }
 
 if [[ -z "${FACTORY_SNAPSHOT_DIR:-}" ]]; then
-  snap="$(mktemp -d /tmp/station-snap-XXXXXX)"
+  snap="$(mktemp -d "${TMPDIR:-/tmp}/station-snap-XXXXXX")"
   trap 'rm -rf "$snap"' EXIT
   for p in "${snapshot_paths[@]}"; do
     if [[ -e "$here/$p" ]]; then
@@ -150,7 +150,7 @@ else
 fi
 
 # Build context bundle
-bundle_dir="$(mktemp -d /tmp/station-bundle-XXXXXX)"
+bundle_dir="$(mktemp -d "${TMPDIR:-/tmp}/station-bundle-XXXXXX")"
 trap 'rm -rf "$bundle_dir" "$script_root"' EXIT  # replaced by cleanup_station once a sandbox may exist
 
 # Copy canonical files
@@ -305,7 +305,7 @@ if $read_only; then
   unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
     GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_CEILING_DIRECTORIES
   head_sha=$(git -C "$here" rev-parse HEAD) || die 7 "could not read HEAD"
-  ro_sandbox="$(mktemp -d /tmp/station-ro-XXXXXX)"
+  ro_sandbox="$(mktemp -d "${TMPDIR:-/tmp}/station-ro-XXXXXX")"
   # A clone, not a worktree. A linked worktree shares .git/config with the real
   # repository, so removing the worktree's origin removes the repository's own
   # remote. That happened while building #142 and broke push until origin was
@@ -365,7 +365,7 @@ if ! $read_only && [[ "$role" == "builder" && "$provider" != "grok" && -n "$work
     [[ "$target_repo" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] \
       || die 2 "work order repo is not owner/repo: $target_repo"
     command -v git > /dev/null 2>&1 || die 2 "git not found in PATH"
-    xr_sandbox="$(mktemp -d /tmp/station-xr-XXXXXX)"
+    xr_sandbox="$(mktemp -d "${TMPDIR:-/tmp}/station-xr-XXXXXX")"
     git clone --quiet "${FACTORY_CLONE_BASE:-https://github.com}/$target_repo" "$xr_sandbox/repo" \
       || die 7 "could not clone $target_repo"
     workdir="$xr_sandbox/repo"

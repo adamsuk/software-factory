@@ -5,7 +5,7 @@ set -euo pipefail
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # Private HOME before any factory script runs, so this suite never opens
-# /home/box/.factory-secrets or a real key. Drop ambient secret names and the
+# the host's real secrets directory or a real key. Drop ambient secret names and the
 # backend switch too, without printing their values.
 HOME=$(mktemp -d)
 export HOME
@@ -14,7 +14,8 @@ unset GH_TOKEN GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN \
   FACTORY_GH_APP_ENV_FILE FACTORY_GH_APP_PRIVATE_KEY \
   AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_SECURITY_TOKEN \
   GOOGLE_APPLICATION_CREDENTIALS CLOUDSDK_AUTH_ACCESS_TOKEN AZURE_CLIENT_SECRET \
-  ANTHROPIC_API_KEY FACTORY_LLM CLAUDE_BIN CLAUDE_MAX_TURNS GROK_MAX_TURNS
+  ANTHROPIC_API_KEY FACTORY_LLM CLAUDE_BIN CLAUDE_MAX_TURNS GROK_MAX_TURNS \
+  FACTORY_SECRETS_DIR
 # shellcheck source=scripts/run-work-order.sh
 source "$here/run-work-order.sh"
 
@@ -32,9 +33,23 @@ case "$HOME" in
   /tmp/*|/var/tmp/*|"${TMPDIR:-/tmp}"/*) ;;
   *) fail "HOME is not a mktemp directory" ;;
 esac
-[[ "$HOME" != /home/box ]] || fail "HOME is the box home"
+[[ "$HOME" != /home/* && "$HOME" != /Users/* ]] || fail "HOME is a real user home"
 [[ ! -e "$HOME/.factory-secrets" ]] || fail "fake HOME contains factory-secrets"
-[[ ! -e /home/box/.factory-secrets ]] || true # never read below, regardless
+
+# The deny rule is built from the absolute secrets directory and keeps the
+# leading // anchor: Read(/<absolute path>/**).
+tname="secrets-deny-rule-default-home"
+assert_eq "$(secrets_deny_rule)" "Read(/${HOME}/.factory-secrets/**)"
+[[ "$(secrets_deny_rule)" == "Read(//"* ]] || fail "default deny rule is not //-anchored"
+tname="secrets-deny-rule-env"
+assert_eq "$(FACTORY_SECRETS_DIR="$ROOT/keys" secrets_deny_rule)" "Read(/${ROOT}/keys/**)"
+assert_eq "$(FACTORY_SECRETS_DIR="$ROOT/keys/" secrets_deny_rule)" "Read(/${ROOT}/keys/**)"
+tname="secrets-deny-rule-relative-env-is-made-absolute"
+assert_eq "$(cd "$ROOT" && FACTORY_SECRETS_DIR=rel-keys secrets_deny_rule)" "Read(/$(cd "$ROOT" && pwd)/rel-keys/**)"
+tname="secrets-deny-rule-root-refused"
+if FACTORY_SECRETS_DIR=/ secrets_deny_rule > /dev/null; then
+  fail "a deny rule for / was built"
+fi
 
 run_fail() {
   local want=$1
@@ -160,7 +175,7 @@ claude_block=$(printf '%s\n' "$main_src" | awk -v a="$else_line" -v b="$fi_line"
 [[ "$claude_block" == *"cd "* ]] || fail "claude branch does not cd (claude has no --cwd)"
 [[ "$claude_block" == *"--permission-mode bypassPermissions"* ]] \
   || fail "claude branch does not bypass permissions (parity with --always-approve)"
-[[ "$claude_block" == *"factory-secrets"* ]] || fail "claude branch does not guard /home/box/.factory-secrets"
+[[ "$claude_block" == *"factory-secrets"* ]] || fail "claude branch does not guard the factory-secrets directory"
 [[ "$claude_block" == *"WebSearch"* && "$claude_block" == *"WebFetch"* ]] \
   || fail "claude branch does not disallow WebSearch/WebFetch (parity with --disable-web-search)"
 [[ "$claude_block" == *"-u ANTHROPIC_API_KEY"* ]] || fail "claude branch does not scrub ANTHROPIC_API_KEY"
@@ -186,9 +201,11 @@ done
 # mock claude on PATH that records its environment, args, cwd and stdin.
 
 run_claude_block() {
-  local subtype=$1 is_error=$2 want_stop=$3
-  tname="claude-run-${subtype}-${is_error}"
-  local work=$ROOT/claude-run-$subtype-$is_error
+  local subtype=$1 is_error=$2 want_stop=$3 secrets_dir=${4:-}
+  tname="claude-run-${subtype}-${is_error}${secrets_dir:+-secrets-dir}"
+  local work=$ROOT/claude-run-$subtype-$is_error${secrets_dir:+-secrets-dir}
+  local want_deny="Read(/${HOME}/.factory-secrets/**)"
+  [[ -z "$secrets_dir" ]] || want_deny="Read(/${secrets_dir}/**)"
   mkdir -p "$work/bin"
   dir=$work/clone
   mkdir -p "$dir"
@@ -231,6 +248,9 @@ MOCK
     export AZURE_CLIENT_SECRET=sentinel-azure-secret
     export GIT_ASKPASS=sentinel-git-askpass SSH_AUTH_SOCK=sentinel-ssh-auth-sock
     export GH_REPO=acme/widgets GH_HOST=github.example
+    if [[ -n "$secrets_dir" ]]; then
+      export FACTORY_SECRETS_DIR=$secrets_dir
+    fi
     claude_bin=claude
     PATH="$work/bin:$ORIG_PATH"
     export PATH
@@ -262,8 +282,9 @@ MOCK
   grep -qF -- "--permission-mode bypassPermissions" "$work/args.txt" || fail "permission mode missing"
   grep -qF -- "--setting-sources user" "$work/args.txt" \
     || fail "claude branch does not restrict setting sources to user (cloned repo could run a startup hook)"
-  grep -qF -- "Read(//home/box/.factory-secrets/**)" "$work/args.txt" \
-    || fail "claude branch does not //-anchor the factory-secrets Read deny"
+  [[ "$want_deny" == "Read(//"* ]] || fail "expected deny rule is not //-anchored: $want_deny"
+  grep -qF -- "$want_deny" "$work/args.txt" \
+    || fail "claude branch does not //-anchor the factory-secrets Read deny ($want_deny): $(cat "$work/args.txt")"
   grep -qF -- "Bash(*factory-secrets*)" "$work/args.txt" || fail "factory-secrets Bash guard missing from args"
   grep -qF -- "Bash(git push*)" "$work/args.txt" || fail "git push deny missing from disallowedTools"
   grep -qF -- "Bash(gh *)" "$work/args.txt" || fail "gh deny missing from disallowedTools"
@@ -287,6 +308,7 @@ MOCK
 run_claude_block success false end_turn
 run_claude_block error_max_turns false max_turn_requests
 run_claude_block error_during_execution true error_during_execution
+run_claude_block success false end_turn "$ROOT/custom-secrets"
 
 tname="claude-max-turns-env"
 work=$ROOT/claude-max-turns

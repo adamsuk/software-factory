@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Behaviour tests for scripts/factory-delivery-metrics.sh.
 # A fake gh is the only gh on PATH. This file never calls the real gh.
-# Fixtures are files under a temp directory. This file does not read
-# /workspace/factory-ledger.csv.
+# Fixtures are files under a temp directory. This file does not read the
+# live ledger (FACTORY_LEDGER_FILE, default $FACTORY_HOME/factory-ledger.csv).
 set -euo pipefail
 
 tname=startup
@@ -34,9 +34,12 @@ read -r shebang < "$metrics"
 [[ "$shebang" == "#!/usr/bin/env bash" ]] || fail "metrics shebang is [$shebang]"
 read -r shebang < "$here/test-factory-delivery-metrics.sh"
 [[ "$shebang" == "#!/usr/bin/env bash" ]] || fail "test shebang is [$shebang]"
-if grep -F -q '/workspace/factory-ledger.csv' "$metrics"; then
+# The ledger is always --ledger PATH: no ledger path, in any directory, and no
+# FACTORY_HOME default is baked into the metrics script.
+if grep -E -q 'factory-ledger\.csv|FACTORY_HOME' "$metrics"; then
   fail "metrics script hardcodes the live ledger path"
 fi
+live_ledger="${FACTORY_LEDGER_FILE:-${FACTORY_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/software-factory}/factory-ledger.csv}"
 
 root=$(mktemp -d)
 trap 'rm -rf "$root"' EXIT
@@ -190,7 +193,7 @@ prepare() {
 run_script() {
   local arg
   for arg in "$@"; do
-    [[ "$arg" != "/workspace/factory-ledger.csv" ]] || fail "refusing to pass the live ledger"
+    [[ "$arg" != "$live_ledger" && "$arg" != */factory-ledger.csv ]] || fail "refusing to pass the live ledger"
   done
   : > "$log"
   status=0
@@ -876,7 +879,14 @@ grep -F -q 'scripts/factory-label-metrics.sh' "$monitor" || fail "monitor omits 
 grep -F -q 'scripts/factory-pr-metrics.sh' "$monitor" || fail "monitor omits pull request metrics"
 grep -F -q 'scripts/factory-delivery-metrics.sh' "$monitor" || fail "monitor omits delivery metrics"
 grep -F -q 'FACTORY_LEDGER_FILE' "$monitor" || fail "monitor omits FACTORY_LEDGER_FILE"
-grep -F -q '/workspace/factory-ledger.csv' "$monitor" || fail "monitor omits the committed ledger default"
+grep -F -q 'factory-ledger.csv' "$monitor" || fail "monitor omits the ledger file"
+readme=$repo_root/README.md
+# shellcheck disable=SC2016  # literal README text, not expansion
+grep -F -q '| `FACTORY_LEDGER_FILE` | `$FACTORY_HOME/factory-ledger.csv` |' "$readme" \
+  || fail "README omits the committed ledger default"
+# shellcheck disable=SC2016  # literal README text, not expansion
+grep -F -q '| `FACTORY_LEDGER_FILE` | `$FACTORY_HOME/factory-ledger.csv` |' "$repo_root/scripts/watcher/README.md" \
+  || fail "watcher README omits the committed ledger default"
 grep -F -q 'ShellCheck' "$monitor" || fail "monitor omits ShellCheck"
 grep -F -q 'changelog / changelog' "$monitor" || fail "monitor omits changelog / changelog"
 grep -F -q -- '--required-check' "$monitor" || fail "monitor omits --required-check"
