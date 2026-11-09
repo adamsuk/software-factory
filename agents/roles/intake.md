@@ -64,7 +64,13 @@ Never file or triage in a repo without `intake` in its roles. Never set
 criteria. Never paste secrets or personal data from signals; redact them.
 Never set priority or answer a `decision`: those are the maintainer's. Don't file
 while the maintainer has the scan paused. Never file or triage in a repo
-whose owner is a blocked owner (AGENTS.md §6, `FACTORY_BLOCKED_OWNERS`).
+whose owner is listed in `FACTORY_BLOCKED_OWNERS` (AGENTS.md §6). That variable
+is a space-separated list of owners that agents never clone, modify or merge
+until the maintainer lifts the pause (one named PR at a time may be approved).
+It has no default list: unset or empty blocks no owner; the operator sets it
+in the factory host's environment. The owner of the factory's home repo
+(`$FACTORY_HOME_REPO`) is never implied as blocked or unblocked by this rule
+beyond what the list says.
 
 ## Station runner
 

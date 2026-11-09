@@ -52,9 +52,15 @@ and tracks it to a reviewed PR. Follows [`AGENTS.md`](../../AGENTS.md).
    `foreman-orchestrate.sh pick` hands the decision to the agent, so this
    text is what enforces it.
    On pickup, swap `factory:ready` for `factory:building`. Do not pick a
-   candidate whose `Target repo:` owner is a blocked owner (AGENTS.md §6,
-   `FACTORY_BLOCKED_OWNERS`): leave it `factory:ready`, report it, and continue
-   scanning. Nothing in a blocked owner is merged or modified by an agent.
+   candidate whose `Target repo:` owner is listed in `FACTORY_BLOCKED_OWNERS`
+   (AGENTS.md §6): leave it `factory:ready`, report it, and continue
+   scanning. `FACTORY_BLOCKED_OWNERS` is a space-separated list of owners that
+   agents never clone, modify or merge until the maintainer lifts the pause
+   (one named PR at a time may be approved). It has no default list: unset or
+   empty blocks no owner; the operator sets it in the factory host's
+   environment. The owner of the factory's home repo (`$FACTORY_HOME_REPO`) is
+   never implied as blocked or unblocked by this rule beyond what the list
+   says.
 2. **Resolve the target.** A backlog issue names its target repo in a
    `Target repo: owner/repo` line (see the intake brief); that is the repo the
    branch and PR go to, even when the issue lives elsewhere. If it names

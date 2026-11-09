@@ -103,12 +103,14 @@ maintainer's review. Never make it as part of a fix-loop attempt.
        Reviewer's review, with no unresolved should-fix items, is required.
 - If `agents.review_bot` is unset, treat it as `none`; don't wait for a bot
   that doesn't review the repo.
-- **Blocked owners: merge pause.** Even with `agents.merge: true`, nothing in
-  an owner (user or organisation) listed in `FACTORY_BLOCKED_OWNERS` is merged
-  or modified by an agent until the maintainer lifts the pause for that owner.
-  The maintainer may approve one named PR at a time. If the list is unset,
-  empty or cannot be read, treat every owner other than this repo's own owner
-  as blocked.
+- **Blocked owners: merge pause.** `FACTORY_BLOCKED_OWNERS` is a
+  space-separated list of owners (users or organisations). Even with
+  `agents.merge: true`, agents never clone, modify or merge anything in a
+  listed owner until the maintainer lifts the pause for that owner. The
+  maintainer may approve one named PR at a time. The list has no default:
+  unset or empty blocks no owner; the operator sets it in the factory host's
+  environment. The owner of the factory's home repo (`$FACTORY_HOME_REPO`) is
+  never implied as blocked or unblocked by this rule beyond what the list says.
 - Never enable auto-merge, bypass a ruleset, force-push, or push to a default
   branch.
 

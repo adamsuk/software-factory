@@ -10,7 +10,7 @@ setup_command: ""
 changelog: true
 merge_allowed: false
 review_bot: coderabbit
-attempt: 1
+attempt: 2
 created: 2026-11-09
 ---
 
@@ -66,3 +66,14 @@ The maintainer authorised these protected-path edits on 9 Nov 2026 (Europe/Londo
 - Commit with a conventional message ending `(#294)`. Do not push, open PRs, or call `gh`; the runner does that.
 - Run `agents.test_command` plus every extra test named in the acceptance criteria before finishing, and fix failures.
 - Do not write the private delivery organisation's name anywhere (commit message, CHANGELOG, comments, tests).
+
+## Fix round (attempt 2): independent review findings on head 352934a
+
+The branch already contains the attempt-1 change. Make only these fixes, in this PR's own files. Do not delete files, change lockfiles or weaken tests.
+
+- SF1 `agents/grok-build.md`: the Claude backend snippet must not claim that the secrets Read deny follows `$FACTORY_SECRETS_DIR` today. Show the guard with a neutral placeholder such as `Read(//<absolute secrets dir>/**)`, and say the wrapper writes the absolute secrets directory with the leading `//` anchor. Keep the `Bash(*factory-secrets*)` guard text.
+- SF2 `agents/roles/monitor.md`: align the ledger default with the scripts in sibling PR #300: the ledger is `$FACTORY_LEDGER_FILE`, defaulting to `$FACTORY_HOME/factory-ledger.csv`, where `$FACTORY_HOME` defaults to `${XDG_DATA_HOME:-$HOME/.local/share}/software-factory` (see `scripts/watcher/README.md`). No machine path. Update the matching assertion in `scripts/test-factory-delivery-metrics.sh` to the new wording, and keep its negative check against a hard-coded ledger path. Neither check may get weaker.
+- SF3 and the blocked-owner design (one approach for both PRs, matching #300's scripts): in `AGENTS.md` §6, the foreman/intake briefs and the CHANGELOG entry, `FACTORY_BLOCKED_OWNERS` is a space-separated list of owners that agents never clone, modify or merge until the maintainer lifts the pause (one named PR at a time may be approved). It has no default list: **unset or empty blocks no owner**; the operator sets it in the factory host's environment. The owner of the factory's home repo (`$FACTORY_HOME_REPO`) is never implied as blocked or unblocked by this rule beyond what the list says. Remove the "unset blocks every owner other than this repo's own owner" fail-closed sentence and the ambiguous "this repo's own owner" phrase. Keep every other §6 merge condition unchanged.
+- Update this PR's CHANGELOG entry text if needed. Keep exactly one new entry.
+- Copy this work order over `agents/work-orders/adamsuk_software-factory-294.md`, keeping the placeholders for literal search terms.
+- Commit as `fix: address review findings (#294)`.

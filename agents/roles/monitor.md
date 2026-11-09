@@ -10,8 +10,7 @@ Grok Bot teammate. This file is the procedure. It does not grant permission to m
   All four are read-only. Read each one from the promoted release ref (`$REF`)
   only. All four are already on `main`.
 - One repository in this first version: `$FACTORY_HOME_REPO`.
-- The ledger path is `$FACTORY_LEDGER_FILE`. When it is unset, the default is
-  `factory-ledger.csv` under `$FACTORY_WORKSPACE`.
+- The ledger path is `$FACTORY_LEDGER_FILE`, defaulting to `$FACTORY_HOME/factory-ledger.csv`, where `$FACTORY_HOME` defaults to `${XDG_DATA_HOME:-$HOME/.local/share}/software-factory` (see `scripts/watcher/README.md`).
 
 The weekly procedure stays inactive until all four scripts can be read from
 `$REF`. If any of the four paths is missing on `$REF`, commit nothing and

@@ -9,13 +9,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - `AGENTS.md`, the role briefs, `agents/grok-build.md`, the CI comments and
   `.coderabbit.yaml` refer to the maintainer by role instead of by name, and
-  use `$FACTORY_WORKSPACE`, `$FACTORY_HOME_REPO`, `$FACTORY_LEDGER_FILE` and
-  `$FACTORY_SECRETS_DIR` instead of machine-specific paths and fixed repo
-  slugs. Approval identity is the repo owner, or `FACTORY_APPROVER_LOGIN`.
-- The organisation-specific merge pause in `AGENTS.md` §6 is now a generic
-  blocked-owners rule (`FACTORY_BLOCKED_OWNERS`): nothing in a listed owner is
-  merged or modified by an agent until the maintainer lifts it, and an unset
-  list blocks every owner other than this repo's own. No rule was weakened.
+  use `$FACTORY_WORKSPACE` and `$FACTORY_HOME_REPO` instead of machine-specific
+  paths and fixed repo slugs. Approval identity is the repo owner, or
+  `FACTORY_APPROVER_LOGIN`. The monitor ledger is `$FACTORY_LEDGER_FILE`,
+  defaulting to `$FACTORY_HOME/factory-ledger.csv`, where `$FACTORY_HOME`
+  defaults to `${XDG_DATA_HOME:-$HOME/.local/share}/software-factory`.
+- The Claude `Read` guard in `agents/grok-build.md` is the placeholder
+  `Read(//<absolute secrets dir>/**)`: the wrapper writes the absolute secrets
+  directory with the leading `//` anchor. The `Bash(*factory-secrets*)` guard
+  stays.
+- The organisation-specific merge pause in `AGENTS.md` §6 is a blocked-owners
+  rule (`FACTORY_BLOCKED_OWNERS`): a space-separated list of owners that
+  agents never clone, modify or merge until the maintainer lifts the pause.
+  The maintainer may approve one named PR at a time. The list has no default.
+  Unset or empty blocks no owner; the operator sets it in the factory host's
+  environment. The owner of `$FACTORY_HOME_REPO` is never implied as blocked
+  or unblocked beyond what the list says. Every other §6 merge condition is
+  unchanged.
 - The ruleset-drift workflow passes `--owner "${{ github.repository_owner }}"`
   instead of a fixed owner (#294).
 
