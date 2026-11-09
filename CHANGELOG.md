@@ -9,6 +9,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Triage asks the owner before `factory:ready`. When a ticket is ambiguous, or its done-checks are missing or not checkable, `scripts/triage-ask.sh` writes a numbered comment and the watcher posts it and withholds `factory:ready`. Target repo and size are multiple choice. Any other missing fact is a short free-text question. The owner's answers stay on the issue, and the script leaves acceptance criteria for the owner to write (#310).
 
+## 2026-11-09 (pull request size labels)
+
+### Added
+
+- `.github/workflows/size-label.yml` calls gh-factory's size-label workflow on
+  pull requests at the 10, 50, 200 and 500 line thresholds, and the reviewer
+  brief uses the resulting `size/L` and `size/XL` labels as the L/XL escalate
+  signal (#228).
+
 ## 2026-11-09 (generalised instructions)
 
 ### Changed
