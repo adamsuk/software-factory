@@ -240,7 +240,7 @@ with open(path, "w", encoding="utf-8") as handle:
 PY
 }
 
-default_repo=adamsuk/software-factory
+default_repo=acme/software-factory
 default_since=2026-10-20
 default_until=2026-10-27
 
