@@ -12,7 +12,7 @@
 # or skip. Never merges, opens a pull request, pushes, or edits the work
 # order. On retry, and on blocked for repeat or cap, also replaces
 # <work-order>.red-record with one line per current red required check:
-# "<name> <new|seen-before> Scott". review, pending, skip, and blocked for
+# "<name> <new|seen-before> maintainer". review, pending, skip, and blocked for
 # no-required-checks do not write that file. The comment body and the
 # one-word stdout stay as they are.
 set -euo pipefail
@@ -272,7 +272,7 @@ red_repeated() {
 }
 
 # Replace <work-order>.red-record. One line per current red check, in the
-# same LC_ALL=C order as the red: list: "<name> <new|seen-before> Scott".
+# same LC_ALL=C order as the red: list: "<name> <new|seen-before> maintainer".
 write_red_record() {
   local dest="${order}.red-record" tmp name flag
   tmp=$(mktemp "${dest}.XXXXXX") || die 7 "could not write red record"
@@ -285,7 +285,7 @@ write_red_record() {
     else
       flag=new
     fi
-    printf '%s %s Scott\n' "$name" "$flag" >> "$tmp"
+    printf '%s %s maintainer\n' "$name" "$flag" >> "$tmp"
   done < <(printf '%s\n' "${red_names[@]}" | LC_ALL=C sort)
   mv -f "$tmp" "$dest" || die 7 "could not write red record"
 }
@@ -318,7 +318,7 @@ apply_blocked() {
     "<!-- factory:gate -->" \
     "blocked: ${reason}" \
     "red: ${red_field}" \
-    "Scott must act.")
+    "The maintainer must act.")
   gh issue comment "$issue" --repo "$issue_repo" --body "$body" > /dev/null \
     || die 7 "could not comment"
   gh issue edit "$issue" --repo "$issue_repo" \
