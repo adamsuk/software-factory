@@ -3,6 +3,13 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-09 (watcher deny-list)
+
+### Changed
+
+- Dropped a private project-name needle from the watcher-tree test's
+  deny-list, so the published tree no longer contains it (#291).
+
 ## 2026-11-09
 
 ### Added
