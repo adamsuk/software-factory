@@ -10,7 +10,7 @@ setup_command: ""
 changelog: true
 merge_allowed: false
 review_bot: coderabbit
-attempt: 2
+attempt: 3
 created: 2026-11-08
 ---
 
@@ -21,6 +21,20 @@ created: 2026-11-08
      reworded both lines to drop that residual detail while keeping the cached-and-reused
      finding and the repository-scope uncertainty intact. No other source path touched
      this round. -->
+
+<!-- review-fix round 2 (PR #287), last permitted attempt under AGENTS.md §4: an
+     independent fresh read-only review of the full diff (size M by the reviewer
+     brief's own rule, not the L/XL this work order predicted) returned one new,
+     different finding: the owner's own explicit criterion to rewrite README.md's
+     opening lines as a public-facing project description, not only add a
+     historical-redaction caveat, was missed by attempt 2 -- the pre-existing
+     "private, on purpose" framing was left untouched. Fixed by rewriting the
+     opening lines to describe what the project does, while keeping the existing
+     visibility statement truthful (no visibility change), framing the audit gaps as
+     historical audit evidence (neither claimed fixed nor claimed still open), and keeping the generalisation caveat
+     paragraph from round 1 as a trailing addition rather than a patch on
+     unchanged wording. No audit file, finding, score, date or uncertainty
+     changed; no other source path touched this round. -->
 
 
 ## Goal
