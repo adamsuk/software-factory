@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Every 60s: for builds that exited 4 (protected paths) on issues Scott approved, push and open the PR.
+# Every 60s: for builds that exited 4 (protected paths) on issues the maintainer approved, push and open the PR.
 # shellcheck disable=SC2164 # || exit would add a failure branch
 cd "${FACTORY_WATCH_ROOT:-/workspace/factory-watch}"; touch state/autopush-done.txt
 while true; do [[ $((10#$(TZ=Europe/London date +%H))) -ge 7 ]] || { sleep 300; continue; };

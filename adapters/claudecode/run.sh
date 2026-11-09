@@ -66,7 +66,7 @@ claude_supports --print || die 3 "claude CLI in PATH does not support --print, n
 args=(--print)
 
 # Which model a station runs on is a factory decision, not a local accident.
-# Default sonnet (Scott, 2026-10-28); FACTORY_MODEL overrides it. Probed, so an
+# Default sonnet (maintainer decision, 2026-10-28); FACTORY_MODEL overrides it. Probed, so an
 # older CLI without --model still runs rather than failing.
 model="${FACTORY_MODEL:-sonnet}"
 if [[ -n "$model" ]] && claude_supports --model; then
