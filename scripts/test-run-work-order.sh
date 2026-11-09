@@ -5,7 +5,7 @@ set -euo pipefail
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # Private HOME before any factory script runs, so this suite never opens
-# /home/box/.factory-secrets or a real key. Drop ambient secret names too,
+# the host's real secrets directory or a real key. Drop ambient secret names too,
 # without printing their values.
 HOME=$(mktemp -d)
 export HOME
@@ -1360,17 +1360,39 @@ fi
 # --- bench clone root --------------------------------------------------------
 
 tname="bench-clone-root-default"
-unset FACTORY_WORKSPACE
-if [[ -d /workspace && -w /workspace && -x /workspace ]]; then
-  root_default=$(choose_clone_root)
-  assert_eq "$root_default" "/workspace"
-else
-  err_file=$ROOT/default-workspace.err
-  root_default=$(choose_clone_root 2>"$err_file")
-  [[ "$root_default" != "/workspace" ]] || fail "should fall back when /workspace unusable"
-  grep -Fq "clone root unusable: /workspace" "$err_file" || fail "missing fallback message: $(cat "$err_file")"
-  grep -Fq "falling back to $root_default" "$err_file" || fail "missing fallback target: $(cat "$err_file")"
-fi
+# Portable default: none of the factory vars set, a private HOME, no XDG.
+unset FACTORY_WORKSPACE FACTORY_CLONE_ROOT FACTORY_HOME XDG_DATA_HOME
+root_default=$(choose_clone_root)
+assert_eq "$root_default" "$HOME/.local/share/software-factory"
+[[ -d "$root_default" && -w "$root_default" ]] || fail "default root was not created"
+
+tname="bench-clone-root-xdg-default"
+root_xdg=$(XDG_DATA_HOME="$ROOT/xdg" choose_clone_root)
+assert_eq "$root_xdg" "$ROOT/xdg/software-factory"
+
+tname="bench-clone-root-factory-home"
+root_fh=$(FACTORY_HOME="$ROOT/factory-home" choose_clone_root)
+assert_eq "$root_fh" "$ROOT/factory-home"
+
+tname="bench-clone-root-factory-clone-root"
+root_cr=$(FACTORY_HOME="$ROOT/factory-home" FACTORY_CLONE_ROOT="$ROOT/clone-root" choose_clone_root)
+assert_eq "$root_cr" "$ROOT/clone-root"
+root_ws=$(FACTORY_CLONE_ROOT="$ROOT/clone-root" FACTORY_WORKSPACE="$ROOT/ws-wins" choose_clone_root)
+assert_eq "$root_ws" "$ROOT/ws-wins"
+
+tname="bench-clone-root-default-fallback"
+# The default root is unusable: the loud temp-dir fallback still applies.
+ro_home=$ROOT/ro-home
+mkdir -p "$ro_home"
+chmod 555 "$ro_home" || fail "chmod failed"
+err_file=$ROOT/default-root.err
+root_fb_default=$(HOME="$ro_home" choose_clone_root 2>"$err_file")
+chmod 755 "$ro_home" || true
+[[ "$root_fb_default" != "$ro_home"/* ]] || fail "should fall back when the default root is unusable"
+[[ -d "$root_fb_default" && -w "$root_fb_default" ]] || fail "fallback root not usable"
+grep -Fq "clone root unusable: $ro_home/.local/share/software-factory" "$err_file" \
+  || fail "missing fallback message: $(cat "$err_file")"
+grep -Fq "falling back to $root_fb_default" "$err_file" || fail "missing fallback target: $(cat "$err_file")"
 
 tname="bench-clone-root-explicit"
 export FACTORY_WORKSPACE="$ROOT/override-workspace"
@@ -1403,9 +1425,13 @@ unset FACTORY_WORKSPACE
 
 tname="bench-clone-root-main-no-literal-workspace"
 main_src=$(declare -f main)
-if printf '%s\n' "$main_src" | grep -Fq '/workspace'; then
-  fail "main still contains the literal /workspace"
-fi
+# No fixed machine directory in main or the clone-root helper: the root comes
+# from FACTORY_WORKSPACE, FACTORY_CLONE_ROOT or FACTORY_HOME only.
+for fn_src in "$main_src" "$(declare -f choose_clone_root)"; do
+  if printf '%s\n' "$fn_src" | grep -Eq '(^|[^A-Za-z_])/(workspace|home|Users)(/|[^A-Za-z]|$)'; then
+    fail "a fixed machine directory is still in the clone-root code"
+  fi
+done
 
 tname="bench-clone-root-main-calls-helper"
 printf '%s\n' "$main_src" | grep -Fq 'choose_clone_dir' || fail "main does not call choose_clone_dir"
@@ -1498,7 +1524,7 @@ case "$HOME" in
   /tmp/*|/var/tmp/*|"${TMPDIR:-/tmp}"/*) ;;
   *) fail "HOME is not a mktemp directory" ;;
 esac
-[[ "$HOME" != /home/box ]] || fail "HOME is the box home"
+[[ "$HOME" != /home/* && "$HOME" != /Users/* ]] || fail "HOME is a real user home"
 [[ ! -e "$HOME/.factory-secrets" ]] || fail "fake HOME contains factory-secrets"
 scrub_dir=$ROOT/scrub
 mkdir -p "$scrub_dir/bin"

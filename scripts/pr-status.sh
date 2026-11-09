@@ -6,8 +6,9 @@
 #
 # Usage: scripts/pr-status.sh [owner/repo ...]
 #
-# With no arguments, reads the four factory repos: adamsuk/software-factory,
-# adamsuk/line, adamsuk/gh-factory, adamsuk/activity-feed. Any repo works,
+# With no arguments, reads FACTORY_REPOS (space-separated owner/repo), which
+# defaults to FACTORY_HOME_REPO (the env value, then GITHUB_REPOSITORY, then
+# this checkout's origin remote, then gh repo view). Any repo works,
 # factory-authored or not (e.g. a Dependabot pull request): a repo with no
 # readable `.github/factory.yml`, or none with a `required_checks` list,
 # falls back to judging every reported check (the only option without a
@@ -76,9 +77,23 @@ export LC_ALL=C
 
 die() { echo "pr-status: $2" >&2; exit "$1"; }
 
-default_repos="adamsuk/software-factory adamsuk/line adamsuk/gh-factory adamsuk/activity-feed"
+# FACTORY_HOME_REPO: the env value, then GITHUB_REPOSITORY, then the origin
+# remote of this checkout, then gh repo view. Prints nothing when none resolves.
+factory_home_repo() {
+  local r="${FACTORY_HOME_REPO:-${GITHUB_REPOSITORY:-}}" top url
+  if [[ -z "$r" ]] && top=$(git rev-parse --show-toplevel 2>/dev/null) \
+    && url=$(git -C "$top" remote get-url origin 2>/dev/null); then
+    r=$(printf '%s\n' "$url" | sed -nE 's#\.git/?$##; s#^.*[:/]([^/:]+/[^/:]+)/?$#\1#p')
+  fi
+  if [[ -z "$r" ]]; then
+    r=$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null) || r=""
+  fi
+  printf '%s\n' "$r"
+}
 
 if [[ $# -eq 0 ]]; then
+  default_repos="${FACTORY_REPOS:-$(factory_home_repo)}"
+  [[ -n "$default_repos" ]] || die 2 "no repos: pass owner/repo, or set FACTORY_REPOS or FACTORY_HOME_REPO"
   read -r -a repos <<< "$default_repos"
 else
   repos=("$@")

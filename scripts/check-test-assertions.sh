@@ -95,7 +95,7 @@ An existing test assertion was changed or removed in: ${offending[*]}
 Under AGENTS.md section 5 that needs a person, not an agent. Adding tests, and
 adding fixture or test data without touching an existing assertion, is fine.
 
-If this change is correct and intended, have Scott add the '$override_label'
+If this change is correct and intended, have the maintainer add the '$override_label'
 label to the pull request and re-run. Say in the PR body which assertion
 changed and why.
 EOF

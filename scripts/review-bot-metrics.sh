@@ -7,7 +7,7 @@
 # PRs (default 20, max 100). A thread is accepted when it is resolved and open
 # when it is not. Acceptance rate is resolved / total, to one decimal place.
 # --all reads every enrolled repo (the REVIEW_BOT_REPOS env var, space
-# separated, overrides the default five) and adds a total row.
+# separated, then FACTORY_REPOS, then FACTORY_HOME_REPO) and adds a total row.
 #
 # Why this exists: it gives "re-test when the model changes" (the Line audit
 # recommendation) a baseline to compare against. Run it before and after a
@@ -21,7 +21,19 @@ set -euo pipefail
 
 export LC_ALL=C
 
-default_repos="adamsuk/software-factory adamsuk/gh-factory adamsuk/activity-feed adamsuk/line adamsuk/adamsuk"
+# FACTORY_HOME_REPO: the env value, then GITHUB_REPOSITORY, then the origin
+# remote of this checkout, then gh repo view. Prints nothing when none resolves.
+factory_home_repo() {
+  local r="${FACTORY_HOME_REPO:-${GITHUB_REPOSITORY:-}}" top url
+  if [[ -z "$r" ]] && top=$(git rev-parse --show-toplevel 2>/dev/null) \
+    && url=$(git -C "$top" remote get-url origin 2>/dev/null); then
+    r=$(printf '%s\n' "$url" | sed -nE 's#\.git/?$##; s#^.*[:/]([^/:]+/[^/:]+)/?$#\1#p')
+  fi
+  if [[ -z "$r" ]]; then
+    r=$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null) || r=""
+  fi
+  printf '%s\n' "$r"
+}
 
 repo=""
 all=0
@@ -63,7 +75,7 @@ limit=${limit:-20}
 
 repo_re='^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$'
 if [[ "$all" -eq 1 ]]; then
-  read -r -a repos <<<"${REVIEW_BOT_REPOS:-$default_repos}"
+  read -r -a repos <<<"${REVIEW_BOT_REPOS:-${FACTORY_REPOS:-$(factory_home_repo)}}"
   [[ "${#repos[@]}" -gt 0 ]] || exit 2
 else
   repos=("$repo")

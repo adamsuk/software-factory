@@ -42,11 +42,39 @@ field() {
     }' "$order"
 }
 
-# Latest adamsuk factory:review comment on stdin (the pr view JSON).
+# FACTORY_HOME_REPO: the env value, then GITHUB_REPOSITORY, then the origin
+# remote of this checkout, then gh repo view. Prints nothing when none resolves.
+factory_home_repo() {
+  local r="${FACTORY_HOME_REPO:-${GITHUB_REPOSITORY:-}}" top url
+  if [[ -z "$r" ]] && top=$(git rev-parse --show-toplevel 2>/dev/null) \
+    && url=$(git -C "$top" remote get-url origin 2>/dev/null); then
+    r=$(printf '%s\n' "$url" | sed -nE 's#\.git/?$##; s#^.*[:/]([^/:]+/[^/:]+)/?$#\1#p')
+  fi
+  if [[ -z "$r" ]]; then
+    r=$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null) || r=""
+  fi
+  printf '%s\n' "$r"
+}
+
+# The human login whose factory:review comment counts: FACTORY_APPROVER_LOGIN,
+# else the owner part of FACTORY_HOME_REPO. Prints nothing when neither resolves.
+approver_login() {
+  local home
+  if [[ -n "${FACTORY_APPROVER_LOGIN:-}" ]]; then
+    printf '%s\n' "$FACTORY_APPROVER_LOGIN"
+    return 0
+  fi
+  home=$(factory_home_repo)
+  printf '%s\n' "${home%%/*}"
+}
+
+# Latest factory:review comment by the login in $1, on stdin (the pr view JSON).
 # Prints "wait", or "ok <verdict> <should-fix> <nits>".
 # Exit non-zero when the JSON itself is unusable.
 parse_marker() {
   python3 -c 'import json, re, sys
+
+approver = sys.argv[1]
 
 marker = "<!-- factory:review -->"
 verdict_re = re.compile(r"^verdict: (PASS|FIX|ESCALATE|ready|changes-needed|needs-scott)\Z")
@@ -77,7 +105,7 @@ for comment in comments:
     if not isinstance(comment, dict):
         continue
     author = comment.get("author")
-    if not isinstance(author, dict) or author.get("login") != "adamsuk":
+    if not isinstance(author, dict) or author.get("login") != approver:
         continue
     body = comment.get("body")
     if not isinstance(body, str):
@@ -107,7 +135,7 @@ nits_m = nits_re.match(lines[3])
 if verdict_m is None or should_m is None or nits_m is None:
     emit_wait()
 sys.stdout.write("ok %s %s %s\n" % (verdict_m.group(1), should_m.group(1), nits_m.group(1)))
-'
+' "$1"
 }
 
 # agents.review_bot from a factory.yml document on stdin.
@@ -264,7 +292,7 @@ apply_needs_scott() {
   body=$(printf '%s\n' \
     "<!-- factory:review -->" \
     "blocked: needs-scott" \
-    "Scott must act.")
+    "The maintainer must act.")
   gh issue comment "$issue" --repo "$issue_repo" --body "$body" > /dev/null \
     || die 7 "could not comment"
   apply_label "factory:blocked"
@@ -291,8 +319,10 @@ apply_ready() {
 }
 
 apply_verdict() {
-  local parsed tag verdict should_fix nits
-  parsed=$(printf '%s\n' "$pr_json" | parse_marker) \
+  local parsed tag verdict should_fix nits approver
+  approver=$(approver_login)
+  [[ -n "$approver" ]] || die 7 "no approver: set FACTORY_APPROVER_LOGIN or FACTORY_HOME_REPO"
+  parsed=$(printf '%s\n' "$pr_json" | parse_marker "$approver") \
     || die 7 "could not read pull request"
   if [[ "$parsed" == "wait" ]]; then
     finish wait

@@ -9,6 +9,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Rollback runbook for the live `adamsuk/line` GitHub Pages site and the `activity-feed` Cloudflare Worker: `docs/runbooks/rollback-line-pages-and-activity-feed.md` (#309).
 
+## 2026-11-09 (portable defaults)
+
+### Changed
+
+- Scripts and the watcher now run on any machine and for any owner. Paths
+  derive from `FACTORY_HOME` (default
+  `${XDG_DATA_HOME:-$HOME/.local/share}/software-factory`): `FACTORY_WATCH_ROOT`,
+  `FACTORY_BUDGET_FILE`, `FACTORY_LEDGER_FILE`, `FACTORY_CLONE_ROOT` and
+  `FACTORY_WORKSPACE`. `FACTORY_HOME_REPO`, `FACTORY_REPOS`,
+  `FACTORY_APPROVER_LOGIN` and `FACTORY_BLOCKED_OWNERS` replace the fixed
+  owner, repo list, approver login and blocked organisation. Board sync reads
+  `FACTORY_BOARD_*` and says "board sync not configured" without them. The
+  Claude Code secrets deny rule is built from `FACTORY_SECRETS_DIR`
+  (default `$HOME/.factory-secrets`), `station-run.sh` honours `TMPDIR`, and
+  posted text says "The maintainer must act." The approval marker is now
+  `<!-- factory:approve -->`; the legacy chat marker is still accepted.
+  `README.md` lists every variable with its default (#295).
+
 ## 2026-11-09 (docs placeholders)
 
 ### Changed

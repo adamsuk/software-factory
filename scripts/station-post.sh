@@ -342,7 +342,7 @@ cmd_verdict() {
     return 0
   fi
   if [[ "$verdict" == "ESCALATE" || ( "$verdict" == "PASS" && "$protected" == "yes" ) ]]; then
-    local why=$'<!-- factory:review -->'$'\nblocked: needs-scott\nScott must act.'
+    local why=$'<!-- factory:review -->'$'\nblocked: needs-scott\nThe maintainer must act.'
     if ! printf '%s\n' "$json" | jq -e '
         [.comments[]? | ((.body // "") | split("\n") | map(gsub("\r$"; "")))]
         | any(.[]; .[0] == "<!-- factory:review -->" and .[1] == "blocked: needs-scott")

@@ -1,18 +1,28 @@
 # Factory watcher
 
-Source for the two factory watcher lanes. The scripts commit their machine paths as environment variables. Each value below is a committed default. State files, budget contents, ledger contents, and `webhook.curl` are not committed.
+Source for the two factory watcher lanes. The scripts read their machine paths and owner settings from environment variables. Each value below is the committed default, so the scripts run on any machine and for any owner. State files, budget contents, ledger contents, and `webhook.curl` are not committed.
 
 ## Environment
 
 | Variable | Committed default |
 | --- | --- |
-| `FACTORY_WATCH_ROOT` | `/workspace/factory-watch` |
-| `FACTORY_BUDGET_FILE` | `/workspace/factory-budget.json` |
-| `FACTORY_LEDGER_FILE` | `/workspace/factory-ledger.csv` |
-| `FACTORY_CLONE_ROOT` | `/workspace` |
+| `FACTORY_HOME` | `${XDG_DATA_HOME:-$HOME/.local/share}/software-factory` |
+| `FACTORY_WATCH_ROOT` | `$FACTORY_HOME/factory-watch` |
+| `FACTORY_BUDGET_FILE` | `$FACTORY_HOME/factory-budget.json` |
+| `FACTORY_LEDGER_FILE` | `$FACTORY_HOME/factory-ledger.csv` |
+| `FACTORY_CLONE_ROOT` | `$FACTORY_HOME` |
+| `FACTORY_WORKSPACE` | `$FACTORY_HOME` |
+| `FACTORY_HOME_REPO` | `$GITHUB_REPOSITORY`, then the `origin` remote of the current checkout, then `gh repo view` |
+| `FACTORY_REPOS` | `$FACTORY_HOME_REPO` |
+| `FACTORY_APPROVER_LOGIN` | the owner part of `FACTORY_HOME_REPO` |
+| `FACTORY_BLOCKED_OWNERS` | empty (no owner blocked) |
 | `LANE` | `main` |
 
-`FACTORY_WATCH_ROOT` is the script root: `cd`, logs, `state/`, orders, `webhook.curl`, heartbeat, status, needs-scott, and `PAUSE`. `FACTORY_BUDGET_FILE` and `FACTORY_LEDGER_FILE` are the budget and ledger paths. `FACTORY_CLONE_ROOT` is the parent of the `wo-<owner>_<repo>-<issue>-*` build clones that `push-protected.sh` pushes. `LANE` stays as it is in the lane scripts. The committed default is `main`.
+`FACTORY_HOME` is the base every path derives from: set it to a directory D and the watcher uses `D/factory-watch`, `D/factory-budget.json`, `D/factory-ledger.csv`, and clone root `D`. `FACTORY_WATCH_ROOT` is the script root: `cd`, logs, `state/`, orders, `webhook.curl`, heartbeat, status, needs-scott, and `PAUSE`. `FACTORY_BUDGET_FILE` and `FACTORY_LEDGER_FILE` are the budget and ledger paths. `FACTORY_CLONE_ROOT` is the parent of the `wo-<owner>_<repo>-<issue>-*` build clones that `push-protected.sh` pushes.
+
+`FACTORY_HOME_REPO` (`owner/repo`) holds work orders and epics: the watcher clones it, plans its epics, and matches focus and close references against it. The watcher usually runs from `FACTORY_WATCH_ROOT`, which is not a clone, so set `FACTORY_HOME_REPO` on the host. `FACTORY_REPOS` is the space-separated `owner/repo` allowlist the lanes work on. `FACTORY_APPROVER_LOGIN` is the human login whose comments count as approval: `push-protected.sh` accepts its comment containing `<!-- factory:approve -->` (or the legacy chat-approval marker). `FACTORY_BLOCKED_OWNERS` is a space-separated list of owners the watcher never clones, modifies or merges, and the prompts name that list; there is no default list in code. `LANE` stays as it is in the lane scripts. The committed default is `main`.
+
+Each watcher script inlines the same short block between `# >>> factory env` and `# <<< factory env`, so no script sources another file.
 
 ## Lanes
 
@@ -41,10 +51,16 @@ The ledger is a CSV at `FACTORY_LEDGER_FILE` with header `date_utc,kind,repo,iss
 
 `swap-early.sh` is the safe swap. For one lane it waits until that lane's log ends on the cycle sleep, stops that lane, clears its lock holder, copies the live script aside, moves the staged script (the live name with `.early`) into place, and starts it again. The build lane starts with `LANE=build`. The main lane starts with an empty environment list. Run it from `$FACTORY_WATCH_ROOT` after placing the staged script next to the live one.
 
-## Board constants
+## Board settings
 
-`board-sync.sh` copies factory labels onto the Software Factory project. These project node ids are committed constants, not environment variables:
+`board-sync.sh` copies factory labels onto a GitHub project board. The board is configuration, not committed constants. Set all five, or the script prints `board sync not configured` and exits 0:
 
-- `PROJ` `PVT_kwHOAYEAOs4Bo3vn`
-- `FIELD` `PVTSSF_lAHOAYEAOs4Bo3vnzhnV1ik`
-- Triage `cdd562ca`, Ready `84a24ea9`, Building `ed952d58`, Gate `9cfe6bd1`, Review `befc9395`, Merge `240a84ea`, Release `d53e0069`, Blocked `c59dd1a6`, Done `037f9c49`
+| Variable | Meaning |
+| --- | --- |
+| `FACTORY_BOARD_OWNER` | project owner login |
+| `FACTORY_BOARD_NUMBER` | project number |
+| `FACTORY_BOARD_PROJECT_ID` | project node id |
+| `FACTORY_BOARD_FIELD_ID` | node id of the `factory status` single-select field |
+| `FACTORY_BOARD_OPTIONS` | JSON object mapping each status name (`Triage`, `Ready`, `Building`, `Gate`, `Review`, `Merge`, `Release`, `Blocked`, `Done`) to its option id |
+
+It syncs the repos in `FACTORY_REPOS`. `board-sync.sh --once` runs one sync and exits.

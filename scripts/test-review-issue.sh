@@ -14,6 +14,10 @@ GH_FACTORY_FILE=$ROOT/factory.yml
 mkdir -p "$FAKE_BIN"
 : > "$GH_LOG"
 export GH_LOG GH_FACTORY_FILE
+# The approver defaults to the FACTORY_HOME_REPO owner. Pin it so the result
+# never depends on the checkout's remote or the CI repository.
+export FACTORY_HOME_REPO=adamsuk/software-factory
+unset FACTORY_APPROVER_LOGIN GITHUB_REPOSITORY
 
 tname="startup"
 stdout=""
@@ -570,7 +574,7 @@ assert_edit adamsuk/software-factory factory:review factory:blocked
 assert_one_comment "$(cat << 'EOF'
 <!-- factory:review -->
 blocked: needs-scott
-Scott must act.
+The maintainer must act.
 EOF
 )" adamsuk/software-factory
 assert_no_api
@@ -992,7 +996,7 @@ EOF
       assert_one_comment "$(cat << 'EOF'
 <!-- factory:review -->
 blocked: needs-scott
-Scott must act.
+The maintainer must act.
 EOF
 )" adamsuk/software-factory
       assert_no_api
@@ -1035,5 +1039,46 @@ for state in APPROVED CHANGES_REQUESTED; do
   assert_api_url "$(api_url adamsuk/software-factory main)"
   assert_no_forbidden
 done
+
+# --- approver login ----------------------------------------------------------
+tname="FACTORY_APPROVER_LOGIN replaces the default approver"
+reset_case
+write_order adamsuk/software-factory 96 adamsuk/software-factory factory/96-review-verdict 1
+set_labels factory:review
+add_comment adamsuk 2026-10-26T21:00:00Z changes-needed 2 0
+GH_API_MODE=not_found
+export GH_API_MODE
+build_pr main 96
+FACTORY_APPROVER_LOGIN=maint-er
+export FACTORY_APPROVER_LOGIN
+run_review
+expect_word wait
+assert_no_edit
+assert_no_comment
+add_comment maint-er 2026-10-26T22:00:00Z changes-needed 2 0
+build_pr main 96
+run_review
+expect_word build
+assert_edit adamsuk/software-factory factory:review factory:building
+unset FACTORY_APPROVER_LOGIN
+
+tname="approver defaults to the FACTORY_HOME_REPO owner"
+reset_case
+write_order adamsuk/software-factory 96 adamsuk/software-factory factory/96-review-verdict 1
+set_labels factory:review
+add_comment adamsuk 2026-10-26T21:00:00Z changes-needed 2 0
+GH_API_MODE=not_found
+export GH_API_MODE
+build_pr main 96
+FACTORY_HOME_REPO=acme/home
+run_review
+expect_word wait
+assert_no_edit
+add_comment acme 2026-10-26T22:00:00Z changes-needed 2 0
+build_pr main 96
+run_review
+expect_word build
+assert_edit adamsuk/software-factory factory:review factory:building
+FACTORY_HOME_REPO=adamsuk/software-factory
 
 echo "ok"
