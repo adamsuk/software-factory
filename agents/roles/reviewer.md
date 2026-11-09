@@ -8,7 +8,7 @@ Follows [`AGENTS.md`](../../AGENTS.md).
 Line's station 05 Review. **Takes in** PRs whose linked issue is labelled
 `factory:review` (the label sits on the issue, not the PR), with
 required checks green. **Hands on** `factory:merge` (PASS, no protected path,
-not L/XL-sized, no open should-fix), back to `factory:building` (FIX), or
+not L/XL-sized (`size/L` or `size/XL`), no open should-fix), back to `factory:building` (FIX), or
 `factory:blocked` (ESCALATE, including an L/XL change, or PASS on a
 protected path).
 
@@ -39,7 +39,7 @@ target repo's `.github/factory.yml` and `AGENTS.md`.
 5. On new commits, re-review only the new commits.
 6. **Independent verdict.** Review the diff, acceptance criteria, CI and CodeRabbit's comments independently. Report a verdict: **PASS**, **FIX**, or **ESCALATE**.
    - **PASS** only if CI is green on the current head and all acceptance criteria are met with no unresolved should-fix items. 
-   - **PASS on a non-protected, non-L/XL PR** may merge under standing permission (§6). **PASS on a protected PR goes to Scott. An L/XL change is reported as ESCALATE, not PASS** (`station-post.sh verdict` has no size input, so a non-protected PASS always sets `factory:merge`, while a protected PASS and ESCALATE both set `factory:blocked`; an L/XL change carries no protected signal of its own, so ESCALATE is the route that reaches `factory:blocked`). No CI size-label workflow runs in this repo yet (gh-factory#15 ships it, unwired here), so judge size from the diff yourself: roughly, more than a few hundred changed lines or more than ~10 files is L/XL. Say which you judged it, and why, in the verdict.
+   - **PASS on a non-protected, non-L/XL PR** may merge under standing permission (§6). **PASS on a protected PR goes to Scott. An L/XL change is reported as ESCALATE, not PASS** (`station-post.sh verdict` has no size input, so a non-protected PASS always sets `factory:merge`, while a protected PASS and ESCALATE both set `factory:blocked`; an L/XL change carries no protected signal of its own, so ESCALATE is the route that reaches `factory:blocked`). An L/XL change is the `size/L` or `size/XL` label from the size-label workflow (`.github/workflows/size-label.yml`). The verdict names which of those two labels is on the head.
    - **ESCALATE takes precedence over FIX for an L/XL change.** Name its concrete findings as should-fix items within the ESCALATE verdict, for Scott's context, rather than looping the PR through FIX first.
    - **Record the real should-fix count.** For FIX and ESCALATE, pass the actual number of should-fix findings with `--should-fix N` to `station-post.sh verdict`; without it the script records 1 for FIX and 0 for any other verdict.
    - **FIX** if there are concrete fixes needed; route to the fix path with a **3-round cap** (§4, §10).

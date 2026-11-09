@@ -3,6 +3,15 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-09 (pull request size labels)
+
+### Added
+
+- `.github/workflows/size-label.yml` calls gh-factory's size-label workflow on
+  pull requests at the 10, 50, 200 and 500 line thresholds, and the reviewer
+  brief uses the resulting `size/L` and `size/XL` labels as the L/XL escalate
+  signal (#228).
+
 ## 2026-11-09 (portable defaults)
 
 ### Changed
