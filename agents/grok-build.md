@@ -15,7 +15,7 @@ Checked against Grok Build **1.0.70** on 2026-10-25, using:
   `18-sandbox.md`, `22-permissions-and-safety.md`), version 1.0.70, and
   `grok --help`.
 
-## Install and authenticate (Scott, once per computer)
+## Install and authenticate (the operator, once per computer)
 
 ```sh
 curl -fsSL https://x.ai/cli/install.sh | bash   # installs ~/.grok/bin/grok, links ~/.local/bin/grok
@@ -50,7 +50,7 @@ grok --no-auto-update \
 | --- | --- | --- |
 | `--prompt-file <PATH>` | Headless single-turn prompt from a file (same as `-p`, which takes the text inline) | Headless & Scripting; `grok --help` |
 | `--cwd <PATH>` | Run in the fresh clone; Grok finds the project root by walking up to `.git` | CLI reference; headless guide "Project Root Discovery" |
-| `--trust` | Loads the **target repo's** own `AGENTS.md` and project skills. Headless startup needs `--trust` or a prior grant for project instructions. It also trusts that repo's hooks/MCP, so only use it on Scott's own repos | `12-project-rules.md`, `22-permissions-and-safety.md`, `10-hooks.md` (not listed in `grok --help`, but accepted by 1.0.70) |
+| `--trust` | Loads the **target repo's** own `AGENTS.md` and project skills. Headless startup needs `--trust` or a prior grant for project instructions. It also trusts that repo's hooks/MCP, so only use it on the maintainer's own repos | `12-project-rules.md`, `22-permissions-and-safety.md`, `10-hooks.md` (not listed in `grok --help`, but accepted by 1.0.70) |
 | `--rules <TEXT>` | Appends the factory's shared `AGENTS.md` to the system prompt, since it lives in this repo, not the target | CLI reference |
 | `--output-format json` | One JSON object at the end: `text`, `stopReason`, `sessionId`, `num_turns`, `usage` | Headless & Scripting |
 | `--max-turns <N>` | Caps agent turns (cost mode). Headless only | CLI reference |
@@ -73,7 +73,7 @@ instead, in `scripts/run-work-order.sh`:
 GH_CONFIG_DIR="$empty_tmp_dir" GIT_TERMINAL_PROMPT=0 \
 claude -p --output-format json --max-turns "$turns" \
   --permission-mode bypassPermissions \
-  --disallowedTools "Read(//home/box/.factory-secrets/**)" "Bash(*factory-secrets*)" \
+  --disallowedTools "Read(/$FACTORY_SECRETS_DIR/**)" "Bash(*factory-secrets*)" \
     "Bash(git push*)" "Bash(gh *)" "Bash(gh)" "WebSearch" "WebFetch" \
   < "$prompt_file"
 ```
@@ -85,10 +85,12 @@ be on `PATH`; `CLAUDE_BIN` overrides the binary name, the same way
 `FACTORY_WORKSPACE` overrides the clone root. `--max-turns` reads
 `CLAUDE_MAX_TURNS`, falling back to `GROK_MAX_TURNS`, then `60`.
 
-Note the leading `//` in the `Read` path: Claude Code's permission rules
-anchor a single leading `/` to the project directory, so
-`Read(/home/box/.factory-secrets/**)` would never match that absolute path at
-all. `//` is how an absolute path is spelled in this syntax. The same `//`
+`$FACTORY_SECRETS_DIR` is the absolute path of the box's secrets directory
+(`$HOME/.factory-secrets`), so `/$FACTORY_SECRETS_DIR` expands to a path with
+a leading `//`. Note that leading `//` in the `Read` path: Claude Code's
+permission rules anchor a single leading `/` to the project directory, so
+`Read($HOME/.factory-secrets/**)` (one leading `/` once expanded) would never
+match that absolute path at all. `//` is how an absolute path is spelled in this syntax. The same `//`
 form belongs anywhere else this guard is written (this file, the wrapper
 script, any other doc that repeats it) — a single `/` silently does nothing.
 
@@ -99,7 +101,7 @@ script, any other doc that repeats it) — a single `/` silently does nothing.
 | (none; `--trust` is the target repo's own settings, needed for its `AGENTS.md`) | `--setting-sources user` | stops a cloned repo's own `.claude/settings.json` (for example a `SessionStart` hook) from running; `bypassPermissions` has no deny list for hooks, so without this a repo-controlled hook would run unconstrained |
 | `--disable-web-search` | `--disallowedTools ... "WebSearch" "WebFetch"` | same fewer-untrusted-inputs reason |
 | `--deny 'Bash(git push*)' --deny 'Bash(gh *)'` | `--disallowedTools ... "Bash(git push*)" "Bash(gh *)" "Bash(gh)"` | `bypassPermissions` on its own would let Claude run `git push` or `gh` itself; the bare `Bash(gh)` form catches a no-argument call the `gh *` glob misses |
-| (none; the `--factory-secrets` guard is the env scrub) | `--disallowedTools "Read(//home/box/.factory-secrets/**)" "Bash(*factory-secrets*)"` | belt-and-suspenders on top of the env scrub, which is the real guard for both backends |
+| (none; the `--factory-secrets` guard is the env scrub) | `--disallowedTools "Read(/$FACTORY_SECRETS_DIR/**)" "Bash(*factory-secrets*)"` | belt-and-suspenders on top of the env scrub, which is the real guard for both backends |
 | `GH_CONFIG_DIR` set to a fresh empty directory, removed after the run | same | stops a `gh` call that somehow runs anyway from reading the box's real `~/.config/gh` (tokens included); applied to both backends |
 | `GIT_TERMINAL_PROMPT=0`, `GIT_ASKPASS`/`SSH_AUTH_SOCK` unset | same | stops a `git` call that somehow runs anyway from prompting for or finding real credentials, or reaching the box's ssh-agent; applied to both backends |
 
@@ -183,7 +185,7 @@ decision is #7):
   broader than grok's own `--sandbox workspace`, or similar) — that stays
   later work, tracked with the egress allowlist and separate bot identity
   (#7).
-- **Review.** Scott must review this file because `agents/**` is protected
+- **Review.** The maintainer must review this file because `agents/**` is protected
   (AGENTS.md §5).
 
 ## What the wrapper does
@@ -193,8 +195,8 @@ decision is #7):
 1. Reads `repo`, `issue`, `branch`, `base`, `test_command`, `title` and the
    optional `setup_command` from the work order's front matter, and validates them.
 2. Clones the repo into a new bench clone directory under the clone root. By
-   default `/workspace` is used; set `FACTORY_WORKSPACE` to choose a different
-   root. If the root does not exist it is created if possible; if it cannot be
+   default the wrapper's built-in root is used; set `FACTORY_WORKSPACE` to
+   choose a different root. If the root does not exist it is created if possible; if it cannot be
    created or is not writable the script falls back to a temporary directory
    and prints which root it fell back from and which it is using on stderr. If
    neither is usable it exits with code 8 naming the root. The paths in the run

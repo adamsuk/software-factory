@@ -3,6 +3,22 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-09 (generalised instructions)
+
+### Changed
+
+- `AGENTS.md`, the role briefs, `agents/grok-build.md`, the CI comments and
+  `.coderabbit.yaml` refer to the maintainer by role instead of by name, and
+  use `$FACTORY_WORKSPACE`, `$FACTORY_HOME_REPO`, `$FACTORY_LEDGER_FILE` and
+  `$FACTORY_SECRETS_DIR` instead of machine-specific paths and fixed repo
+  slugs. Approval identity is the repo owner, or `FACTORY_APPROVER_LOGIN`.
+- The organisation-specific merge pause in `AGENTS.md` §6 is now a generic
+  blocked-owners rule (`FACTORY_BLOCKED_OWNERS`): nothing in a listed owner is
+  merged or modified by an agent until the maintainer lifts it, and an unset
+  list blocks every owner other than this repo's own. No rule was weakened.
+- The ruleset-drift workflow passes `--owner "${{ github.repository_owner }}"`
+  instead of a fixed owner (#294).
+
 ## 2026-11-09 (watcher deny-list)
 
 ### Changed

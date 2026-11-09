@@ -1,6 +1,6 @@
 # software-factory's own gh-factory overrides (see adamsuk/gh-factory README, "Per-repo overrides").
 
-# Factory agents (see the gh-factory README, "Agents"). Scott approved agent merges here on
+# Factory agents (see the gh-factory README, "Agents"). The maintainer approved agent merges here on
 # 2026-10-25 and turned them off on 2026-10-26 (see `merge` below). Intake is enabled alongside
 # builder and reviewer, and the issue label stays `factory`.
 agents:
@@ -27,7 +27,7 @@ agents:
 # The ShellCheck check means shellcheck 0.11.0, pinned and checksum-verified in
 # .github/workflows/lint.yml (#155); install the same version locally (see README.md).
 # Station 04 (scripts/gate-issue.sh) reads these names. This tightens the factory's gate only:
-# GitHub enforces these through ruleset factory-main (id 26119160), which also requires
+# GitHub enforces these through the factory-main ruleset, which also requires
 # "Test assertions" (lint.yml) -- not listed here, a separate gap from #219's scope.
 # agents.merge stays false (see above).
 required_checks:

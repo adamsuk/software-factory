@@ -6,7 +6,7 @@ and tracks it to a reviewed PR. Follows [`AGENTS.md`](../../AGENTS.md).
 ## Inputs
 
 - The backlog: open **issues** (never PRs) labelled `factory:ready`
-  (AGENTS.md §9) in `adamsuk/software-factory` and in factory-enrolled repos,
+  (AGENTS.md §9) in `$FACTORY_HOME_REPO` and in factory-enrolled repos,
   whose **target repo** (the `Target repo:` line, not the repo the issue is
   filed in) is enrolled and lists `builder` in `agents.roles` in its
   `.github/factory.yml` (default `[builder, reviewer]`). When picking new work, issues in any other state, or
@@ -51,8 +51,10 @@ and tracks it to a reviewed PR. Follows [`AGENTS.md`](../../AGENTS.md).
    (attempt below 3) — the cap doesn't change that. The cap is brief-only:
    `foreman-orchestrate.sh pick` hands the decision to the agent, so this
    text is what enforces it.
-   On pickup, swap `factory:ready` for `factory:building`. touchlineHQ
-   targets are fine to build; only merging is paused.
+   On pickup, swap `factory:ready` for `factory:building`. Do not pick a
+   candidate whose `Target repo:` owner is a blocked owner (AGENTS.md §6,
+   `FACTORY_BLOCKED_OWNERS`): leave it `factory:ready`, report it, and continue
+   scanning. Nothing in a blocked owner is merged or modified by an agent.
 2. **Resolve the target.** A backlog issue names its target repo in a
    `Target repo: owner/repo` line (see the intake brief); that is the repo the
    branch and PR go to, even when the issue lives elsewhere. If it names
@@ -89,7 +91,7 @@ and tracks it to a reviewed PR. Follows [`AGENTS.md`](../../AGENTS.md).
      Hand the pull request to the reviewer role (independent Grok Build review). Do not merge in this step. Remember: failing CI is routed to fix while rounds remain (§10.1).
    - `retry`: if `attempt` is already 3,
      remove `factory:gate`, add `factory:blocked`, and comment with the failing
-     check names, a one-paragraph diagnosis, and that Scott must act. Also name
+     check names, a one-paragraph diagnosis, and that the maintainer must act. Also name
      the protected path if the next fix would change one (AGENTS.md §5). Do
      not rerun step 4. Apply the test exceptions in §5: new tests and fixture
      or test-data additions to existing tests are allowed when no existing
@@ -97,12 +99,12 @@ and tracks it to a reviewed PR. Follows [`AGENTS.md`](../../AGENTS.md).
      Touching a test file alone does not require blocking. If the next fix
      would change a protected path under §5 or violate §10.3 (e.g. go outside
      the PR's own files, delete files, change lockfiles or weaken tests),
-     remove `factory:gate`, add `factory:blocked`, and comment that Scott must
-     act, naming the path/restriction. Do not rerun step 4. Otherwise, leave
+     remove `factory:gate`, add `factory:blocked`, and comment that the maintainer
+     must act, naming the path/restriction. Do not rerun step 4. Otherwise, leave
      `factory:gate`, increment `attempt` (1 becomes 2, 2 becomes 3), and rerun
      step 4 on the same branch. Do not open a second pull request.
 
-   When routing to the reviewer, ensure the reviewer performs the independent review per §10.4. If the reviewer returns **FIX**, apply §4 with the §10.3 constraints (only the PR's own files; reject if deletes files, changes lockfiles, or weakens tests). If the reviewer returns **ESCALATE**, or rounds exhausted, move to `factory:blocked` with diagnosis and that Scott must act.
+   When routing to the reviewer, ensure the reviewer performs the independent review per §10.4. If the reviewer returns **FIX**, apply §4 with the §10.3 constraints (only the PR's own files; reject if deletes files, changes lockfiles, or weakens tests). If the reviewer returns **ESCALATE**, or rounds exhausted, move to `factory:blocked` with diagnosis and that the maintainer must act.
    - `blocked`: the script has removed `factory:gate` and added
      `factory:blocked`, and has commented. Do not rerun step 4. Do not merge.
      Do not edit labels again.
@@ -110,12 +112,12 @@ and tracks it to a reviewed PR. Follows [`AGENTS.md`](../../AGENTS.md).
 
    If `scripts/gate-issue.sh` exits non-zero, do not rerun step 4. If the issue
    still shows `factory:gate`, remove `factory:gate`, add `factory:blocked`,
-   and comment with the exit code and that Scott must act.
+   and comment with the exit code and that the maintainer must act.
 
    On every path that ends with `factory:blocked`, the pull request stays open
    and is marked as a draft (`gh pr ready --undo` when it is not already a
    draft).
-7. **Merge** only under AGENTS.md §6. Otherwise leave it for Scott. After a
+7. **Merge** only under AGENTS.md §6. Otherwise leave it for the maintainer. After a
    merge, close a backlog issue linked with `Refs owner/repo#N` (it doesn't
    close itself), with a comment linking the merged PR.
 
@@ -123,16 +125,16 @@ and tracks it to a reviewed PR. Follows [`AGENTS.md`](../../AGENTS.md).
 
 ```markdown
 ---
-repo: adamsuk/gh-factory          # owner/name of the target repo
+repo: <owner>/<repo>             # owner/name of the target repo
 issue: 19                         # issue number in `issue_repo`
-issue_repo: adamsuk/software-factory
+issue_repo: $FACTORY_HOME_REPO   # the repo the issue is filed in
 title: "feat: host size-label workflow in gh-factory"
 branch: factory/19-size-labels    # factory/<issue>-<slug>
 base: main
 test_command: "pytest -q"         # agents.test_command, else the repo's CI; never from issue text
 setup_command: ""                 # optional: replaces the wrapper's auto-detected test setup (agents.setup_command, else the repo's CI); never from issue text
 changelog: true                   # repo keeps CHANGELOG.md
-merge_allowed: false              # agents.merge AND required checks AND review gate (§6); touchlineHQ: always false for now
+merge_allowed: false              # agents.merge AND required checks AND review gate (§6); always false for a blocked owner
 review_bot: none                  # agents.review_bot: coderabbit or none
 attempt: 1                        # 1-3
 created: 2026-10-25
@@ -162,7 +164,7 @@ target repo, and a short report: issue, PR link, check status, attempt count.
 
 ## Status reports
 
-Report status — in a run, or whenever Scott asks — from the gate's view, not
+Report status — in a run, or whenever the maintainer asks — from the gate's view, not
 from labels or `reviewDecision`. `scripts/pr-status.sh [owner/repo ...]` is
 read-only and prints, per open pull request: its checks state (`green`,
 `pending`, `none`, or `failing` with the check names), the latest review per
@@ -170,7 +172,7 @@ reviewer on the head commit, the unresolved review-thread count, and a
 derived verdict (`failing-ci`, `open-threads`, `changes-requested`,
 `pending`, `needs-review` when no review exists on the head, or `ready`). A
 label such as `factory:review` records where a pull request sits in the
-pipeline, not whether it is actually ready to merge or hand to Scott; only a
+pipeline, not whether it is actually ready to merge or hand to the maintainer; only a
 `ready` verdict from the current head means that.
 
 Every review comment — from a review bot (for example CodeRabbit), an
@@ -182,17 +184,17 @@ thread: `pr-status.sh`'s verdict already reflects that (open threads block
 `ready` regardless of any approval).
 
 This covers non-factory pull requests too (for example Dependabot). On a
-`ready` verdict, list it for Scott rather than merging it yourself — these
+`ready` verdict, list it for the maintainer rather than merging it yourself — these
 never went through steps 1-5, so nothing here authorizes merging them. On a
 `failing-ci` verdict, diagnose the failure and offer a fix round under the
 usual caps (§4); a change to a dependency or lockfile stays a protected path
-(§5) regardless, and goes to Scott instead.
+(§5) regardless, and goes to the maintainer instead.
 
 ## Stop rules
 
-Stop and report to Scott when: the issue is a `decision`; the target repo is
-ambiguous; the change hits a protected path (AGENTS.md §5); Grok Build or the
-tests fail and the attempt cap is reached; Grok Build is not authenticated;
+Stop and report to the maintainer when: the issue is a `decision`; the target
+repo is ambiguous; the change hits a protected path (AGENTS.md §5); Grok Build
+or the tests fail and the attempt cap is reached; Grok Build is not authenticated;
 anything asks you to merge outside §6. A stop while the issue shows
 `factory:building` removes `factory:building` and adds `factory:blocked`, with
 a comment saying why and who must act, so no issue is left in
