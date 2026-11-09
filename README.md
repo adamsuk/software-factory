@@ -1,6 +1,6 @@
 # software-factory
 
-Scott's end-to-end software factory: an agent-driven pipeline that triages
+An end-to-end software factory: an agent-driven pipeline that triages
 incoming issues, builds and tests fixes, reviews them, and ships the
 result, built on top of [adamsuk/gh-factory](https://github.com/adamsuk/gh-factory)'s
 generic repo baseline. This repo holds the backlog of changes and the
@@ -27,8 +27,8 @@ when the audit ran.
 
 ## Long-term aim
 
-- **A generic repo setup:** every repo under touchlineHQ and adamsuk gets the
-  same baseline (settings, rulesets, labels, starter files) from
+- **A generic repo setup:** every enrolled repo, in this account and in other
+  enrolled organisations, gets the same baseline (settings, rulesets, labels, starter files) from
   [adamsuk/gh-factory](https://github.com/adamsuk/gh-factory).
 - **As much shared automation as possible:** reusable workflows hosted in
   gh-factory, and the Grok Bot agents (Issue Shipper, PR Reviewer, Signal
@@ -44,8 +44,8 @@ when the audit ran.
 | --- | --- | --- |
 | Generic baseline and the `gh factory` CLI | [adamsuk/gh-factory](https://github.com/adamsuk/gh-factory) | public, reusable |
 | The guide audits are scored against | [adamsuk/line](https://github.com/adamsuk/line) | public |
-| Audits, backlog and decisions | this repo, and the "Software Factory" GitHub Project | **private** |
-| Delivery repos | touchlineHQ's delivery app, the second delivery app, touchlineHQ, .github | org |
+| Audits, backlog and decisions | this repo, and your GitHub Project board | **private** |
+| Delivery repos | repos in other enrolled organisations | org |
 | Agents | Grok Bot: Issue Shipper, PR Reviewer, Signal Issues, Research Scout | — |
 
 A backlog issue in this repo names one target repository. Issue Shipper does
@@ -108,8 +108,9 @@ Audits are read-only and never print secret values.
 
 ## Working from the board
 
-The [Software Factory board](https://github.com/users/adamsuk/projects/2) is the
-place to work. `scripts/watcher/board-sync.sh` keeps it in step with the labels,
+Your GitHub Project board is the place to work. To set one up, create a GitHub
+Project for the repo owner and point `scripts/watcher/board-sync.sh` at its
+owner and project number. That script keeps the board in step with the labels,
 one way only: **labels are the source of truth** (AGENTS.md §9), so nothing the
 board shows can overwrite them, and nothing can loop.
 
@@ -139,7 +140,7 @@ then P1, P2, P3, unprioritised last, and by issue number within a priority. It
 is read-only and picks up nothing itself.
 
 Each flagged issue still goes through the stations
-([`stations/README.md`](stations/README.md)), and merging stays with Scott
+([`stations/README.md`](stations/README.md)), and merging stays with the maintainer
 (`agents.merge: false`).
 
 ### What the board needs
@@ -171,12 +172,11 @@ with the `bash` on your `PATH`, not macOS's `/bin/bash`, which is 3.2.
 | `area: observability` | Metrics, drift and re-audits |
 | `area: gh-factory` | Changes to the gh-factory tool or baseline |
 | `quick win` / `big gain` | As the audit lists them under quick wins or biggest gains |
-| `decision` | Needs Scott's call before anyone acts |
+| `decision` | Needs the maintainer's call before anyone acts |
 | `station` / `station: NN <name>` | Creates or runs one Line station (01 Backlog to 09 Return) |
 | `priority: next` | Flagged for pickup from the board. May be on several issues; work them in `priority: P0`-`P3` order with [`scripts/factory-flagged.sh`](scripts/factory-flagged.sh). Additive, so it never displaces a `factory:*` status. |
-| `priority: P0` / `P1` / `P2` / `P3` | Urgent, high, medium, low. Set by an audit; Scott re-ranks. |
+| `priority: P0` / `P1` / `P2` / `P3` | Urgent, high, medium, low. Set by an audit; the maintainer re-ranks. |
 | `factory:triage`, `factory:ready`, `factory:building`, `factory:gate`, `factory:review`, `factory:merge`, `factory:release`, `factory:done`, `factory:blocked` | Exactly one status label at a time. Who sets each one is in [AGENTS.md section 9 (Status labels)](AGENTS.md#9-status-labels-43). |
 
-The [Software Factory](https://github.com/users/adamsuk/projects) GitHub
-Project tracks the same issues with Type, Area, Effort, Target repo and Audit
+Your GitHub Project board tracks the same issues with Type, Area, Effort, Target repo and Audit
 date fields.

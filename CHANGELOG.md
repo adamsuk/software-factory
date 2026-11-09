@@ -3,6 +3,16 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-09 (docs placeholders)
+
+### Changed
+
+- Docs and code comments now refer to the maintainer by role, write
+  command examples with `<owner>/<repo>` or `$FACTORY_HOME_REPO`, and write
+  the bench root as `$FACTORY_WORKSPACE`. The README no longer names the
+  private delivery organisation and points to "your GitHub Project board"
+  in place of fixed board links. No script output or behaviour changes (#293).
+
 ## 2026-11-09 (watcher deny-list)
 
 ### Changed

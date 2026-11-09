@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Lists the issues Scott has flagged for pickup on the Software Factory board,
+# Lists the issues the maintainer has flagged for pickup on the Software Factory board,
 # in the order they should be worked.
 #
 # Usage: scripts/factory-flagged.sh [--repo OWNER/REPO] [--label LABEL]

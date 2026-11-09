@@ -83,7 +83,7 @@ merge it themselves through their normal GitHub workflow — no self-approval
 wall, because the author and the approver are now different identities.
 
 This repo's GitHub App ("software-factory-line") already has an
-installation covering several `adamsuk/*` repos. The App ID, installation
+installation covering several `<owner>/*` repos. The App ID, installation
 ID, and private key location are specific to the user's own setup — they
 are not committed anywhere in this repo, by design (see `scripts/gh-app-token.sh`'s
 own header comment for exactly which environment variables it reads). If
