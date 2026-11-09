@@ -4931,6 +4931,7 @@ step_dependabot_triage() {
 
 step_triage() {
   local row repo num title body prompt dest ts intake saw=0
+  local ask_script ask_out ask_rc candidate
   if [[ ! -s ${ISSUE_CACHE:-} ]]; then
     log "triage: no issue cache"
     return 0
@@ -4978,6 +4979,44 @@ step_triage() {
       printf '\n%s\n' '## Issue (untrusted)'
     } > "$prompt"
     write_untrusted_block "$prompt" "$(printf 'repo: %s\nnumber: %s\ntitle: %s\n\n%s\n' "$repo" "$num" "$title" "$body")"
+    # Ask before factory:ready. Live path only: the dry-run branch already
+    # continued. Exit 2 prints a numbered comment; post it and skip run_grok
+    # so this path does not set factory:ready. Exit 0 falls through.
+    ask_script=""
+    for candidate in \
+      "$(dirname "${BASH_SOURCE[0]}")/../triage-ask.sh" \
+      "$(dirname "${BASH_SOURCE[0]}")/triage-ask.sh" \
+      "${dest}/scripts/triage-ask.sh"
+    do
+      if [[ -f "$candidate" ]]; then
+        ask_script=$candidate
+        break
+      fi
+    done
+    if [[ -z $ask_script ]]; then
+      log "triage ask missing scripts/triage-ask.sh; factory:ready withheld ${repo}#${num}"
+      continue
+    fi
+    ask_out="${STATE}/triage-ask-$(repo_slug "$repo")-${num}.txt"
+    bash "$ask_script" "$repo" "$num" > "$ask_out"
+    ask_rc=$?
+    if (( ask_rc == 2 )); then
+      if [[ -s "$ask_out" ]]; then
+        if timeout 60 gh issue comment "$num" -R "$repo" --body-file "$ask_out" > /dev/null; then
+          note "triage ask ${repo}#${num}: questions posted, factory:ready withheld"
+          DID_MUTATE=1
+        else
+          log "triage ask comment failed ${repo}#${num}; factory:ready withheld"
+        fi
+      else
+        note "triage ask ${repo}#${num}: waiting on the owner, factory:ready withheld"
+      fi
+      continue
+    fi
+    if (( ask_rc != 0 )); then
+      log "triage ask failed ${repo}#${num} rc=${ask_rc}; factory:ready withheld"
+      continue
+    fi
     if run_grok triage "$repo" "$num" 30 "$dest" "$prompt"; then
       note "triage grok finished ${repo}#${num}"
     else

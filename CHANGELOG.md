@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-09
+
+### Added
+
+- Triage asks the owner before `factory:ready`. When a ticket is ambiguous, or its done-checks are missing or not checkable, `scripts/triage-ask.sh` writes a numbered comment and the watcher posts it and withholds `factory:ready`. Target repo and size are multiple choice. Any other missing fact is a short free-text question. The owner's answers stay on the issue, and the script leaves acceptance criteria for the owner to write (#310).
+
 ## 2026-11-09 (portable defaults)
 
 ### Changed
