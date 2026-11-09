@@ -9,6 +9,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Rollback runbook for the live `adamsuk/line` GitHub Pages site and the `activity-feed` Cloudflare Worker: `docs/runbooks/rollback-line-pages-and-activity-feed.md` (#309).
 
+## 2026-11-09 (pull request size labels)
+
+### Added
+
+- `.github/workflows/size-label.yml` calls gh-factory's size-label workflow on
+  pull requests at the 10, 50, 200 and 500 line thresholds, and the reviewer
+  brief uses the resulting `size/L` and `size/XL` labels as the L/XL escalate
+  signal (#228).
+
 ## 2026-11-09 (generalised instructions)
 
 ### Changed
