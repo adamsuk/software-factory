@@ -1,11 +1,29 @@
 # software-factory
 
-Private home for Scott's end-to-end software factory: the backlog of changes,
-and the audits that drive it.
+Scott's end-to-end software factory: an agent-driven pipeline that triages
+incoming issues, builds and tests fixes, reviews them, and ships the
+result, built on top of [adamsuk/gh-factory](https://github.com/adamsuk/gh-factory)'s
+generic repo baseline. This repo holds the backlog of changes and the
+periodic security audits, scored against the
+[Line](https://adamsuk.github.io/line/) guide, that drive that work.
 
-It's private on purpose. The audits record security gaps (agents using the
-owner token, unprotected `main`, no production approval gate), and they belong
-here rather than in public tooling.
+The audits are dated records. They set out the security gaps found when
+each one ran — for example agents using the owner token, an unprotected
+`main`, and no production approval gate. That is historical audit evidence,
+not a statement of current security posture: this README does not claim
+those gaps have been fixed, and does not claim they remain open. See the
+dated audit files for what each one recorded, and the visibility column
+below for the repository's current visibility, which this README does not
+change.
+
+The audits linked below describe specific operational details — analytics
+project ids, GitHub ruleset ids, Cloudflare deployment ids, internal service
+names and installation-token mechanics — using generic wording in place of
+the original values, generalised after the fact for publication. That
+wording records that an identifier existed and roughly what kind, not its
+original value, and it is not a claim that any finding below was later
+fixed: every date, score, sample count and finding still reads as it did
+when the audit ran.
 
 ## Long-term aim
 

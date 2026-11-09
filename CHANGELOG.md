@@ -3,6 +3,22 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-08 (publication hardening, second pass)
+
+### Changed
+
+- `README.md` and the five committed Line audits (`audits/2026-10-24.md`
+  through `audits/2026-11-03.md`) no longer name a handful of operational
+  specifics the first redaction pass (#282) didn't reach: an analytics
+  project id, a database/billing architecture aside, an internal-services
+  list, several GitHub ruleset ids, Cloudflare deployment ids, GitHub
+  Actions workflow-run ids/links, and the mechanics of how an installation
+  token gets minted (the finding that the token is cached and reused, not
+  minted fresh per run, is unchanged). Every date, score, sample count and
+  finding in the audits reads identically to the version before this pass;
+  nothing was deleted or re-scored. `README.md` now also notes that these
+  identifiers were generalised after the fact for publication (#286).
+
 ## 2026-11-08
 
 ### Changed
