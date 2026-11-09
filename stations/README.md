@@ -27,8 +27,9 @@ station. On `opencode` and `claudecode` it means the edits exist in the tree and
 every step after the build is still owed. Do not report a station as complete on
 the strength of a provider that cannot complete it.
 
-The grok builder clones into the bench root — `$FACTORY_WORKSPACE`, default
-`/workspace`, with a loud fallback when that is unusable (#154). The other two
+The grok builder clones into the bench root — `$FACTORY_WORKSPACE` (default
+`FACTORY_WORKSPACE=/workspace`), with a loud fallback when that is unusable
+(#154). The other two
 edit the checkout in place when the work order names this repo, and a clone
 (`/tmp/station-xr-*`, removed on exit, real push URL, `GH_REPO` set) when it
 names another. They still leave edits only: no commit, push or pull request.
@@ -180,8 +181,9 @@ set `FACTORY_RELEASE_REF` to a branch or sha for one run.
 ## Bench clone location
 
 Station 03 Bench (`scripts/run-work-order.sh`) clones the target repo into a
-bench workspace. By default it uses `/workspace` (the documented setup). Set
-`FACTORY_WORKSPACE` to choose a different root. If the root does not exist it
+bench workspace, `$FACTORY_WORKSPACE`. Its default is
+`FACTORY_WORKSPACE=/workspace` (the documented setup); set it to choose a
+different root. If the root does not exist it
 will be created if possible; if it cannot be created or is not writable the
 script falls back to a temporary directory and prints which root it fell back
 from and which it is using on stderr (the paths in the run log must match).
@@ -189,7 +191,8 @@ If neither the root nor a temporary directory is usable, the script exits with
 code 8 naming the root.
 
 To move the bench clone, export `FACTORY_WORKSPACE=/path/with/write/access`
-before running the bench (or ensure `/workspace` exists and is writable).
+before running the bench (or ensure the default `$FACTORY_WORKSPACE` root
+exists and is writable).
 
 ## Design Principles
 
