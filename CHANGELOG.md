@@ -53,6 +53,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   approver to match, the fixture sets `FACTORY_HOME_REPO` or `FACTORY_REPOS`,
   and the approver defaults to that owner. Deny-list needles and safety
   checks are unchanged (#296).
+
 ## 2026-11-09 (portable defaults)
 
 ### Changed
