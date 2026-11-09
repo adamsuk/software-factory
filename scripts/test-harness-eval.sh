@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Offline replay of one recorded work order. Fixture source:
-# agents/work-orders/adamsuk_gh-factory-33.md
-# scripts/fixtures/replay-work-order.md is a byte-for-byte copy of that file.
+# Offline replay of one recorded work order.
+# scripts/fixtures/replay-work-order.md is that order with a generic sample owner.
 # Both renders call scripts/station-run.sh --dry-run --provider grok with role
 # builder and context /dev/null. No gh, no grok, no network, and no provider.
 # station-run.sh reads AGENTS.md and the role briefs from the latest v* tag

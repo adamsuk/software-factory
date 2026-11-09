@@ -202,7 +202,7 @@ run() {
 }
 
 default_run() {
-  run --repo adamsuk/software-factory --since 2026-10-20 --until 2026-10-27
+  run --repo acme/software-factory --since 2026-10-20 --until 2026-10-27
 }
 
 put_events() {
@@ -252,7 +252,7 @@ assert_row() {
 }
 
 finish_ok() {
-  write_doc "$ROOT/expected.md" adamsuk/software-factory 2026-10-20 2026-10-27
+  write_doc "$ROOT/expected.md" acme/software-factory 2026-10-20 2026-10-27
   assert_status 0
   assert_empty_stderr
   assert_stdout "$ROOT/expected.md"
@@ -264,7 +264,7 @@ tname=doc-shape
 reset_expected
 cat > "$ROOT/zero.md" << 'EOF'
 # Factory label metrics
-repo: adamsuk/software-factory
+repo: acme/software-factory
 since: 2026-10-20
 until: 2026-10-27
 
@@ -280,7 +280,7 @@ until: 2026-10-27
 | factory:done | 0 | 0 | n/a |
 | factory:blocked | 0 | 0 | n/a |
 EOF
-write_doc "$ROOT/generated-zero.md" adamsuk/software-factory 2026-10-20 2026-10-27
+write_doc "$ROOT/generated-zero.md" acme/software-factory 2026-10-20 2026-10-27
 if ! cmp -s "$ROOT/zero.md" "$ROOT/generated-zero.md"; then
   diff -u "$ROOT/zero.md" "$ROOT/generated-zero.md" >&2 || true
   fail "expected-document helper drifted"
@@ -334,12 +334,12 @@ assert_row '| factory:building | 2 | 2 | 3.0 |'
 assert_row '| factory:done | 0 | 0 | n/a |'
 mapfile -t log_lines < "$GH_LOG"
 [[ "${#log_lines[@]}" -eq 3 ]] || fail "expected 3 gh calls, got ${#log_lines[@]}"
-[[ "${log_lines[0]}" == "issue list --repo adamsuk/software-factory --state all --limit 200 --search updated:>=2026-10-20 --json number" ]] \
+[[ "${log_lines[0]}" == "issue list --repo acme/software-factory --state all --limit 200 --search updated:>=2026-10-20 --json number" ]] \
   || fail "list invocation: ${log_lines[0]}"
 [[ "${log_lines[0]}" == *"--state all"* ]] || fail "log missing --state all"
-[[ "${log_lines[1]}" == "api --paginate repos/adamsuk/software-factory/issues/7/events" ]] \
+[[ "${log_lines[1]}" == "api --paginate repos/acme/software-factory/issues/7/events" ]] \
   || fail "issue 7 should be fetched before issue 8: ${log_lines[1]}"
-[[ "${log_lines[2]}" == "api --paginate repos/adamsuk/software-factory/issues/8/events" ]] \
+[[ "${log_lines[2]}" == "api --paginate repos/acme/software-factory/issues/8/events" ]] \
   || fail "issue 8 events path: ${log_lines[2]}"
 if grep -F -q -- 'edit' "$GH_LOG"; then
   fail "log contains edit"
@@ -685,14 +685,14 @@ expect_usage() {
 }
 
 expect_usage usage-no-args
-expect_usage usage-missing-until --repo adamsuk/software-factory --since 2026-10-20
-expect_usage usage-bad-date --repo adamsuk/software-factory --since 2026-02-31 --until 2026-10-27
-expect_usage usage-date-format --repo adamsuk/software-factory --since 2026-10-2 --until 2026-10-27
-expect_usage usage-since-equal --repo adamsuk/software-factory --since 2026-10-20 --until 2026-10-20
-expect_usage usage-since-after --repo adamsuk/software-factory --since 2026-10-27 --until 2026-10-20
+expect_usage usage-missing-until --repo acme/software-factory --since 2026-10-20
+expect_usage usage-bad-date --repo acme/software-factory --since 2026-02-31 --until 2026-10-27
+expect_usage usage-date-format --repo acme/software-factory --since 2026-10-2 --until 2026-10-27
+expect_usage usage-since-equal --repo acme/software-factory --since 2026-10-20 --until 2026-10-20
+expect_usage usage-since-after --repo acme/software-factory --since 2026-10-27 --until 2026-10-20
 expect_usage usage-two-slashes --repo a/b/c --since 2026-10-20 --until 2026-10-27
 expect_usage usage-duplicate-repo \
-  --repo adamsuk/software-factory --repo adamsuk/software-factory \
+  --repo acme/software-factory --repo acme/software-factory \
   --since 2026-10-20 --until 2026-10-27
 expect_usage usage-extra \
-  --repo adamsuk/software-factory --since 2026-10-20 --until 2026-10-27 extra
+  --repo acme/software-factory --since 2026-10-20 --until 2026-10-27 extra

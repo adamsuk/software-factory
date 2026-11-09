@@ -10,12 +10,12 @@ name: Line audit
 # job (scripts/audit-triage.sh, not the read-only auditor) comments on matching
 # open `factory` issues, files up to 5 new `factory`+`factory:triage` issues,
 # posts a summary on the parent and closes it. Monthly runs triage nothing:
-# Scott decides which candidates become work.
+# the maintainer decides which candidates become work.
 #
 # The issues:closed trigger only sees issues of THIS repo. A research repo
 # elsewhere starts the audit with workflow_dispatch (inputs parent_repo,
 # parent_issue); acting on another repo needs a token that can write there,
-# which GITHUB_TOKEN cannot, so that wiring is Scott's call.
+# which GITHUB_TOKEN cannot, so that wiring is the maintainer's call.
 #
 # NOT YET RUNNABLE. This workflow needs things a builder cannot provision. The
 # first step fails with the name of whichever is missing rather than skipping:
@@ -31,8 +31,8 @@ name: Line audit
 #   Setting   Actions > General > "Allow GitHub Actions to create and approve
 #             pull requests" must be on. The token is the workflow's
 #             GITHUB_TOKEN, so the PR it opens does NOT trigger the Lint and
-#             Changelog checks; Scott closes and reopens it (or pushes) to run
-#             them, or supplies a PAT/App token, which is his call.
+#             Changelog checks; the maintainer closes and reopens it (or pushes) to run
+#             them, or supplies a PAT/App token, which is their call.
 #   Decision  Which provider and model run the auditor, and the monthly cost.
 #             FACTORY_MODEL is left unset, so the CLI default applies.
 #
@@ -237,7 +237,7 @@ jobs:
             echo
             echo "## Issue candidates"
             echo
-            echo "Proposed by the auditor. **None has been filed**; Scott decides which become work."
+            echo "Proposed by the auditor. **None has been filed**; the maintainer decides which become work."
             echo
             cat "$RUNNER_TEMP/candidates.md"
             echo
