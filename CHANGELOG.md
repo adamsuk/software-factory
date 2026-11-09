@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-09 (rollback runbook)
+
+### Added
+
+- Rollback runbook for the live `adamsuk/line` GitHub Pages site and the `activity-feed` Cloudflare Worker: `docs/runbooks/rollback-line-pages-and-activity-feed.md` (#309).
+
 ## 2026-11-09 (docs placeholders)
 
 ### Changed
