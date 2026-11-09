@@ -13,7 +13,7 @@ BIN=$work/bin
 mkdir -p "$BIN"
 export MOCK_GH="$work"
 # Pin the default repo so it never depends on the checkout's remote.
-export FACTORY_HOME_REPO=adamsuk/software-factory
+export FACTORY_HOME_REPO=acme/software-factory
 unset FACTORY_REPOS GITHUB_REPOSITORY
 
 tname="startup"

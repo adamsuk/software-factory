@@ -1,7 +1,7 @@
 # Role: monitor (Factory Monitor)
 
-Runs once a week. Follows [AGENTS.md](../../AGENTS.md). Scott creates the Grok
-Bot teammate. This file is the procedure. It does not grant permission to merge.
+Runs once a week. Follows [AGENTS.md](../../AGENTS.md). The maintainer creates the
+Grok Bot teammate. This file is the procedure. It does not grant permission to merge.
 
 ## Inputs
 
@@ -9,13 +9,12 @@ Bot teammate. This file is the procedure. It does not grant permission to merge.
   `scripts/factory-delivery-metrics.sh`, and `scripts/review-bot-metrics.sh`.
   All four are read-only. Read each one from the promoted release ref (`$REF`)
   only. All four are already on `main`.
-- One repository in this first version: `adamsuk/software-factory`.
-- The ledger path is `$FACTORY_LEDGER_FILE`. The committed default is
-  `/workspace/factory-ledger.csv`.
+- One repository in this first version: `$FACTORY_HOME_REPO`.
+- The ledger path is `$FACTORY_LEDGER_FILE`, defaulting to `$FACTORY_HOME/factory-ledger.csv`, where `$FACTORY_HOME` defaults to `${XDG_DATA_HOME:-$HOME/.local/share}/software-factory` (see `scripts/watcher/README.md`).
 
 The weekly procedure stays inactive until all four scripts can be read from
 `$REF`. If any of the four paths is missing on `$REF`, commit nothing and
-report the missing path to Scott.
+report the missing path to the maintainer.
 
 ## Steps
 
@@ -28,15 +27,14 @@ report the missing path to Scott.
    `scripts/factory-pr-metrics.sh`, and `scripts/factory-delivery-metrics.sh`,
    run `git show "$REF:<path>"`. Write each script to a temporary file, run
    `bash` on that file, and delete the temporary file. Pass
-   `--repo adamsuk/software-factory --since <since> --until <until>` to each of
+   `--repo "$FACTORY_HOME_REPO" --since <since> --until <until>` to each of
    those three.
    For `scripts/factory-delivery-metrics.sh` also pass `--ledger` from
-   `$FACTORY_LEDGER_FILE` (committed default `/workspace/factory-ledger.csv`)
-   and one `--required-check` each for `ShellCheck`, `changelog / changelog`,
-   and `tests`. Then run `scripts/review-bot-metrics.sh --repo adamsuk/software-factory`
+   `$FACTORY_LEDGER_FILE` (see Inputs) and one `--required-check` each for `ShellCheck`, `changelog / changelog`,
+   and `tests`. Then run `scripts/review-bot-metrics.sh --repo "$FACTORY_HOME_REPO"`
    the same way (it takes no `--since` or `--until`; pass neither). If any path is missing on `$REF`, or any script exits
    non-zero, commit nothing and report the missing path or the failure to
-   Scott.
+   the maintainer.
 3. **Record.** Write `metrics/<last-day>.md`: the label script's stdout, one
    blank line, then the pull request script's stdout, one blank line, then
    the delivery script's stdout, one blank line, then the review-bot script's
