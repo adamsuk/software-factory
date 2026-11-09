@@ -16,7 +16,7 @@ mkdir -p "$FAKE_BIN"
 export GH_LOG GH_FACTORY_FILE
 # The approver defaults to the FACTORY_HOME_REPO owner. Pin it so the result
 # never depends on the checkout's remote or the CI repository.
-export FACTORY_HOME_REPO=adamsuk/software-factory
+export FACTORY_HOME_REPO=acme/software-factory
 unset FACTORY_APPROVER_LOGIN GITHUB_REPOSITORY
 
 tname="startup"
@@ -459,18 +459,18 @@ api_url() {
 # --- case 1 -----------------------------------------------------------------
 tname="case 1 not found merges"
 reset_case
-write_order adamsuk/software-factory 96 adamsuk/software-factory factory/96-review-verdict 1
+write_order acme/software-factory 96 acme/software-factory factory/96-review-verdict 1
 set_labels factory:review
-add_comment adamsuk 2026-10-26T21:00:00Z ready 0 4
+add_comment acme 2026-10-26T21:00:00Z ready 0 4
 build_pr main 96
 GH_API_MODE=not_found
 export GH_API_MODE
 run_review
 expect_word merge
-assert_edit adamsuk/software-factory factory:review factory:merge
+assert_edit acme/software-factory factory:review factory:merge
 assert_no_comment
-assert_pr_view adamsuk/software-factory factory/96-review-verdict
-assert_api_url "$(api_url adamsuk/software-factory main)"
+assert_pr_view acme/software-factory factory/96-review-verdict
+assert_api_url "$(api_url acme/software-factory main)"
 assert_invocations 1 api
 if grep -q 'could not read factory.yml' "$ROOT/err"; then
   fail "Not Found treated as a hard failure"
@@ -480,24 +480,24 @@ assert_no_forbidden
 # --- case 2 -----------------------------------------------------------------
 tname="case 2 coderabbit approved merges"
 reset_case
-write_order adamsuk/software-factory 96 adamsuk/software-factory factory/96-review-verdict 1
+write_order acme/software-factory 96 acme/software-factory factory/96-review-verdict 1
 set_labels factory:review
-add_comment adamsuk 2026-10-26T21:00:00Z ready 0 1
+add_comment acme 2026-10-26T21:00:00Z ready 0 1
 add_review coderabbitai CHANGES_REQUESTED 2026-10-26T22:00:00Z
 add_review coderabbitai APPROVED 2026-10-26T22:30:00Z
 use_coderabbit_yml
 build_pr main 96
 run_review
 expect_word merge
-assert_edit adamsuk/software-factory factory:review factory:merge
+assert_edit acme/software-factory factory:review factory:merge
 assert_no_comment
 
 # --- case 3 -----------------------------------------------------------------
 tname="case 3 later coderabbit changes requested waits"
 reset_case
-write_order adamsuk/software-factory 96 adamsuk/software-factory factory/96-review-verdict 1
+write_order acme/software-factory 96 acme/software-factory factory/96-review-verdict 1
 set_labels factory:review
-add_comment adamsuk 2026-10-26T21:00:00Z ready 0 1
+add_comment acme 2026-10-26T21:00:00Z ready 0 1
 add_review coderabbitai APPROVED 2026-10-26T22:00:00Z
 add_review coderabbitai CHANGES_REQUESTED 2026-10-26T22:30:00Z
 use_coderabbit_yml
@@ -510,9 +510,9 @@ assert_no_comment
 # --- case 4 -----------------------------------------------------------------
 tname="case 4 no coderabbit review waits"
 reset_case
-write_order adamsuk/software-factory 96 adamsuk/software-factory factory/96-review-verdict 1
+write_order acme/software-factory 96 acme/software-factory factory/96-review-verdict 1
 set_labels factory:review
-add_comment adamsuk 2026-10-26T21:00:00Z ready 0 0
+add_comment acme 2026-10-26T21:00:00Z ready 0 0
 use_coderabbit_yml
 build_pr main 96
 run_review
@@ -523,9 +523,9 @@ assert_no_comment
 # --- case 5 -----------------------------------------------------------------
 tname="case 5 ready with should-fix waits"
 reset_case
-write_order adamsuk/software-factory 96 adamsuk/software-factory factory/96-review-verdict 1
+write_order acme/software-factory 96 acme/software-factory factory/96-review-verdict 1
 set_labels factory:review
-add_comment adamsuk 2026-10-26T21:00:00Z ready 2 0
+add_comment acme 2026-10-26T21:00:00Z ready 2 0
 build_pr main 96
 run_review
 expect_word wait
@@ -536,13 +536,13 @@ assert_no_api
 # --- case 6 -----------------------------------------------------------------
 tname="case 6 changes-needed builds"
 reset_case
-write_order adamsuk/software-factory 96 adamsuk/software-factory factory/96-review-verdict 3
+write_order acme/software-factory 96 acme/software-factory factory/96-review-verdict 3
 set_labels factory:review
-add_comment adamsuk 2026-10-26T21:00:00Z changes-needed 1 0
+add_comment acme 2026-10-26T21:00:00Z changes-needed 1 0
 build_pr main 96
 run_review
 expect_word build
-assert_edit adamsuk/software-factory factory:review factory:building
+assert_edit acme/software-factory factory:review factory:building
 assert_no_comment
 assert_no_api
 grep -q '^attempt: 3$' "$order" || fail "attempt changed"
@@ -550,9 +550,9 @@ grep -q '^attempt: 3$' "$order" || fail "attempt changed"
 # --- case 7 -----------------------------------------------------------------
 tname="case 7 changes-needed with zero should-fix waits"
 reset_case
-write_order adamsuk/software-factory 96 adamsuk/software-factory factory/96-review-verdict 1
+write_order acme/software-factory 96 acme/software-factory factory/96-review-verdict 1
 set_labels factory:review
-add_comment adamsuk 2026-10-26T21:00:00Z changes-needed 0 2
+add_comment acme 2026-10-26T21:00:00Z changes-needed 0 2
 build_pr main 96
 run_review
 expect_word wait
@@ -563,28 +563,28 @@ assert_no_api
 # --- case 8 -----------------------------------------------------------------
 tname="case 8 needs-scott blocks"
 reset_case
-write_order adamsuk/software-factory 96 adamsuk/software-factory factory/96-review-verdict 1
+write_order acme/software-factory 96 acme/software-factory factory/96-review-verdict 1
 set_labels factory:review
-add_comment adamsuk 2026-10-26T21:00:00Z needs-scott 0 3
+add_comment acme 2026-10-26T21:00:00Z needs-scott 0 3
 add_review coderabbitai CHANGES_REQUESTED 2026-10-26T22:30:00Z
 build_pr main 96
 run_review
 expect_word blocked
-assert_edit adamsuk/software-factory factory:review factory:blocked
+assert_edit acme/software-factory factory:review factory:blocked
 assert_one_comment "$(cat << 'EOF'
 <!-- factory:review -->
 blocked: needs-scott
 The maintainer must act.
 EOF
-)" adamsuk/software-factory
+)" acme/software-factory
 assert_no_api
 
 # --- case 9 -----------------------------------------------------------------
 tname="case 9 blocked wins over review"
 reset_case
-write_order adamsuk/software-factory 96 adamsuk/software-factory factory/96-review-verdict 1
+write_order acme/software-factory 96 acme/software-factory factory/96-review-verdict 1
 set_labels factory:review factory:blocked
-add_comment adamsuk 2026-10-26T21:00:00Z ready 0 0
+add_comment acme 2026-10-26T21:00:00Z ready 0 0
 GH_API_MODE=not_found
 export GH_API_MODE
 build_pr main 96
@@ -598,9 +598,9 @@ assert_invocations 0 api
 # --- case 10 ----------------------------------------------------------------
 tname="case 10 not review skips"
 reset_case
-write_order adamsuk/software-factory 96 adamsuk/software-factory factory/96-review-verdict 1
+write_order acme/software-factory 96 acme/software-factory factory/96-review-verdict 1
 set_labels factory:building
-add_comment adamsuk 2026-10-26T21:00:00Z ready 0 0
+add_comment acme 2026-10-26T21:00:00Z ready 0 0
 build_pr main 96
 run_review
 expect_word skip
@@ -611,7 +611,7 @@ assert_no_arg pr
 # --- case 11 ----------------------------------------------------------------
 tname="case 11 other author waits"
 reset_case
-write_order adamsuk/software-factory 96 adamsuk/software-factory factory/96-review-verdict 1
+write_order acme/software-factory 96 acme/software-factory factory/96-review-verdict 1
 set_labels factory:review
 add_comment coderabbitai 2026-10-26T21:00:00Z ready 0 0
 GH_API_MODE=not_found
@@ -626,25 +626,25 @@ assert_no_api
 # --- case 12 ----------------------------------------------------------------
 tname="case 12 later comment wins"
 reset_case
-write_order adamsuk/software-factory 96 adamsuk/software-factory factory/96-review-verdict 1
+write_order acme/software-factory 96 acme/software-factory factory/96-review-verdict 1
 set_labels factory:review
-add_comment adamsuk 2026-10-26T21:00:00Z ready 0 0
-add_comment adamsuk 2026-10-26T22:00:00Z changes-needed 2 1
+add_comment acme 2026-10-26T21:00:00Z ready 0 0
+add_comment acme 2026-10-26T22:00:00Z changes-needed 2 1
 GH_API_MODE=not_found
 export GH_API_MODE
 build_pr main 96
 run_review
 expect_word build
-assert_edit adamsuk/software-factory factory:review factory:building
+assert_edit acme/software-factory factory:review factory:building
 assert_no_comment
 assert_no_api
 
 # --- case 13 ----------------------------------------------------------------
 tname="case 13 empty issue_repo"
 reset_case
-write_order adamsuk/gh-factory 96 "" factory/96-review-verdict 1
+write_order acme/gh-factory 96 "" factory/96-review-verdict 1
 set_labels factory:review
-add_comment adamsuk 2026-10-26T21:00:00Z ready 0 0
+add_comment acme 2026-10-26T21:00:00Z ready 0 0
 set_factory << 'EOF'
 agents:
   review_bot: none
@@ -652,24 +652,24 @@ EOF
 build_pr main 96
 run_review
 expect_word merge
-assert_edit adamsuk/gh-factory factory:review factory:merge
+assert_edit acme/gh-factory factory:review factory:merge
 assert_no_comment
-assert_pr_view adamsuk/gh-factory factory/96-review-verdict
-assert_api_url "$(api_url adamsuk/gh-factory main)"
+assert_pr_view acme/gh-factory factory/96-review-verdict
+assert_api_url "$(api_url acme/gh-factory main)"
 
 # --- case 14 ----------------------------------------------------------------
 tname="case 14 attempt 4"
 reset_case
-write_order adamsuk/software-factory 96 adamsuk/software-factory factory/96-review-verdict 4
+write_order acme/software-factory 96 acme/software-factory factory/96-review-verdict 4
 set_labels factory:review
 expect_exit_2
 
 # --- case 15 ----------------------------------------------------------------
 tname="case 15 marker not on the first line"
 reset_case
-write_order adamsuk/software-factory 96 adamsuk/software-factory factory/96-review-verdict 1
+write_order acme/software-factory 96 acme/software-factory factory/96-review-verdict 1
 set_labels factory:review
-add_raw_comment adamsuk 2026-10-26T21:00:00Z $'\n<!-- factory:review -->\nverdict: ready\nshould-fix: 0\nnits: 0\n'
+add_raw_comment acme 2026-10-26T21:00:00Z $'\n<!-- factory:review -->\nverdict: ready\nshould-fix: 0\nnits: 0\n'
 GH_API_MODE=not_found
 export GH_API_MODE
 build_pr main 96
@@ -682,9 +682,9 @@ assert_no_api
 # --- case 16 ----------------------------------------------------------------
 tname="case 16 pr view failure"
 reset_case
-write_order adamsuk/software-factory 96 adamsuk/software-factory factory/96-review-verdict 1
+write_order acme/software-factory 96 acme/software-factory factory/96-review-verdict 1
 set_labels factory:review
-add_comment adamsuk 2026-10-26T21:00:00Z ready 0 0
+add_comment acme 2026-10-26T21:00:00Z ready 0 0
 GH_API_MODE=not_found
 export GH_API_MODE
 GH_PR_STATUS=1
@@ -699,9 +699,9 @@ assert_invocations 0 api
 # --- case 17 ----------------------------------------------------------------
 tname="case 17 unknown review_bot waits"
 reset_case
-write_order adamsuk/software-factory 96 adamsuk/software-factory factory/96-review-verdict 1
+write_order acme/software-factory 96 acme/software-factory factory/96-review-verdict 1
 set_labels factory:review
-add_comment adamsuk 2026-10-26T21:00:00Z ready 0 0
+add_comment acme 2026-10-26T21:00:00Z ready 0 0
 set_factory << 'EOF'
 agents:
   review_bot: both
@@ -711,14 +711,14 @@ run_review
 expect_word wait
 assert_no_edit
 assert_no_comment
-assert_api_url "$(api_url adamsuk/software-factory main)"
+assert_api_url "$(api_url acme/software-factory main)"
 
 # Spec clauses the seventeen cases do not already pin down.
 tname="missing review_bot is none"
 reset_case
-write_order adamsuk/software-factory 96 adamsuk/software-factory factory/96-review-verdict 1
+write_order acme/software-factory 96 acme/software-factory factory/96-review-verdict 1
 set_labels factory:review
-add_comment adamsuk 2026-10-26T21:00:00Z ready 0 9
+add_comment acme 2026-10-26T21:00:00Z ready 0 9
 set_factory << 'EOF'
 agents:
   merge: false
@@ -727,14 +727,14 @@ EOF
 build_pr main 96
 run_review
 expect_word merge
-assert_edit adamsuk/software-factory factory:review factory:merge
+assert_edit acme/software-factory factory:review factory:merge
 assert_no_comment
 
 tname="null review_bot is none"
 reset_case
-write_order adamsuk/software-factory 96 adamsuk/software-factory factory/96-review-verdict 1
+write_order acme/software-factory 96 acme/software-factory factory/96-review-verdict 1
 set_labels factory:review
-add_comment adamsuk 2026-10-26T21:00:00Z ready 0 0
+add_comment acme 2026-10-26T21:00:00Z ready 0 0
 set_factory << 'EOF'
 agents:
   review_bot: null
@@ -742,13 +742,13 @@ EOF
 build_pr main 96
 run_review
 expect_word merge
-assert_edit adamsuk/software-factory factory:review factory:merge
+assert_edit acme/software-factory factory:review factory:merge
 
 tname="missing agents is none"
 reset_case
-write_order adamsuk/software-factory 96 adamsuk/software-factory factory/96-review-verdict 1
+write_order acme/software-factory 96 acme/software-factory factory/96-review-verdict 1
 set_labels factory:review
-add_comment adamsuk 2026-10-26T21:00:00Z ready 0 0
+add_comment acme 2026-10-26T21:00:00Z ready 0 0
 set_factory << 'EOF'
 required_checks:
   - ShellCheck
@@ -756,13 +756,13 @@ EOF
 build_pr main 96
 run_review
 expect_word merge
-assert_edit adamsuk/software-factory factory:review factory:merge
+assert_edit acme/software-factory factory:review factory:merge
 
 tname="invalid yaml exits 7"
 reset_case
-write_order adamsuk/software-factory 96 adamsuk/software-factory factory/96-review-verdict 1
+write_order acme/software-factory 96 acme/software-factory factory/96-review-verdict 1
 set_labels factory:review
-add_comment adamsuk 2026-10-26T21:00:00Z ready 0 0
+add_comment acme 2026-10-26T21:00:00Z ready 0 0
 set_factory << 'EOF'
 agents:
   review_bot: [coderabbit
@@ -776,9 +776,9 @@ grep -q 'could not read factory.yml' "$ROOT/err" || fail "stderr missing parser 
 
 tname="api error exits 7"
 reset_case
-write_order adamsuk/software-factory 96 adamsuk/software-factory factory/96-review-verdict 1
+write_order acme/software-factory 96 acme/software-factory factory/96-review-verdict 1
 set_labels factory:review
-add_comment adamsuk 2026-10-26T21:00:00Z ready 0 0
+add_comment acme 2026-10-26T21:00:00Z ready 0 0
 GH_API_MODE=error
 export GH_API_MODE
 build_pr main 96
@@ -789,9 +789,9 @@ assert_no_comment
 
 tname="issue_repo differs from repo"
 reset_case
-write_order adamsuk/gh-factory 96 adamsuk/software-factory factory/96-review-verdict 2
+write_order acme/gh-factory 96 acme/software-factory factory/96-review-verdict 2
 set_labels factory:review
-add_comment adamsuk 2026-10-26T21:00:00Z ready 0 0
+add_comment acme 2026-10-26T21:00:00Z ready 0 0
 set_factory << 'EOF'
 agents:
   review_bot: none
@@ -799,18 +799,18 @@ EOF
 build_pr main 96
 run_review
 expect_word merge
-assert_edit adamsuk/software-factory factory:review factory:merge
-assert_pr_view adamsuk/gh-factory factory/96-review-verdict
-assert_api_url "$(api_url adamsuk/gh-factory main)"
-if gh_has_arg "$(api_url adamsuk/software-factory main)"; then
+assert_edit acme/software-factory factory:review factory:merge
+assert_pr_view acme/gh-factory factory/96-review-verdict
+assert_api_url "$(api_url acme/gh-factory main)"
+if gh_has_arg "$(api_url acme/software-factory main)"; then
   fail "pull request read used issue_repo"
 fi
 
 tname="base ref is encoded"
 reset_case
-write_order adamsuk/software-factory 96 adamsuk/software-factory factory/96-review-verdict 1
+write_order acme/software-factory 96 acme/software-factory factory/96-review-verdict 1
 set_labels factory:review
-add_comment adamsuk 2026-10-26T21:00:00Z ready 0 0
+add_comment acme 2026-10-26T21:00:00Z ready 0 0
 set_factory << 'EOF'
 agents:
   review_bot: none
@@ -818,27 +818,27 @@ EOF
 build_pr "release/1.0" 96
 run_review
 expect_word merge
-assert_api_url "$(api_url adamsuk/software-factory 'release%2F1.0')"
+assert_api_url "$(api_url acme/software-factory 'release%2F1.0')"
 
 tname="later createdAt wins when it is first in the array"
 reset_case
-write_order adamsuk/software-factory 96 adamsuk/software-factory factory/96-review-verdict 1
+write_order acme/software-factory 96 acme/software-factory factory/96-review-verdict 1
 set_labels factory:review
-add_comment adamsuk 2026-10-26T22:00:00Z changes-needed 2 0
-add_comment adamsuk 2026-10-26T21:00:00Z ready 0 0
+add_comment acme 2026-10-26T22:00:00Z changes-needed 2 0
+add_comment acme 2026-10-26T21:00:00Z ready 0 0
 GH_API_MODE=not_found
 export GH_API_MODE
 build_pr main 96
 run_review
 expect_word build
-assert_edit adamsuk/software-factory factory:review factory:building
+assert_edit acme/software-factory factory:review factory:building
 assert_no_api
 
 tname="later submittedAt wins when it is first in the array"
 reset_case
-write_order adamsuk/software-factory 96 adamsuk/software-factory factory/96-review-verdict 1
+write_order acme/software-factory 96 acme/software-factory factory/96-review-verdict 1
 set_labels factory:review
-add_comment adamsuk 2026-10-26T21:00:00Z ready 0 0
+add_comment acme 2026-10-26T21:00:00Z ready 0 0
 add_review coderabbitai CHANGES_REQUESTED 2026-10-26T22:30:00Z
 add_review coderabbitai APPROVED 2026-10-26T22:00:00Z
 use_coderabbit_yml
@@ -849,10 +849,10 @@ assert_no_edit
 
 tname="other author review does not satisfy coderabbit"
 reset_case
-write_order adamsuk/software-factory 96 adamsuk/software-factory factory/96-review-verdict 1
+write_order acme/software-factory 96 acme/software-factory factory/96-review-verdict 1
 set_labels factory:review
-add_comment adamsuk 2026-10-26T21:00:00Z ready 0 0
-add_review adamsuk APPROVED 2026-10-26T23:00:00Z
+add_comment acme 2026-10-26T21:00:00Z ready 0 0
+add_review acme APPROVED 2026-10-26T23:00:00Z
 add_review coderabbitai CHANGES_REQUESTED 2026-10-26T22:00:00Z
 use_coderabbit_yml
 build_pr main 96
@@ -862,28 +862,28 @@ assert_no_edit
 
 tname="newer malformed marker does not hide an older verdict"
 reset_case
-write_order adamsuk/software-factory 96 adamsuk/software-factory factory/96-review-verdict 1
+write_order acme/software-factory 96 acme/software-factory factory/96-review-verdict 1
 set_labels factory:review
-add_comment adamsuk 2026-10-26T21:00:00Z ready 0 0
-add_raw_comment adamsuk 2026-10-26T22:00:00Z $'\n<!-- factory:review -->\nverdict: changes-needed\nshould-fix: 2\nnits: 0\n'
+add_comment acme 2026-10-26T21:00:00Z ready 0 0
+add_raw_comment acme 2026-10-26T22:00:00Z $'\n<!-- factory:review -->\nverdict: changes-needed\nshould-fix: 2\nnits: 0\n'
 GH_API_MODE=not_found
 export GH_API_MODE
 build_pr main 96
 run_review
 expect_word merge
-assert_edit adamsuk/software-factory factory:review factory:merge
+assert_edit acme/software-factory factory:review factory:merge
 
 tname="crlf verdict still merges"
 reset_case
-write_order adamsuk/software-factory 96 adamsuk/software-factory factory/96-review-verdict 1
+write_order acme/software-factory 96 acme/software-factory factory/96-review-verdict 1
 set_labels factory:review
-add_raw_comment adamsuk 2026-10-26T21:00:00Z $'<!-- factory:review -->\r\nverdict: ready\r\nshould-fix: 0\r\nnits: 4\r\n'
+add_raw_comment acme 2026-10-26T21:00:00Z $'<!-- factory:review -->\r\nverdict: ready\r\nshould-fix: 0\r\nnits: 4\r\n'
 GH_API_MODE=not_found
 export GH_API_MODE
 build_pr main 96
 run_review
 expect_word merge
-assert_edit adamsuk/software-factory factory:review factory:merge
+assert_edit acme/software-factory factory:review factory:merge
 
 tname="quoted front matter"
 reset_case
@@ -891,9 +891,9 @@ order=$ROOT/order.md
 issue_num=96
 cat > "$order" << 'EOF'
 ---
-repo: "adamsuk/software-factory"
+repo: "acme/software-factory"
 issue: "96"
-issue_repo: "adamsuk/software-factory"
+issue_repo: "acme/software-factory"
 branch: "factory/96-review-verdict"
 attempt: "1"
 title: "ignored"
@@ -901,21 +901,21 @@ title: "ignored"
 attempt: 9
 EOF
 set_labels factory:review
-add_comment adamsuk 2026-10-26T21:00:00Z ready 0 0
+add_comment acme 2026-10-26T21:00:00Z ready 0 0
 GH_API_MODE=not_found
 export GH_API_MODE
 build_pr main 96
 run_review
 expect_word merge
-assert_edit adamsuk/software-factory factory:review factory:merge
+assert_edit acme/software-factory factory:review factory:merge
 
 bad_should=0
 for bad_should in 01 00 -1 +1 1.0; do
   tname="bad should-fix ${bad_should}"
   reset_case
-  write_order adamsuk/software-factory 96 adamsuk/software-factory factory/96-review-verdict 1
+  write_order acme/software-factory 96 acme/software-factory factory/96-review-verdict 1
   set_labels factory:review
-  add_raw_comment adamsuk 2026-10-26T21:00:00Z "$(printf '<!-- factory:review -->\nverdict: ready\nshould-fix: %s\nnits: 0' "$bad_should")"
+  add_raw_comment acme 2026-10-26T21:00:00Z "$(printf '<!-- factory:review -->\nverdict: ready\nshould-fix: %s\nnits: 0' "$bad_should")"
   GH_API_MODE=not_found
   export GH_API_MODE
   build_pr main 96
@@ -927,9 +927,9 @@ done
 
 tname="extra verdict line waits"
 reset_case
-write_order adamsuk/software-factory 96 adamsuk/software-factory factory/96-review-verdict 1
+write_order acme/software-factory 96 acme/software-factory factory/96-review-verdict 1
 set_labels factory:review
-add_raw_comment adamsuk 2026-10-26T21:00:00Z $'<!-- factory:review -->\nverdict: ready\nshould-fix: 0\nnits: 0\nextra\n'
+add_raw_comment acme 2026-10-26T21:00:00Z $'<!-- factory:review -->\nverdict: ready\nshould-fix: 0\nnits: 0\nextra\n'
 GH_API_MODE=not_found
 export GH_API_MODE
 build_pr main 96
@@ -956,13 +956,13 @@ assert_eq "$stdout" ""
 
 tname="bad repo"
 reset_case
-write_order adamsuk/software/factory 96 adamsuk/software-factory factory/96-review-verdict 1
+write_order acme/software/factory 96 acme/software-factory factory/96-review-verdict 1
 set_labels factory:review
 expect_exit_2
 
 tname="branch with space"
 reset_case
-write_order adamsuk/software-factory 96 adamsuk/software-factory "factory/96 review" 1
+write_order acme/software-factory 96 acme/software-factory "factory/96 review" 1
 set_labels factory:review
 expect_exit_2
 
@@ -970,9 +970,9 @@ expect_exit_2
 while read -r verdict should_fix expected; do
   tname="${verdict} with should-fix ${should_fix} routes to ${expected}"
   reset_case
-  write_order adamsuk/software-factory 96 adamsuk/software-factory factory/96-review-verdict 1
+  write_order acme/software-factory 96 acme/software-factory factory/96-review-verdict 1
   set_labels factory:review
-  add_comment adamsuk 2026-10-26T21:00:00Z "$verdict" "$should_fix" 3
+  add_comment acme 2026-10-26T21:00:00Z "$verdict" "$should_fix" 3
   set_factory << 'EOF'
 agents:
   review_bot: none
@@ -982,23 +982,23 @@ EOF
   expect_word "$expected"
   case "$expected" in
     merge)
-      assert_edit adamsuk/software-factory factory:review factory:merge
+      assert_edit acme/software-factory factory:review factory:merge
       assert_no_comment
-      assert_api_url "$(api_url adamsuk/software-factory main)"
+      assert_api_url "$(api_url acme/software-factory main)"
       ;;
     build)
-      assert_edit adamsuk/software-factory factory:review factory:building
+      assert_edit acme/software-factory factory:review factory:building
       assert_no_comment
       assert_no_api
       ;;
     blocked)
-      assert_edit adamsuk/software-factory factory:review factory:blocked
+      assert_edit acme/software-factory factory:review factory:blocked
       assert_one_comment "$(cat << 'EOF'
 <!-- factory:review -->
 blocked: needs-scott
 The maintainer must act.
 EOF
-)" adamsuk/software-factory
+)" acme/software-factory
       assert_no_api
       ;;
     wait)
@@ -1021,31 +1021,31 @@ EOF
 for state in APPROVED CHANGES_REQUESTED; do
   tname="PASS respects the existing coderabbit gate: ${state}"
   reset_case
-  write_order adamsuk/software-factory 96 adamsuk/software-factory factory/96-review-verdict 1
+  write_order acme/software-factory 96 acme/software-factory factory/96-review-verdict 1
   set_labels factory:review
-  add_comment adamsuk 2026-10-26T21:00:00Z PASS 0 0
+  add_comment acme 2026-10-26T21:00:00Z PASS 0 0
   add_review coderabbitai "$state" 2026-10-26T22:00:00Z
   use_coderabbit_yml
   build_pr main 96
   run_review
   if [[ "$state" == "APPROVED" ]]; then
     expect_word merge
-    assert_edit adamsuk/software-factory factory:review factory:merge
+    assert_edit acme/software-factory factory:review factory:merge
   else
     expect_word wait
     assert_no_edit
   fi
   assert_no_comment
-  assert_api_url "$(api_url adamsuk/software-factory main)"
+  assert_api_url "$(api_url acme/software-factory main)"
   assert_no_forbidden
 done
 
 # --- approver login ----------------------------------------------------------
 tname="FACTORY_APPROVER_LOGIN replaces the default approver"
 reset_case
-write_order adamsuk/software-factory 96 adamsuk/software-factory factory/96-review-verdict 1
+write_order acme/software-factory 96 acme/software-factory factory/96-review-verdict 1
 set_labels factory:review
-add_comment adamsuk 2026-10-26T21:00:00Z changes-needed 2 0
+add_comment acme 2026-10-26T21:00:00Z changes-needed 2 0
 GH_API_MODE=not_found
 export GH_API_MODE
 build_pr main 96
@@ -1059,26 +1059,28 @@ add_comment maint-er 2026-10-26T22:00:00Z changes-needed 2 0
 build_pr main 96
 run_review
 expect_word build
-assert_edit adamsuk/software-factory factory:review factory:building
+assert_edit acme/software-factory factory:review factory:building
 unset FACTORY_APPROVER_LOGIN
 
 tname="approver defaults to the FACTORY_HOME_REPO owner"
 reset_case
-write_order adamsuk/software-factory 96 adamsuk/software-factory factory/96-review-verdict 1
+write_order acme/software-factory 96 acme/software-factory factory/96-review-verdict 1
 set_labels factory:review
-add_comment adamsuk 2026-10-26T21:00:00Z changes-needed 2 0
+add_comment acme 2026-10-26T21:00:00Z changes-needed 2 0
 GH_API_MODE=not_found
 export GH_API_MODE
 build_pr main 96
-FACTORY_HOME_REPO=acme/home
+# The fixture owner is acme, so this home repo must use a different owner.
+# A comment by acme must not count; a comment by that owner must.
+FACTORY_HOME_REPO=other/home
 run_review
 expect_word wait
 assert_no_edit
-add_comment acme 2026-10-26T22:00:00Z changes-needed 2 0
+add_comment other 2026-10-26T22:00:00Z changes-needed 2 0
 build_pr main 96
 run_review
 expect_word build
-assert_edit adamsuk/software-factory factory:review factory:building
-FACTORY_HOME_REPO=adamsuk/software-factory
+assert_edit acme/software-factory factory:review factory:building
+FACTORY_HOME_REPO=acme/software-factory
 
 echo "ok"
