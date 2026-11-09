@@ -16,6 +16,11 @@
 # Target repo and size are multiple choice. Any other missing fact is one
 # short free-text question. This script does not add acceptance criteria.
 # Exit 1: bad arguments, or the issue could not be read.
+#
+# The closed set is FACTORY_REPOS (space-separated owner/repo). Unset or
+# empty keeps the five-repo default. A comment counts only when author.login
+# is FACTORY_APPROVER_LOGIN, which defaults to the owner of the first repo
+# in that set. The issue body is the filer's text and is still read.
 set -euo pipefail
 
 die() { echo "triage-ask: $2" >&2; exit "$1"; }
@@ -32,25 +37,59 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 cat > "$work/decide.py" << 'PY'
 import json
+import os
 import re
 import sys
 
-# Closed sets. Target repo is one of these five. Size is S, M or L.
-REPOS = (
+# Closed sets. Target repo is one entry of FACTORY_REPOS. Unset or empty
+# keeps the five-repo default so an operator who has not set the variable
+# still matches the historical list. Size is S, M or L, with an optional
+# trailing full stop (the factory writes "Size: M.").
+DEFAULT_REPOS = (
     "adamsuk/software-factory",
     "adamsuk/gh-factory",
     "adamsuk/activity-feed",
     "adamsuk/line",
     "adamsuk/adamsuk",
 )
+REPO_TOKEN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 SIZES = ("S", "M", "L")
 MARKER = "<!-- factory:triage-ask -->"
 
+
+def load_repos():
+    raw = os.environ.get("FACTORY_REPOS") or ""
+    found = []
+    for token in raw.split():
+        if REPO_TOKEN.fullmatch(token) and token not in found:
+            found.append(token)
+    if not found:
+        return DEFAULT_REPOS
+    return tuple(found)
+
+
+def approver_login(repos):
+    raw = os.environ.get("FACTORY_APPROVER_LOGIN") or ""
+    if isinstance(raw, str):
+        raw = raw.strip()
+    else:
+        raw = ""
+    if raw:
+        return raw
+    if repos:
+        owner = repos[0].split("/", 1)[0]
+        if owner:
+            return owner
+    return "adamsuk"
+
+
+REPOS = load_repos()
+APPROVER = approver_login(REPOS)
 REPO_ALT = "|".join(re.escape(name) for name in REPOS)
 TARGET_RE = re.compile(rf"^[ \t]*Target repo:[ \t]*({REPO_ALT})[ \t]*$")
 BARE_REPO_RE = re.compile(rf"^[ \t]*({REPO_ALT})[ \t]*$")
-SIZE_RE = re.compile(r"^[ \t]*Size:[ \t]*([SML])[ \t]*$")
-BARE_SIZE_RE = re.compile(r"^[ \t]*([SML])[ \t]*$")
+SIZE_RE = re.compile(r"^[ \t]*Size:[ \t]*([SML])[ \t]*(?:\.[ \t]*)?$")
+BARE_SIZE_RE = re.compile(r"^[ \t]*([SML])[ \t]*(?:\.[ \t]*)?$")
 TASK_RE = re.compile(r"^[ \t]*(?:[-*]|\d+\.)[ \t]+\[[ xX]\][ \t]*(.*)$")
 HEADING_RE = re.compile(r"^[ \t]*#{1,6}[ \t]")
 PLACEHOLDER_RE = re.compile(
@@ -64,6 +103,11 @@ VAGUE_RE = re.compile(
 CODE_RE = re.compile(r"`([^`\n]+)`")
 WORD_RE = re.compile(r"\b(?:test|tests|diff|command)\b", re.I)
 PATH_RE = re.compile(r"/|\b[\w.-]+\.(?:sh|py|ts|tsx|js|mjs|md|yml|yaml|json|go|rs)\b")
+OBSERVABLE_RE = re.compile(
+    r"\b(?:pass(?:es|ed)?|fail(?:s|ed)?|returns?|exits?|contains?|documents?|"
+    r"prints?|shows?|includes?|matches|records?|lists?|equals?|remains?)\b",
+    re.I,
+)
 
 
 def norm(text):
@@ -79,6 +123,22 @@ def comment_body(item):
     return ""
 
 
+def comment_author(item):
+    if not isinstance(item, dict):
+        return ""
+    author = item.get("author")
+    if not isinstance(author, dict):
+        return ""
+    login = author.get("login")
+    return login if isinstance(login, str) else ""
+
+
+def approver_comment(item):
+    # gh issue view --json comments includes author.login. Anyone else is
+    # ignored, including a comment that only carries the asked marker.
+    return comment_author(item) == APPROVER
+
+
 def unique(items):
     seen = []
     for item in items:
@@ -88,13 +148,15 @@ def unique(items):
 
 
 def checkable(text):
-    """A done-check names a test, a command, or a file to look at in the diff.
+    """A done-check names a test, a command, a file, or a concrete outcome.
 
     Placeholder lines and vague lines are not checkable. The script never
-    rewrites them.
+    rewrites them. A backtick span still has to name something verifiable.
+    Plain prose passes when it names a path, a test or command, or a
+    concrete observable result of reasonable length.
     """
     collapsed = " ".join(text.split())
-    if not collapsed or PLACEHOLDER_RE.match(collapsed):
+    if not collapsed or PLACEHOLDER_RE.match(collapsed) or VAGUE_RE.match(collapsed):
         return False
     spans = CODE_RE.findall(collapsed)
     span_ok = False
@@ -105,9 +167,15 @@ def checkable(text):
         ):
             span_ok = True
             break
-    if span_ok and (WORD_RE.search(collapsed) or PATH_RE.search(collapsed)):
+    has_path = PATH_RE.search(collapsed) is not None
+    has_word = WORD_RE.search(collapsed) is not None
+    has_outcome = OBSERVABLE_RE.search(collapsed) is not None
+    if span_ok and (has_word or has_path or has_outcome):
         return True
-    if PATH_RE.search(collapsed) and WORD_RE.search(collapsed) and len(collapsed) >= 12:
+    if len(collapsed) >= 12 and (has_path or has_word):
+        return True
+    words = collapsed.split()
+    if len(collapsed) >= 24 and len(words) >= 5 and has_outcome:
         return True
     return False
 
@@ -236,6 +304,8 @@ def main():
     asked = False
     parts = [norm(body)]
     for item in raw_comments:
+        if not approver_comment(item):
+            continue
         text = norm(comment_body(item))
         if MARKER in text:
             asked = True

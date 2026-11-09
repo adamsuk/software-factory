@@ -9,6 +9,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Triage asks the owner before `factory:ready`. When a ticket is ambiguous, or its done-checks are missing or not checkable, `scripts/triage-ask.sh` writes a numbered comment and the watcher posts it and withholds `factory:ready`. Target repo and size are multiple choice. Any other missing fact is a short free-text question. The owner's answers stay on the issue, and the script leaves acceptance criteria for the owner to write (#310).
 
+### Changed
+
+- Readiness takes the target-repo closed set from `FACTORY_REPOS`, and keeps the five-repo list when that variable is unset or empty. `Size: M.` is accepted. A plain-prose done-check passes when it names a test, a command, a file path, or a concrete outcome. Only comments by `FACTORY_APPROVER_LOGIN` count as answers or as the already-asked marker. The watcher runs that ask before it clones, and it feeds the approver's comment bodies into intake and the work-order prompt (#310).
+
 ## 2026-11-09 (pull request size labels)
 
 ### Added
@@ -53,6 +57,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   approver to match, the fixture sets `FACTORY_HOME_REPO` or `FACTORY_REPOS`,
   and the approver defaults to that owner. Deny-list needles and safety
   checks are unchanged (#296).
+
 ## 2026-11-09 (portable defaults)
 
 ### Changed

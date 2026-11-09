@@ -6,8 +6,11 @@
 # The fixture has no checkable acceptance criteria. Questions are posted
 # as a numbered comment and factory:ready is not applied. The same fixture
 # with the owner's answers on the body or a comment allows ready.
-# The script does not add acceptance criteria the owner did not write.
+# A comment counts only when its author is the approver. The script does
+# not add acceptance criteria the owner did not write.
 set -euo pipefail
+
+unset FACTORY_REPOS FACTORY_APPROVER_LOGIN
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 root=$(cd "$here/.." && pwd)
@@ -131,6 +134,87 @@ Size: S
 - [ ] `bash scripts/test-colour.sh` fails while the button stays grey and passes once it enables
 EOF
 
+cat > "$ROOT/prose-ready.txt" << 'EOF'
+The save button stays grey after the form becomes valid.
+
+Target repo: adamsuk/software-factory
+Size: M.
+
+- [ ] scripts/test-foo.sh passes
+- [ ] docs/runbooks/bar.md documents the rollback steps
+EOF
+
+cat > "$ROOT/size-dot-space.txt" << 'EOF'
+The save button stays grey after the form becomes valid.
+
+Target repo: adamsuk/software-factory
+Size: M .
+
+- [ ] scripts/test-foo.sh passes
+EOF
+
+cat > "$ROOT/size-dot-no-checks.txt" << 'EOF'
+The save button stays grey after the form becomes valid.
+
+Target repo: adamsuk/software-factory
+Size: M.
+EOF
+
+cat > "$ROOT/prose-no-size.txt" << 'EOF'
+The save button stays grey after the form becomes valid.
+
+Target repo: adamsuk/software-factory
+
+- [ ] scripts/test-foo.sh passes
+- [ ] docs/runbooks/bar.md documents the rollback steps
+EOF
+
+cat > "$ROOT/bare-size.txt" << 'EOF'
+M.
+EOF
+
+cat > "$ROOT/vague-bug.txt" << 'EOF'
+The save button stays grey after the form becomes valid.
+
+Target repo: adamsuk/software-factory
+Size: M
+
+- [ ] fix the bug
+EOF
+
+cat > "$ROOT/custom-ready.txt" << 'EOF'
+The save button stays grey after the form becomes valid.
+
+Target repo: acme/widgets
+Size: M.
+
+- [ ] scripts/test-foo.sh passes
+- [ ] docs/runbooks/bar.md documents the rollback steps
+EOF
+
+cat > "$ROOT/custom-outsider.txt" << 'EOF'
+The save button stays grey after the form becomes valid.
+
+Target repo: adamsuk/software-factory
+Size: M.
+
+- [ ] scripts/test-foo.sh passes
+- [ ] docs/runbooks/bar.md documents the rollback steps
+EOF
+
+cat > "$ROOT/acme-answer.txt" << 'EOF'
+Target repo: acme/widgets
+Size: M.
+
+- [ ] scripts/test-foo.sh passes
+- [ ] docs/runbooks/bar.md documents the rollback steps
+EOF
+
+cat > "$ROOT/marker-only.txt" << 'EOF'
+<!-- factory:triage-ask -->
+Answer on this issue, in a comment or in the issue body.
+EOF
+
 cat > "$ROOT/complete.txt" << 'EOF'
 The save button stays grey after the form becomes valid.
 
@@ -155,13 +239,20 @@ PY
 }
 
 comments_from() {
-  local dest=$1
+  local dest=$1 author=adamsuk
   shift
-  python3 - "$dest" "$@" << 'PY'
+  if [[ "${1:-}" == --author ]]; then
+    author=$2
+    shift 2
+  fi
+  python3 - "$dest" "$author" "$@" << 'PY'
 import json, pathlib, sys
 dest = pathlib.Path(sys.argv[1])
-bodies = [pathlib.Path(path).read_text() for path in sys.argv[2:]]
-dest.write_text(json.dumps([{"body": body} for body in bodies]))
+author = sys.argv[2]
+bodies = [pathlib.Path(path).read_text() for path in sys.argv[3:]]
+dest.write_text(json.dumps([
+    {"author": {"login": author}, "body": body} for body in bodies
+]))
 PY
 }
 
@@ -426,6 +517,187 @@ run adamsuk/software-factory 310 extra || true
 [[ ! -s "$GH_LOG" ]] || fail "gh was called for bad arguments"
 printf '%s\n' "ok: $tname"
 
+tname="Size: M. and prose done-checks: ready allowed"
+reset_gh
+write_issue "Colour is wrong" "$ROOT/prose-ready.txt" "$EMPTY"
+run adamsuk/software-factory 310
+[[ "$status" -eq 0 ]] || fail "expected exit 0, got $status"
+[[ ! -s "$OUT" ]] || fail "allow path printed a comment"
+assert_view_only
+assert_no_label
+printf '%s\n' "ok: $tname"
+
+tname="Size: M . with surrounding space: ready allowed"
+reset_gh
+write_issue "Colour is wrong" "$ROOT/size-dot-space.txt" "$EMPTY"
+run adamsuk/software-factory 310
+[[ "$status" -eq 0 ]] || fail "expected exit 0, got $status"
+[[ ! -s "$OUT" ]] || fail "allow path printed a comment"
+assert_no_label
+printf '%s\n' "ok: $tname"
+
+tname="Size: M. is not asked again when done-checks are missing"
+reset_gh
+write_issue "Colour is wrong" "$ROOT/size-dot-no-checks.txt" "$EMPTY"
+run adamsuk/software-factory 310
+[[ "$status" -eq 2 ]] || fail "expected exit 2, got $status"
+[[ "$(numbered_count "$OUT")" -eq 1 ]] || fail "expected one numbered question"
+grep -F -q 'What are the done-checks?' "$OUT" || fail "missing free-text question"
+grep -F -q 'What size is this change?' "$OUT" && fail "Size: M. was rejected"
+grep -F -q 'Which repository' "$OUT" && fail "target repo was rejected"
+assert_no_label
+printf '%s\n' "ok: $tname"
+
+tname="bare size M. from the owner: ready allowed"
+reset_gh
+comments_from "$ROOT/bare-size-comments.json" --author adamsuk "$ROOT/bare-size.txt"
+write_issue "Colour is wrong" "$ROOT/prose-no-size.txt" "$ROOT/bare-size-comments.json"
+run adamsuk/software-factory 310
+[[ "$status" -eq 0 ]] || fail "expected exit 0, got $status"
+[[ ! -s "$OUT" ]] || fail "allow path printed a comment"
+assert_no_label
+printf '%s\n' "ok: $tname"
+
+tname="vague checklist still withholds ready"
+reset_gh
+write_issue "Colour is wrong" "$ROOT/vague-bug.txt" "$EMPTY"
+run adamsuk/software-factory 310
+[[ "$status" -eq 2 ]] || fail "expected exit 2, got $status"
+grep -F -q 'not verifiable yet' "$OUT" || fail "vague line was accepted"
+assert_no_invented_criteria "$OUT"
+assert_no_label
+printf '%s\n' "ok: $tname"
+
+tname="owner comment unlocks ready"
+reset_gh
+export FACTORY_APPROVER_LOGIN=adamsuk
+comments_from "$ROOT/owner-comments.json" --author adamsuk "$ROOT/answer.txt"
+write_issue "Colour is wrong" "$ROOT/fixture.txt" "$ROOT/owner-comments.json"
+run adamsuk/software-factory 310
+status_owner=$status
+unset FACTORY_APPROVER_LOGIN
+[[ "$status_owner" -eq 0 ]] || fail "expected exit 0, got $status_owner"
+[[ ! -s "$OUT" ]] || fail "allow path printed a comment"
+assert_view_only
+assert_no_label
+printf '%s\n' "ok: $tname"
+
+tname="stranger comment does not unlock ready"
+reset_gh
+comments_from "$ROOT/stranger-comments.json" --author stranger "$ROOT/answer.txt"
+write_issue "Colour is wrong" "$ROOT/fixture.txt" "$ROOT/stranger-comments.json"
+run adamsuk/software-factory 310
+[[ "$status" -eq 2 ]] || fail "expected exit 2, got $status"
+[[ -s "$OUT" ]] || fail "stranger answer suppressed the questions"
+grep -F -q '<!-- factory:triage-ask -->' "$OUT" || fail "missing marker"
+[[ "$(numbered_count "$OUT")" -eq 3 ]] || fail "expected the three unanswered questions"
+assert_no_label
+printf '%s\n' "ok: $tname"
+
+tname="comment without author.login does not unlock ready"
+reset_gh
+python3 - "$ROOT/anon-comments.json" "$ROOT/answer.txt" << 'PY'
+import json, pathlib, sys
+dest, body = sys.argv[1:]
+pathlib.Path(dest).write_text(json.dumps([{"body": pathlib.Path(body).read_text()}]))
+PY
+write_issue "Colour is wrong" "$ROOT/fixture.txt" "$ROOT/anon-comments.json"
+run adamsuk/software-factory 310
+[[ "$status" -eq 2 ]] || fail "expected exit 2, got $status"
+[[ -s "$OUT" ]] || fail "authorless answer suppressed the questions"
+assert_no_label
+printf '%s\n' "ok: $tname"
+
+tname="stranger marker does not suppress questions"
+reset_gh
+comments_from "$ROOT/stranger-marker.json" --author stranger "$ROOT/marker-only.txt"
+write_issue "Colour is wrong" "$ROOT/fixture.txt" "$ROOT/stranger-marker.json"
+run adamsuk/software-factory 310
+[[ "$status" -eq 2 ]] || fail "expected exit 2, got $status"
+[[ -s "$OUT" ]] || fail "stranger marker suppressed the questions"
+grep -F -q '<!-- factory:triage-ask -->' "$OUT" || fail "missing marker"
+[[ "$(numbered_count "$OUT")" -eq 3 ]] || fail "expected the three unanswered questions"
+assert_no_label
+printf '%s\n' "ok: $tname"
+
+tname="FACTORY_APPROVER_LOGIN comment unlocks and the default owner does not"
+reset_gh
+export FACTORY_APPROVER_LOGIN=maint
+comments_from "$ROOT/maint-comments.json" --author maint "$ROOT/answer.txt"
+write_issue "Colour is wrong" "$ROOT/fixture.txt" "$ROOT/maint-comments.json"
+run adamsuk/software-factory 310
+status_maint=$status
+[[ "$status_maint" -eq 0 ]] || fail "maintainer comment: expected exit 0, got $status_maint"
+[[ ! -s "$OUT" ]] || fail "allow path printed a comment"
+reset_gh
+comments_from "$ROOT/owner-ignored.json" --author adamsuk "$ROOT/answer.txt"
+write_issue "Colour is wrong" "$ROOT/fixture.txt" "$ROOT/owner-ignored.json"
+run adamsuk/software-factory 310
+status_ignored=$status
+unset FACTORY_APPROVER_LOGIN
+[[ "$status_ignored" -eq 2 ]] || fail "default owner was treated as the approver, exit $status_ignored"
+[[ -s "$OUT" ]] || fail "non-approver answer suppressed the questions"
+assert_no_label
+printf '%s\n' "ok: $tname"
+
+tname="custom FACTORY_REPOS is accepted and an outsider is rejected"
+reset_gh
+export FACTORY_REPOS="acme/widgets acme/gadgets"
+unset FACTORY_APPROVER_LOGIN
+write_issue "Colour is wrong" "$ROOT/custom-ready.txt" "$EMPTY"
+run acme/widgets 12
+status_custom=$status
+[[ "$status_custom" -eq 0 ]] || fail "custom repo: expected exit 0, got $status_custom"
+[[ ! -s "$OUT" ]] || fail "allow path printed a comment"
+reset_gh
+write_issue "Colour is wrong" "$ROOT/custom-outsider.txt" "$EMPTY"
+run acme/widgets 12
+status_out=$status
+[[ "$status_out" -eq 2 ]] || fail "outsider: expected exit 2, got $status_out"
+grep -F -q 'Which repository should this change land in?' "$OUT" || fail "missing repo question"
+grep -F -q '   - acme/widgets' "$OUT" || fail "missing custom repo option"
+grep -F -q '   - acme/gadgets' "$OUT" || fail "missing second custom repo option"
+grep -F -q '   - adamsuk/software-factory' "$OUT" && fail "default repo stayed in the closed set"
+grep -F -q '   - adamsuk/not-a-repo' "$OUT" && fail "outsider was offered"
+assert_no_label
+unset FACTORY_REPOS
+printf '%s\n' "ok: $tname"
+
+tname="empty FACTORY_REPOS keeps the five-repo default"
+reset_gh
+export FACTORY_REPOS=""
+unset FACTORY_APPROVER_LOGIN
+write_issue "Colour is wrong" "$ROOT/fixture.txt" "$EMPTY"
+run adamsuk/software-factory 310
+status_empty=$status
+unset FACTORY_REPOS
+[[ "$status_empty" -eq 2 ]] || fail "expected exit 2, got $status_empty"
+for name in adamsuk/software-factory adamsuk/gh-factory adamsuk/activity-feed adamsuk/line adamsuk/adamsuk; do
+  grep -F -q -- "   - ${name}" "$OUT" || fail "default list lost ${name}"
+done
+assert_no_label
+printf '%s\n' "ok: $tname"
+
+tname="approver defaults to the owner of the first FACTORY_REPOS entry"
+reset_gh
+export FACTORY_REPOS="acme/widgets acme/gadgets"
+unset FACTORY_APPROVER_LOGIN
+comments_from "$ROOT/acme-comments.json" --author acme "$ROOT/acme-answer.txt"
+write_issue "Colour is wrong" "$ROOT/fixture.txt" "$ROOT/acme-comments.json"
+run acme/widgets 12
+status_acme=$status
+[[ "$status_acme" -eq 0 ]] || fail "repo owner comment: expected exit 0, got $status_acme"
+reset_gh
+comments_from "$ROOT/not-acme.json" --author adamsuk "$ROOT/acme-answer.txt"
+write_issue "Colour is wrong" "$ROOT/fixture.txt" "$ROOT/not-acme.json"
+run acme/widgets 12
+status_not=$status
+unset FACTORY_REPOS
+[[ "$status_not" -eq 2 ]] || fail "other owner was accepted, exit $status_not"
+[[ -s "$OUT" ]] || fail "other owner suppressed the questions"
+assert_no_label
+printf '%s\n' "ok: $tname"
+
 tname="both watchers ask before run_grok and post on withhold"
 # shellcheck disable=SC2016 # the watcher line keeps these expansions literal
 dry_line='DRY-RUN would triage ${repo}#${num}: clone software-factory main, grok follows agents/roles/intake.md, posts <!-- factory:triage --> and sets factory:ready or factory:blocked'
@@ -441,8 +713,9 @@ for lane in "$root/scripts/watcher/watch.sh" "$root/scripts/watcher/watch.new.sh
     infn && index($0, "gh issue comment") { post = NR }
     infn && hold && !hold_cont && $0 ~ /^[[:space:]]*continue$/ { hold_cont = NR }
     infn && index($0, "run_grok triage") { grok = NR }
+    infn && !clone && index($0, "clone_sf_main") { clone = NR }
     END {
-      ok = dry && dry_cont > dry && ask > dry_cont && hold > ask && post > hold && hold_cont > post && grok > hold_cont
+      ok = dry && dry_cont > dry && ask > dry_cont && hold > ask && post > hold && hold_cont > post && grok > hold_cont && clone > ask
       if (!ok) exit 1
     }
   ' "$lane" || fail "step_triage hook order is wrong in ${lane}"
@@ -461,6 +734,218 @@ awk '/^step_triage\(\) \{/ { grab = 1 } grab { print } grab && /^}$/ { grab = 0 
 awk '/^step_triage\(\) \{/ { grab = 1 } grab { print } grab && /^}$/ { grab = 0 }' \
   "$root/scripts/watcher/watch.new.sh" > "$fn_b"
 cmp -s "$fn_a" "$fn_b" || fail "step_triage differs between the two watchers"
+printf '%s\n' "ok: $tname"
+
+# Behavioural step_triage. A stubbed triage-ask exits 2 or 1, and the real
+# continue statements must skip run_grok and must not clone when a local
+# ask script exists. Exit 0 must reach run_grok, and the intake block must
+# carry the approver's comment bodies without the triage-ask question or a
+# stranger's comment. Removing the continue after ask_rc==2, or the continue
+# after ask_rc!=0, makes the matching case call run_grok.
+run_watcher_ask() {
+  local lane=$1 rc_want=$2 body=${3-}
+  local case_dir
+  case_dir=$(mktemp -d "$ROOT/step.XXXXXX")
+  STEP_CASE=$case_dir
+  : > "$case_dir/trace"
+  (
+    set -euo pipefail
+    export FACTORY_WATCH_ROOT=$case_dir/root
+    export FACTORY_BUDGET_FILE=$case_dir/budget.json
+    export FACTORY_LEDGER_FILE=$case_dir/ledger.csv
+    export FACTORY_HOME_REPO=adamsuk/software-factory
+    export FACTORY_REPOS="adamsuk/software-factory adamsuk/gh-factory adamsuk/activity-feed adamsuk/line adamsuk/adamsuk"
+    export FACTORY_APPROVER_LOGIN=adamsuk
+    unset FACTORY_BLOCKED_OWNERS
+    mkdir -p "$FACTORY_WATCH_ROOT/state" "$FACTORY_WATCH_ROOT/work" "$case_dir/bin"
+    python3 - "$FACTORY_BUDGET_FILE" "$case_dir/issue.json" "$case_dir/issues.jsonl" << 'PY'
+import json, pathlib, sys
+budget, issue, cache = sys.argv[1:]
+pathlib.Path(budget).write_text(json.dumps({
+    "max_grok_build_runs_per_week": 20,
+    "max_grok_build_runs_per_day": 20,
+    "max_runs_per_loop": 5,
+    "focus_issues": [],
+    "merge_protected_issues": [],
+}))
+pathlib.Path(issue).write_text(json.dumps({
+    "title": "Colour",
+    "body": "ISSUE-BODY-TOKEN",
+    "comments": [
+        {"author": {"login": "adamsuk"}, "body": "OWNER-ANSWER-TOKEN"},
+        {"author": {"login": "stranger"}, "body": "STRANGER-ANSWER-TOKEN"},
+        {"author": {"login": "adamsuk"}, "body": "<!-- factory:triage-ask -->\nQUESTION-TOKEN"},
+    ],
+}))
+pathlib.Path(cache).write_text(json.dumps({
+    "repo": "adamsuk/software-factory",
+    "number": 310,
+    "title": "Colour",
+    "body": "ISSUE-BODY-TOKEN",
+    "createdAt": "2026-11-01T00:00:00Z",
+    "labels": [{"name": "factory:triage"}],
+}) + "\n")
+PY
+    cat > "$case_dir/bin/gh" << 'EOF'
+#!/usr/bin/env bash
+set -u
+printf '%s\n' "$*" >> "${GH_LOG:?}"
+if [[ "${1:-}" == issue && "${2:-}" == view ]]; then
+  filter=""
+  shift 2 || true
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --jq) filter=$2; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  if [[ -n $filter ]]; then
+    jq -r "$filter" "${GH_ISSUE_JSON:?}"
+  else
+    cat "${GH_ISSUE_JSON:?}"
+  fi
+  exit 0
+fi
+if [[ "${1:-}" == issue && "${2:-}" == comment ]]; then
+  exit 0
+fi
+echo "unexpected gh: $*" >&2
+exit 99
+EOF
+    chmod +x "$case_dir/bin/gh"
+    export PATH="$case_dir/bin:$PATH"
+    export GH_LOG=$case_dir/gh.log
+    export GH_ISSUE_JSON=$case_dir/issue.json
+    : > "$GH_LOG"
+    # shellcheck disable=SC1090
+    source "$lane"
+    # step_triage reads these after source. Shellcheck cannot see that.
+    # shellcheck disable=SC2034
+    DRY=0
+    # shellcheck disable=SC2034
+    ISSUE_CACHE=$case_dir/issues.jsonl
+    export TRACE=$case_dir/trace
+    export STUB_ASK_RC=$rc_want
+    export STUB_ASK_BODY="$body"
+    # shellcheck disable=SC2329
+    bash() {
+      if [[ "${1:-}" == *triage-ask.sh ]]; then
+        printf 'ASK\n' >> "$TRACE"
+        if [[ -n ${STUB_ASK_BODY:-} ]]; then
+          printf '%s\n' "$STUB_ASK_BODY"
+        fi
+        return "$STUB_ASK_RC"
+      fi
+      command bash "$@"
+    }
+    # shellcheck disable=SC2329
+    clone_sf_main() {
+      printf 'CLONE\n' >> "$TRACE"
+      mkdir -p "$1/agents/roles"
+      printf 'intake\n' > "$1/agents/roles/intake.md"
+      return 0
+    }
+    # shellcheck disable=SC2329
+    run_grok() {
+      printf 'GROK %s\n' "$1" >> "$TRACE"
+      return 0
+    }
+    set +e
+    step_triage
+    exit 0
+  ) >"$case_dir/stdout" 2>"$case_dir/stderr" || harness_fail "watcher harness failed for ${lane} rc ${rc_want}"
+}
+
+harness_fail() {
+  echo "--- harness stdout ---" >&2
+  cat "$STEP_CASE/stdout" >&2 2>/dev/null || true
+  echo "--- harness stderr ---" >&2
+  cat "$STEP_CASE/stderr" >&2 2>/dev/null || true
+  echo "--- trace ---" >&2
+  cat "$STEP_CASE/trace" >&2 2>/dev/null || true
+  fail "$*"
+}
+
+assert_stopped() {
+  local trace=$STEP_CASE/trace
+  local log=$STEP_CASE/root/watch.log
+  [[ -s $trace ]] || harness_fail "ask was not run"
+  grep -q '^ASK$' "$trace" || harness_fail "ask was not run"
+  if grep -q '^GROK' "$trace"; then
+    harness_fail "run_grok ran when triage-ask withheld ready"
+  fi
+  if grep -q '^CLONE$' "$trace"; then
+    harness_fail "clone ran when triage-ask withheld ready"
+  fi
+  if compgen -G "$STEP_CASE/root/work/sf-main-triage-*" >/dev/null; then
+    harness_fail "withhold left a software-factory clone"
+  fi
+  if [[ -f $STEP_CASE/gh.log ]] && grep -F -q 'factory:ready' "$STEP_CASE/gh.log"; then
+    harness_fail "gh received factory:ready"
+  fi
+  if [[ -f $STEP_CASE/gh.log ]] && grep -F -q -- '--add-label' "$STEP_CASE/gh.log"; then
+    harness_fail "gh set a label"
+  fi
+  [[ -f $log ]] || harness_fail "watcher log was not written"
+}
+
+tname="step_triage skips run_grok when triage-ask exits 2 or 1"
+for lane in "$root/scripts/watcher/watch.sh" "$root/scripts/watcher/watch.new.sh"; do
+  run_watcher_ask "$lane" 2
+  assert_stopped
+  grep -F -q 'waiting on the owner, factory:ready withheld' "$STEP_CASE/root/watch.log" \
+    || harness_fail "exit 2 did not withhold in ${lane}"
+  if grep -F -q 'triage ask failed' "$STEP_CASE/root/watch.log"; then
+    harness_fail "exit 2 fell through to the error path in ${lane}"
+  fi
+  [[ ! -e $STEP_CASE/root/state/prompt-triage-adamsuk_software-factory-310.txt ]] \
+    || harness_fail "exit 2 wrote the intake prompt in ${lane}"
+
+  run_watcher_ask "$lane" 2 "Please answer the questions."
+  assert_stopped
+  grep -F -q 'questions posted, factory:ready withheld' "$STEP_CASE/root/watch.log" \
+    || harness_fail "exit 2 did not post questions in ${lane}"
+  grep -F -q 'issue comment' "$STEP_CASE/gh.log" || harness_fail "exit 2 did not comment in ${lane}"
+  if grep -F -q 'triage ask failed' "$STEP_CASE/root/watch.log"; then
+    harness_fail "posted questions then fell through in ${lane}"
+  fi
+
+  run_watcher_ask "$lane" 1
+  assert_stopped
+  grep -F -q 'triage ask failed' "$STEP_CASE/root/watch.log" \
+    || harness_fail "exit 1 did not withhold in ${lane}"
+  if grep -F -q 'triage grok finished' "$STEP_CASE/root/watch.log"; then
+    harness_fail "exit 1 reached factory intake in ${lane}"
+  fi
+
+  run_watcher_ask "$lane" 0
+  grep -q '^ASK$' "$STEP_CASE/trace" || harness_fail "ready path did not ask in ${lane}"
+  awk '
+    $0 == "ASK" { ask = NR }
+    $0 == "CLONE" { clone = NR }
+    $0 == "GROK triage" { grok = NR }
+    END { exit (ask && clone > ask && grok > clone) ? 0 : 1 }
+  ' "$STEP_CASE/trace" || harness_fail "ready path did not ask, then clone, then run_grok in ${lane}: $(cat "$STEP_CASE/trace")"
+  prompt=$STEP_CASE/root/state/prompt-triage-adamsuk_software-factory-310.txt
+  [[ -f $prompt ]] || harness_fail "ready path wrote no intake prompt in ${lane}"
+  grep -F -q 'ISSUE-BODY-TOKEN' "$prompt" || harness_fail "intake prompt lost the issue body in ${lane}"
+  grep -F -q 'OWNER-ANSWER-TOKEN' "$prompt" || harness_fail "intake prompt lost the approver comment in ${lane}"
+  grep -F -q '<<<UNTRUSTED_DATA' "$prompt" || harness_fail "approver comment was not untrusted data in ${lane}"
+  if grep -F -q 'STRANGER-ANSWER-TOKEN' "$prompt"; then
+    harness_fail "intake prompt included a stranger comment in ${lane}"
+  fi
+  if grep -F -q 'QUESTION-TOKEN' "$prompt"; then
+    harness_fail "intake prompt included the triage-ask question in ${lane}"
+  fi
+  # The approver comment sits inside the untrusted fence, after the issue body.
+  awk '
+    /<<<UNTRUSTED_DATA/ { inside = 1 }
+    inside && /ISSUE-BODY-TOKEN/ { body = NR }
+    inside && /OWNER-ANSWER-TOKEN/ { note = NR }
+    /UNTRUSTED_DATA>>>/ { inside = 0 }
+    END { exit (body && note > body) ? 0 : 1 }
+  ' "$prompt" || harness_fail "approver comment was not inside the untrusted issue block in ${lane}"
+done
 printf '%s\n' "ok: $tname"
 
 printf '%s\n' "ok: triage-ask"

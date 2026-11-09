@@ -3897,7 +3897,11 @@ ir_build_pack() {
         head -c 20000 "$order"
       else
         printf '\n===== Linked issue %s#%s\n' "$target" "$num"
-        timeout 60 gh issue view "$num" -R "$target" --json title,body --jq '.title + "\n" + .body' 2>/dev/null | head -c 10000 || true
+        {
+          timeout 60 gh issue view "$num" -R "$target" --json title,body --jq '.title + "\n" + (.body // "")' 2>/dev/null || true
+          printf '\n'
+          approver_issue_notes "$target" "$num" || true
+        } | head -c 10000 || true
       fi
     done < <(parse_close_targets "$repo" "$GATE_BODY")
     printf '\n===== CI on head: %s (%s)\n' "$GATE_VERDICT" "$GATE_CHECKS"
@@ -4325,7 +4329,7 @@ step_build() {
       printf '%s\n' "$foreman_text"
       printf '\n%s\n' '## Issue to pick (untrusted)'
     } > "$prompt"
-    write_untrusted_block "$prompt" "$(printf 'repo: %s\nnumber: %s\ntitle: %s\n\n%s\n' "$repo" "$num" "$title" "$body")"
+    write_untrusted_block "$prompt" "$(issue_block_text "$repo" "$num" "$title" "$body")"
     agents_note=$dest
     if run_grok foreman "$repo" "$num" 30 "$agents_note" "$prompt" \
       && [[ -f $order ]] \
@@ -4929,9 +4933,40 @@ step_dependabot_triage() {
   done < <(jq -s -c 'sort_by(.createdAt, .repo, .number) | .[]' "$combined")
 }
 
+# Comment bodies from FACTORY_APPROVER_LOGIN, excluding the triage-ask question.
+# Empty when that login is unset or the comments cannot be read. The caller
+# keeps the text inside an untrusted issue block.
+approver_issue_notes() {
+  local repo=$1 num=$2 notes
+  notes=""
+  if [[ -z ${FACTORY_APPROVER_LOGIN:-} ]]; then
+    printf ''
+    return 0
+  fi
+  if ! notes=$(timeout 60 gh issue view "$num" -R "$repo" --json comments --jq \
+    '[(.comments // [])[] | select((env.FACTORY_APPROVER_LOGIN // "") != "" and .author.login == env.FACTORY_APPROVER_LOGIN) | (.body // "") | select(length > 0 and (contains("<!-- factory:triage-ask -->") | not))] | join("\n\n")' \
+    2>/dev/null); then
+    notes=""
+  fi
+  printf '%s' "$notes"
+}
+
+# Title, body, and approver comment bodies. The whole result is untrusted.
+issue_block_text() {
+  local repo=$1 num=$2 title=$3 body=$4 notes
+  notes=$(approver_issue_notes "$repo" "$num")
+  if [[ -n $notes ]]; then
+    printf 'repo: %s\nnumber: %s\ntitle: %s\n\n%s\n\nApprover comments:\n%s\n' \
+      "$repo" "$num" "$title" "$body" "$notes"
+  else
+    printf 'repo: %s\nnumber: %s\ntitle: %s\n\n%s\n' \
+      "$repo" "$num" "$title" "$body"
+  fi
+}
+
 step_triage() {
   local row repo num title body prompt dest ts intake saw=0
-  local ask_script ask_out ask_rc candidate
+  local ask_script ask_out ask_rc candidate cloned
   if [[ ! -s ${ISSUE_CACHE:-} ]]; then
     log "triage: no issue cache"
     return 0
@@ -4958,9 +4993,65 @@ step_triage() {
       mark_grok_job "$repo" "$num" 1
       continue
     fi
+    # Ask before cloning. A waiting issue must not clone on every cycle.
+    # A local ask script wins. Clone only to obtain one when no local script
+    # exists, and remove that clone when the answer is not ready.
     ts=$(date -u +%Y%m%dT%H%M%SZ)
     dest="${WORK}/sf-main-triage-${ts}"
-    clone_sf_main "$dest" || { log "triage clone failed"; return 0; }
+    cloned=0
+    ask_script=""
+    for candidate in \
+      "$(dirname "${BASH_SOURCE[0]}")/../triage-ask.sh" \
+      "$(dirname "${BASH_SOURCE[0]}")/triage-ask.sh"
+    do
+      if [[ -f "$candidate" ]]; then
+        ask_script=$candidate
+        break
+      fi
+    done
+    if [[ -z $ask_script ]]; then
+      clone_sf_main "$dest" || { log "triage clone failed"; return 0; }
+      cloned=1
+      if [[ -f ${dest}/scripts/triage-ask.sh ]]; then
+        ask_script=${dest}/scripts/triage-ask.sh
+      fi
+    fi
+    if [[ -z $ask_script ]]; then
+      log "triage ask missing scripts/triage-ask.sh; factory:ready withheld ${repo}#${num}"
+      if (( cloned )); then
+        rm -rf -- "$dest"
+      fi
+      continue
+    fi
+    ask_out="${STATE}/triage-ask-$(repo_slug "$repo")-${num}.txt"
+    bash "$ask_script" "$repo" "$num" > "$ask_out"
+    ask_rc=$?
+    if (( ask_rc == 2 )); then
+      if [[ -s "$ask_out" ]]; then
+        if timeout 60 gh issue comment "$num" -R "$repo" --body-file "$ask_out" > /dev/null; then
+          note "triage ask ${repo}#${num}: questions posted, factory:ready withheld"
+          DID_MUTATE=1
+        else
+          log "triage ask comment failed ${repo}#${num}; factory:ready withheld"
+        fi
+      else
+        note "triage ask ${repo}#${num}: waiting on the owner, factory:ready withheld"
+      fi
+      if (( cloned )); then
+        rm -rf -- "$dest"
+      fi
+      continue
+    elif (( ask_rc != 0 )); then
+      log "triage ask failed ${repo}#${num} rc=${ask_rc}; factory:ready withheld"
+      if (( cloned )); then
+        rm -rf -- "$dest"
+      fi
+      continue
+    fi
+    if (( ! cloned )); then
+      clone_sf_main "$dest" || { log "triage clone failed"; return 0; }
+      cloned=1
+    fi
     if [[ ! -f ${dest}/agents/roles/intake.md ]]; then
       log "intake.md missing in ${dest}"
       return 0
@@ -4978,45 +5069,7 @@ step_triage() {
       printf '%s\n' "$intake"
       printf '\n%s\n' '## Issue (untrusted)'
     } > "$prompt"
-    write_untrusted_block "$prompt" "$(printf 'repo: %s\nnumber: %s\ntitle: %s\n\n%s\n' "$repo" "$num" "$title" "$body")"
-    # Ask before factory:ready. Live path only: the dry-run branch already
-    # continued. Exit 2 prints a numbered comment; post it and skip run_grok
-    # so this path does not set factory:ready. Exit 0 falls through.
-    ask_script=""
-    for candidate in \
-      "$(dirname "${BASH_SOURCE[0]}")/../triage-ask.sh" \
-      "$(dirname "${BASH_SOURCE[0]}")/triage-ask.sh" \
-      "${dest}/scripts/triage-ask.sh"
-    do
-      if [[ -f "$candidate" ]]; then
-        ask_script=$candidate
-        break
-      fi
-    done
-    if [[ -z $ask_script ]]; then
-      log "triage ask missing scripts/triage-ask.sh; factory:ready withheld ${repo}#${num}"
-      continue
-    fi
-    ask_out="${STATE}/triage-ask-$(repo_slug "$repo")-${num}.txt"
-    bash "$ask_script" "$repo" "$num" > "$ask_out"
-    ask_rc=$?
-    if (( ask_rc == 2 )); then
-      if [[ -s "$ask_out" ]]; then
-        if timeout 60 gh issue comment "$num" -R "$repo" --body-file "$ask_out" > /dev/null; then
-          note "triage ask ${repo}#${num}: questions posted, factory:ready withheld"
-          DID_MUTATE=1
-        else
-          log "triage ask comment failed ${repo}#${num}; factory:ready withheld"
-        fi
-      else
-        note "triage ask ${repo}#${num}: waiting on the owner, factory:ready withheld"
-      fi
-      continue
-    fi
-    if (( ask_rc != 0 )); then
-      log "triage ask failed ${repo}#${num} rc=${ask_rc}; factory:ready withheld"
-      continue
-    fi
+    write_untrusted_block "$prompt" "$(issue_block_text "$repo" "$num" "$title" "$body")"
     if run_grok triage "$repo" "$num" 30 "$dest" "$prompt"; then
       note "triage grok finished ${repo}#${num}"
     else
