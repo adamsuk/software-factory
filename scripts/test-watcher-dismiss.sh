@@ -15,8 +15,8 @@ export FACTORY_WATCH_ROOT="$work/root"
 export FACTORY_BUDGET_FILE="$work/budget.json"
 export FACTORY_LEDGER_FILE="$work/ledger.csv"
 # Fixture repos. The watcher reads its allowlist and home repo from these.
-export FACTORY_HOME_REPO=adamsuk/software-factory
-export FACTORY_REPOS="adamsuk/software-factory adamsuk/gh-factory adamsuk/activity-feed adamsuk/line adamsuk/adamsuk"
+export FACTORY_HOME_REPO=acme/software-factory
+export FACTORY_REPOS="acme/software-factory acme/gh-factory acme/activity-feed acme/line acme/acme"
 unset FACTORY_BLOCKED_OWNERS
 export GH_ROOT="$work/gh"
 export GH_LOG="$work/gh.log"
@@ -360,7 +360,7 @@ t_dismiss_set() {
   {"id":102,"user":"coderabbitai[bot]","state":"CHANGES_REQUESTED","commit_id":"head"},
   {"id":0,"user":"coderabbitai[bot]","state":"CHANGES_REQUESTED","commit_id":"head"},
   {"id":103,"user":"coderabbitai[bot]","state":"COMMENTED","commit_id":"head"},
-  {"id":303,"user":"adamsuk","state":"COMMENTED","commit_id":"head"}
+  {"id":303,"user":"acme","state":"COMMENTED","commit_id":"head"}
 ]
 EOF
   [[ $(cr_changes_block "$f") == bot ]] || fail "bot-only block kind"
@@ -373,7 +373,7 @@ EOF
   jq -c '.[]' > "$f" << 'EOF'
 [
   {"id":101,"user":"coderabbitai[bot]","state":"CHANGES_REQUESTED","commit_id":"old"},
-  {"id":404,"user":"adamsuk","state":"CHANGES_REQUESTED","commit_id":"head"}
+  {"id":404,"user":"acme","state":"CHANGES_REQUESTED","commit_id":"head"}
 ]
 EOF
   [[ $(cr_changes_block "$f") == human ]] || fail "human block kind"
@@ -397,12 +397,12 @@ bot() {
 
 human() {
   local id=$1 state=$2
-  printf '{"id":%s,"user":{"login":"adamsuk"},"state":"%s","commit_id":"%s","submitted_at":"2026-11-01T00:00:00Z"}' "$id" "$state" "$SHA_HEAD"
+  printf '{"id":%s,"user":{"login":"acme"},"state":"%s","commit_id":"%s","submitted_at":"2026-11-01T00:00:00Z"}' "$id" "$state" "$SHA_HEAD"
 }
 
 t_gate_matrix() {
-  local repo=adamsuk/software-factory
-  t_budget 0 '[]' '["adamsuk/software-factory#199"]'
+  local repo=acme/software-factory
+  t_budget 0 '[]' '["acme/software-factory#199"]'
   local one two
   one=$(bot 101 CHANGES_REQUESTED "$SHA_OLD")
   two="[${one},$(bot 102 CHANGES_REQUESTED "$SHA_HEAD"),$(bot 103 COMMENTED "$SHA_HEAD"),$(human 303 COMMENTED)]"
@@ -466,7 +466,7 @@ t_bot_clear() {
 }
 
 t_merge_ordinary() {
-  local repo=adamsuk/software-factory
+  local repo=acme/software-factory
   t_budget 0 '[]' '[]'
   t_prepare_merge "$repo" 7 BLOCKED CLEAN README.md "ordinary" "$(t_bot_pair)" "$(t_bot_clear)"
   step_merge
@@ -475,35 +475,35 @@ t_merge_ordinary() {
   t_no_dismiss 103
   t_no_dismiss 303
   t_yes_merge
-  [[ ! -e ${STATE}/crblock-adamsuk_software-factory-7-${SHA_HEAD} ]] || fail "ordinary dismiss reported to Scott"
+  [[ ! -e ${STATE}/crblock-acme_software-factory-7-${SHA_HEAD} ]] || fail "ordinary dismiss reported to Scott"
   t_logged "recheck gate=merge"
 }
 
 t_merge_dismiss_fails() {
-  local repo=adamsuk/software-factory
+  local repo=acme/software-factory
   t_budget 0 '[]' '[]'
   t_prepare_merge "$repo" 7 BLOCKED CLEAN README.md "ordinary" "$(t_bot_pair)" "$(t_bot_clear)"
   : > "$GH_ROOT/fail-dismiss"
   step_merge
   t_no_merge
-  [[ -e ${STATE}/crblock-adamsuk_software-factory-7-${SHA_HEAD} ]] || fail "failed dismiss was not reported"
+  [[ -e ${STATE}/crblock-acme_software-factory-7-${SHA_HEAD} ]] || fail "failed dismiss was not reported"
   t_not_logged "recheck gate="
 }
 
 t_merge_recheck_blocked() {
-  local repo=adamsuk/software-factory
+  local repo=acme/software-factory
   t_budget 0 '[]' '[]'
   t_prepare_merge "$repo" 7 BLOCKED BLOCKED README.md "ordinary" "$(t_bot_pair)" "$(t_bot_pair)"
   step_merge
   t_has_dismiss 101
   t_has_dismiss 102
   t_no_merge
-  [[ ! -e ${STATE}/crblock-adamsuk_software-factory-7-${SHA_HEAD} ]] || fail "recheck reported to Scott"
+  [[ ! -e ${STATE}/crblock-acme_software-factory-7-${SHA_HEAD} ]] || fail "recheck reported to Scott"
   t_logged "recheck returned 6; not merging"
 }
 
 t_merge_human() {
-  local repo=adamsuk/software-factory
+  local repo=acme/software-factory
   local reviews
   reviews="[$(bot 101 CHANGES_REQUESTED "$SHA_HEAD"),$(human 404 CHANGES_REQUESTED)]"
   t_budget 0 '[]' '[]'
@@ -512,23 +512,23 @@ t_merge_human() {
   t_no_dismiss 101
   t_no_dismiss 404
   t_no_merge
-  [[ ! -e ${STATE}/crblock-adamsuk_software-factory-8-${SHA_HEAD} ]] || fail "human review reported as crblock"
+  [[ ! -e ${STATE}/crblock-acme_software-factory-8-${SHA_HEAD} ]] || fail "human review reported as crblock"
 }
 
 t_merge_sensitive() {
-  local repo=adamsuk/software-factory
+  local repo=acme/software-factory
   t_budget 0 '[]' '[]'
   t_prepare_merge "$repo" 9 BLOCKED CLEAN AGENTS.md "no close" "[$(bot 101 CHANGES_REQUESTED "$SHA_OLD")]" ""
   step_merge
   t_no_dismiss 101
   t_no_merge
-  [[ -e ${STATE}/ready-adamsuk_software-factory-9-${SHA_HEAD} ]] || fail "sensitive PR was not handed to Scott"
-  [[ ! -e ${STATE}/crblock-adamsuk_software-factory-9-${SHA_HEAD} ]] || fail "sensitive PR dismissed path"
+  [[ -e ${STATE}/ready-acme_software-factory-9-${SHA_HEAD} ]] || fail "sensitive PR was not handed to Scott"
+  [[ ! -e ${STATE}/crblock-acme_software-factory-9-${SHA_HEAD} ]] || fail "sensitive PR dismissed path"
 }
 
 t_merge_allow_blocked() {
-  local repo=adamsuk/software-factory
-  t_budget 0 '[]' '["adamsuk/software-factory#199"]'
+  local repo=acme/software-factory
+  t_budget 0 '[]' '["acme/software-factory#199"]'
   t_prepare_merge "$repo" 10 BLOCKED CLEAN AGENTS.md $'Closes #199\n' "[$(bot 101 CHANGES_REQUESTED "$SHA_OLD")]" "[$(bot 101 DISMISSED "$SHA_OLD")]"
   step_merge
   t_has_dismiss 101
@@ -537,8 +537,8 @@ t_merge_allow_blocked() {
 }
 
 t_merge_allow_clean() {
-  local repo=adamsuk/software-factory
-  t_budget 0 '[]' '["adamsuk/software-factory#199"]'
+  local repo=acme/software-factory
+  t_budget 0 '[]' '["acme/software-factory#199"]'
   t_prepare_merge "$repo" 10 CLEAN "" AGENTS.md $'Closes #199\n' "[$(bot 101 CHANGES_REQUESTED "$SHA_HEAD")]" ""
   step_merge
   t_no_dismiss 101
@@ -547,22 +547,22 @@ t_merge_allow_clean() {
 
 t_focus_rules() {
   local rc=0
-  t_budget 0 '["adamsuk/software-factory#199","adamsuk/gh-factory#10"]' '[]'
-  pr_in_focus adamsuk/software-factory "feat" $'Closes #199\n' || fail "close ref"
-  pr_in_focus adamsuk/gh-factory "fix (#10)" "nothing" || fail "title (#N)"
-  pr_in_focus adamsuk/gh-factory "elsewhere" "see https://github.com/adamsuk/software-factory/issues/199" || fail "issue url"
-  pr_in_focus adamsuk/activity-feed "elsewhere" "see adamsuk/software-factory#199" || fail "owner ref"
-  pr_in_focus adamsuk/line "elsewhere" "see software-factory#199" || fail "short ref"
-  pr_in_focus adamsuk/software-factory "note" "see #199 please" || fail "bare ref inside software-factory"
-  pr_in_focus adamsuk/gh-factory "bump" "see #199" && fail "bare ref outside software-factory"
-  pr_in_focus adamsuk/gh-factory "bump" "no refs here" && fail "unrelated"
-  pr_in_focus adamsuk/software-factory "x" $'Closes adamsuk/gh-factory#10\n' && fail "other repo close is not a bare software-factory ref"
+  t_budget 0 '["acme/software-factory#199","acme/gh-factory#10"]' '[]'
+  pr_in_focus acme/software-factory "feat" $'Closes #199\n' || fail "close ref"
+  pr_in_focus acme/gh-factory "fix (#10)" "nothing" || fail "title (#N)"
+  pr_in_focus acme/gh-factory "elsewhere" "see https://github.com/acme/software-factory/issues/199" || fail "issue url"
+  pr_in_focus acme/activity-feed "elsewhere" "see acme/software-factory#199" || fail "owner ref"
+  pr_in_focus acme/line "elsewhere" "see software-factory#199" || fail "short ref"
+  pr_in_focus acme/software-factory "note" "see #199 please" || fail "bare ref inside software-factory"
+  pr_in_focus acme/gh-factory "bump" "see #199" && fail "bare ref outside software-factory"
+  pr_in_focus acme/gh-factory "bump" "no refs here" && fail "unrelated"
+  pr_in_focus acme/software-factory "x" $'Closes acme/gh-factory#10\n' && fail "other repo close is not a bare software-factory ref"
   t_budget unset '[]' '[]'
-  pr_in_focus adamsuk/gh-factory "bump" "no refs here" || fail "empty focus should accept"
+  pr_in_focus acme/gh-factory "bump" "no refs here" || fail "empty focus should accept"
   t_budget unset '[]' '[]'
   jq 'del(.focus_issues)' "$BUDGET" > "$BUDGET.tmp"
   mv "$BUDGET.tmp" "$BUDGET"
-  pr_in_focus adamsuk/gh-factory "bump" "no refs here" || fail "missing focus should accept"
+  pr_in_focus acme/gh-factory "bump" "no refs here" || fail "missing focus should accept"
   rc=0
   : "$rc"
 }
@@ -576,36 +576,36 @@ t_issue_line() {
 t_steps_focus() {
   local line_a line_b
   DRY=1
-  t_budget 0 '["adamsuk/software-factory#199"]' '[]'
-  line_a=$(t_issue_line adamsuk/software-factory 199 factory:ready $'Target repo: adamsuk/software-factory\n')
-  line_b=$(t_issue_line adamsuk/gh-factory 10 factory:ready "no target")
+  t_budget 0 '["acme/software-factory#199"]' '[]'
+  line_a=$(t_issue_line acme/software-factory 199 factory:ready $'Target repo: acme/software-factory\n')
+  line_b=$(t_issue_line acme/gh-factory 10 factory:ready "no target")
   ISSUE_CACHE="$STATE/issues.jsonl"
   printf '%s\n%s\n' "$line_a" "$line_b" > "$ISSUE_CACHE"
   step_build
-  t_logged "DRY-RUN would build adamsuk/software-factory#199"
-  t_logged "build skip adamsuk/gh-factory#10: not in focus_issues"
+  t_logged "DRY-RUN would build acme/software-factory#199"
+  t_logged "build skip acme/gh-factory#10: not in focus_issues"
   t_not_logged "factory:blocked"
   : > "$LOG"
   t_reset_grok
-  line_a=$(t_issue_line adamsuk/software-factory 199 factory:triage "body")
-  line_b=$(t_issue_line adamsuk/gh-factory 10 factory:triage "body")
+  line_a=$(t_issue_line acme/software-factory 199 factory:triage "body")
+  line_b=$(t_issue_line acme/gh-factory 10 factory:triage "body")
   printf '%s\n%s\n' "$line_a" "$line_b" > "$ISSUE_CACHE"
   step_triage
-  t_logged "DRY-RUN would triage adamsuk/software-factory#199"
-  t_logged "triage skip adamsuk/gh-factory#10: not in focus_issues"
+  t_logged "DRY-RUN would triage acme/software-factory#199"
+  t_logged "triage skip acme/gh-factory#10: not in focus_issues"
   : > "$LOG"
   t_reset_grok
   t_budget 0 '[]' '[]'
-  line_a=$(t_issue_line adamsuk/software-factory 199 factory:ready $'Target repo: adamsuk/software-factory\n')
-  line_b=$(t_issue_line adamsuk/gh-factory 10 factory:ready $'Target repo: adamsuk/gh-factory\n')
+  line_a=$(t_issue_line acme/software-factory 199 factory:ready $'Target repo: acme/software-factory\n')
+  line_b=$(t_issue_line acme/gh-factory 10 factory:ready $'Target repo: acme/gh-factory\n')
   printf '%s\n%s\n' "$line_a" "$line_b" > "$ISSUE_CACHE"
   step_build
-  t_logged "DRY-RUN would build adamsuk/software-factory#199"
-  t_logged "DRY-RUN would build adamsuk/gh-factory#10"
+  t_logged "DRY-RUN would build acme/software-factory#199"
+  t_logged "DRY-RUN would build acme/gh-factory#10"
 }
 
 t_plan_focus() {
-  t_budget 0 '["adamsuk/software-factory#199"]' '[]'
+  t_budget 0 '["acme/software-factory#199"]' '[]'
   READY_COUNT=0
   step_plan
   t_logged "plan skip: focus_issues is set"
@@ -620,7 +620,7 @@ t_plan_focus() {
 
 t_inflight_file() {
   local dest
-  dest="$GH_ROOT/issues/$(t_slug adamsuk/software-factory).json"
+  dest="$GH_ROOT/issues/$(t_slug acme/software-factory).json"
   mkdir -p "$GH_ROOT/issues"
   jq -n '[
     {number:1,labels:[{name:"factory:building"}]},
@@ -630,12 +630,12 @@ t_inflight_file() {
     {number:5,labels:[{name:"factory:ready"}]}
   ]' > "$dest"
   mkdir -p "$GH_ROOT/issue"
-  jq -n '{labels:[{name:"factory:ready"}]}' > "$GH_ROOT/issue/$(t_slug adamsuk/software-factory)_199.json"
+  jq -n '{labels:[{name:"factory:ready"}]}' > "$GH_ROOT/issue/$(t_slug acme/software-factory)_199.json"
 }
 
 t_ready_cache() {
   ISSUE_CACHE="$STATE/issues.jsonl"
-  t_issue_line adamsuk/software-factory 199 factory:ready $'Target repo: adamsuk/software-factory\n' > "$ISSUE_CACHE"
+  t_issue_line acme/software-factory 199 factory:ready $'Target repo: acme/software-factory\n' > "$ISSUE_CACHE"
 }
 
 t_claimed() {
@@ -665,7 +665,7 @@ t_cap() {
   : > "$LOG"
   step_build
   t_not_claimed "cap 3 with 3 in flight"
-  t_logged "build stop adamsuk/software-factory#199: in-flight cap"
+  t_logged "build stop acme/software-factory#199: in-flight cap"
   t_no_abandoned_clone
   t_budget 4 '[]' '[]'
   : > "$GH_LOG"
@@ -689,9 +689,9 @@ t_recent() {
 }
 
 t_gate_work_focus() {
-  local repo_a=adamsuk/gh-factory repo_b=adamsuk/software-factory
+  local repo_a=acme/gh-factory repo_b=acme/software-factory
   local commented
-  t_budget 0 '["adamsuk/software-factory#199"]' '[]'
+  t_budget 0 '["acme/software-factory#199"]' '[]'
   t_recent
   commented="[$(bot 501 COMMENTED "$SHA_HEAD")]"
   t_arm "$repo_a" 31 CLEAN README.md "$commented" "no refs" "bump deps"
@@ -825,7 +825,7 @@ t_lanes() {
 # The independent-review comment carries the four review-record fields and
 # the full head SHA. A fake result file stands in for the Grok output.
 t_ir_record() {
-  local repo=adamsuk/software-factory pr=7 sha f body
+  local repo=acme/software-factory pr=7 sha f body
   sha=0123456789abcdef0123456789abcdef01234567
   f=$(ir_result_file "$repo" "$pr" "$sha")
   jq -nc --arg sha "$sha" '{verdict:"PASS", summary:"Looks fine.",

@@ -3,6 +3,16 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-09 (generic test fixtures)
+
+### Changed
+
+- Test fixtures use the sample owner `acme` for repo slugs, logins and the
+  expected values that follow them. Where a script still needs its owner or
+  approver to match, the fixture sets `FACTORY_HOME_REPO` or `FACTORY_REPOS`,
+  and the approver defaults to that owner. Deny-list needles and safety
+  checks are unchanged (#296).
+
 ## 2026-11-09 (portable defaults)
 
 ### Changed

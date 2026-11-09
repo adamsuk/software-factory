@@ -916,47 +916,47 @@ assert_no_issue_edit() {
 
 tname="gate-label-building"
 reset_gh
-write_gate_order "adamsuk/gh-factory" "adamsuk/software-factory" "78"
+write_gate_order "acme/gh-factory" "acme/software-factory" "78"
 GH_LABELS=$(printf '%s\n' "factory:building" "enhancement")
 export GH_LABELS
 run_fail 0 set_gate_label
-assert_gate_view "adamsuk/software-factory" "78"
-assert_gate_edit "adamsuk/software-factory" "78"
+assert_gate_view "acme/software-factory" "78"
+assert_gate_edit "acme/software-factory" "78"
 assert_no_pr
 
 tname="gate-label-ready"
 reset_gh
-write_gate_order "adamsuk/gh-factory" "adamsuk/software-factory" "78"
+write_gate_order "acme/gh-factory" "acme/software-factory" "78"
 GH_LABELS=$(printf '%s\n' "factory:ready")
 export GH_LABELS
 run_fail 0 set_gate_label
-assert_gate_view "adamsuk/software-factory" "78"
+assert_gate_view "acme/software-factory" "78"
 assert_no_issue_edit
 assert_no_pr
 
 tname="gate-label-blocked"
 reset_gh
-write_gate_order "adamsuk/gh-factory" "adamsuk/software-factory" "78"
+write_gate_order "acme/gh-factory" "acme/software-factory" "78"
 GH_LABELS=$(printf '%s\n' "factory:blocked" "factory:building")
 export GH_LABELS
 run_fail 0 set_gate_label
-assert_gate_view "adamsuk/software-factory" "78"
+assert_gate_view "acme/software-factory" "78"
 assert_no_issue_edit
 assert_no_pr
 
 tname="gate-label-empty-issue-repo"
 reset_gh
-write_gate_order "adamsuk/gh-factory" "" "78"
+write_gate_order "acme/gh-factory" "" "78"
 GH_LABELS=$(printf '%s\n' "factory:building" "enhancement")
 export GH_LABELS
 run_fail 0 set_gate_label
-assert_gate_view "adamsuk/gh-factory" "78"
-assert_gate_edit "adamsuk/gh-factory" "78"
+assert_gate_view "acme/gh-factory" "78"
+assert_gate_edit "acme/gh-factory" "78"
 assert_no_pr
 
 tname="gate-label-gh-fails"
 reset_gh
-write_gate_order "adamsuk/gh-factory" "adamsuk/software-factory" "78"
+write_gate_order "acme/gh-factory" "acme/software-factory" "78"
 GH_LABELS=$(printf '%s\n' "factory:building")
 GH_VIEW_STATUS=1
 export GH_LABELS GH_VIEW_STATUS
@@ -964,14 +964,14 @@ run_fail 7 set_gate_label
 assert_no_issue_edit
 assert_no_pr
 reset_gh
-write_gate_order "adamsuk/gh-factory" "adamsuk/software-factory" "78"
+write_gate_order "acme/gh-factory" "acme/software-factory" "78"
 GH_LABELS=$(printf '%s\n' "factory:building" "enhancement")
 GH_VIEW_STATUS=0
 GH_EDIT_STATUS=1
 export GH_LABELS GH_VIEW_STATUS GH_EDIT_STATUS
 run_fail 7 set_gate_label
-assert_gate_view "adamsuk/software-factory" "78"
-assert_gate_edit "adamsuk/software-factory" "78"
+assert_gate_view "acme/software-factory" "78"
+assert_gate_edit "acme/software-factory" "78"
 assert_no_pr
 
 tname="gate-label-main-placement"
@@ -1152,7 +1152,7 @@ assert_log_lacks() {
 
 tname="publish-pr-create"
 reset_publish_gh
-write_publish_order "adamsuk/software-factory" "adamsuk/software-factory" "102" "true"
+write_publish_order "acme/software-factory" "acme/software-factory" "102" "true"
 GH_LABELS=$(printf '%s\n' "factory:gate" "enhancement")
 export GH_LABELS
 write_standard_bench "1" "1.05" "12"
@@ -1161,8 +1161,8 @@ run_fail 0 publish_pr
 assert_eq "$(cat "$dir.bench.txt")" "$bench_before"
 assert_log_has "pr create"
 assert_log_lacks "pr edit"
-assert_log_has "issue view 102 --repo adamsuk/software-factory"
-assert_log_has "--repo adamsuk/software-factory"
+assert_log_has "issue view 102 --repo acme/software-factory"
+assert_log_has "--repo acme/software-factory"
 assert_log_has "--base main"
 assert_log_has "--head factory/102-pr-run-cost"
 assert_log_has "--title feat: record Grok Build cost and attempt on the pull request"
@@ -1184,7 +1184,7 @@ assert_log_has "Closes #102"
 
 tname="publish-pr-edit"
 reset_publish_gh
-write_publish_order "adamsuk/software-factory" "adamsuk/software-factory" "102" "true"
+write_publish_order "acme/software-factory" "acme/software-factory" "102" "true"
 GH_LABELS=$(printf '%s\n' "factory:gate")
 GH_PR_NUMBER=55
 export GH_LABELS GH_PR_NUMBER
@@ -1217,7 +1217,7 @@ fi
 
 tname="publish-pr-blocked"
 reset_publish_gh
-write_publish_order "adamsuk/software-factory" "adamsuk/software-factory" "102" "true"
+write_publish_order "acme/software-factory" "acme/software-factory" "102" "true"
 GH_LABELS=$(printf '%s\n' "factory:blocked" "factory:building")
 export GH_LABELS
 write_standard_bench "1" "1.05" "12"
@@ -1229,17 +1229,17 @@ assert_log_lacks "pr edit"
 
 tname="publish-pr-refs"
 reset_publish_gh
-write_publish_order "adamsuk/software-factory" "adamsuk/gh-factory" "102" "true"
+write_publish_order "acme/software-factory" "acme/gh-factory" "102" "true"
 GH_LABELS=$(printf '%s\n' "factory:gate")
 export GH_LABELS
 write_standard_bench "1" "1.05" "12"
 run_fail 0 publish_pr
-assert_log_has "issue view 102 --repo adamsuk/gh-factory"
-assert_log_has "pr create --repo adamsuk/software-factory"
-assert_log_has "Refs adamsuk/gh-factory#102"
+assert_log_has "issue view 102 --repo acme/gh-factory"
+assert_log_has "pr create --repo acme/software-factory"
+assert_log_has "Refs acme/gh-factory#102"
 assert_log_lacks "Closes #102"
 assert_body \
-  "Refs adamsuk/gh-factory#102" \
+  "Refs acme/gh-factory#102" \
   "attempt: 1" \
   "test_command: shellcheck scripts/*.sh" \
   "tests: pass" \
@@ -1248,7 +1248,7 @@ assert_body \
 
 tname="publish-pr-skip-changelog"
 reset_publish_gh
-write_publish_order "adamsuk/software-factory" "adamsuk/software-factory" "102" "false"
+write_publish_order "acme/software-factory" "acme/software-factory" "102" "false"
 GH_LABELS=$(printf '%s\n' "factory:gate")
 export GH_LABELS
 write_standard_bench "1" "1.05" "12"
@@ -1260,7 +1260,7 @@ assert_log_lacks "pr edit"
 
 tname="publish-pr-edit-skip-changelog"
 reset_publish_gh
-write_publish_order "adamsuk/software-factory" "adamsuk/software-factory" "102" "false"
+write_publish_order "acme/software-factory" "acme/software-factory" "102" "false"
 GH_LABELS=$(printf '%s\n' "factory:gate")
 GH_PR_NUMBER=55
 export GH_LABELS GH_PR_NUMBER
@@ -1280,12 +1280,12 @@ assert_body \
 
 tname="publish-pr-empty-issue-repo"
 reset_publish_gh
-write_publish_order "adamsuk/software-factory" "" "102" "true"
+write_publish_order "acme/software-factory" "" "102" "true"
 GH_LABELS=$(printf '%s\n' "factory:building")
 export GH_LABELS
 write_standard_bench "3" "8" "4"
 run_fail 0 publish_pr
-assert_log_has "issue view 102 --repo adamsuk/software-factory"
+assert_log_has "issue view 102 --repo acme/software-factory"
 assert_log_has "pr create"
 assert_log_has "Closes #102"
 assert_log_lacks "Refs "
@@ -1302,7 +1302,7 @@ expect_cost() {
   local raw=$1 want=$2
   tname="publish-pr-cost-${raw}"
   reset_publish_gh
-  write_publish_order "adamsuk/software-factory" "adamsuk/software-factory" "102" "true"
+  write_publish_order "acme/software-factory" "acme/software-factory" "102" "true"
   GH_LABELS=$(printf '%s\n' "factory:gate")
   export GH_LABELS
   write_standard_bench "1" "$raw" "12"
@@ -1326,7 +1326,7 @@ expect_cost "8" "8"
 
 tname="publish-pr-gh-fails"
 reset_publish_gh
-write_publish_order "adamsuk/software-factory" "adamsuk/software-factory" "102" "true"
+write_publish_order "acme/software-factory" "acme/software-factory" "102" "true"
 GH_LABELS=$(printf '%s\n' "factory:gate")
 GH_STATUS=1
 export GH_LABELS GH_STATUS

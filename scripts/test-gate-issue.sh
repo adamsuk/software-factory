@@ -421,34 +421,34 @@ api_url() {
 # --- case 1 -----------------------------------------------------------------
 tname="case 1 green review"
 reset_case
-write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+write_order acme/software-factory 81 acme/software-factory factory/81-gate-checks 1
 set_labels factory:gate enhancement
 set_checks '[{"name":"ShellCheck","bucket":"pass","workflow":"CI"}]' 0
 run_gate
 expect_word review
-assert_edit adamsuk/software-factory factory:gate factory:review
+assert_edit acme/software-factory factory:gate factory:review
 assert_no_comment
-assert_pr_view adamsuk/software-factory factory/81-gate-checks
-assert_pr_checks adamsuk/software-factory 481
-if ! gh_has_arg "$(api_url adamsuk/software-factory)"; then
+assert_pr_view acme/software-factory factory/81-gate-checks
+assert_pr_checks acme/software-factory 481
+if ! gh_has_arg "$(api_url acme/software-factory)"; then
   fail "api url missing"
 fi
 
 # --- case 2 -----------------------------------------------------------------
 tname="case 2 checks exit 8 still review"
 reset_case
-write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+write_order acme/software-factory 81 acme/software-factory factory/81-gate-checks 1
 set_labels factory:gate enhancement
 set_checks '[{"name":"ShellCheck","bucket":"pass"}]' 8
 run_gate
 expect_word review
-assert_edit adamsuk/software-factory factory:gate factory:review
+assert_edit acme/software-factory factory:gate factory:review
 assert_no_comment
 
 # --- case 3 -----------------------------------------------------------------
 tname="case 3 fail attempt 1 retry"
 reset_case
-write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+write_order acme/software-factory 81 acme/software-factory factory/81-gate-checks 1
 set_labels factory:gate
 set_checks '[{"name":"ShellCheck","bucket":"fail"}]' 0
 set_comments $'hello\nred: ShellCheck'
@@ -464,7 +464,7 @@ EOF
 # --- case 4 -----------------------------------------------------------------
 tname="case 4 repeated red list blocked"
 reset_case
-write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 2
+write_order acme/software-factory 81 acme/software-factory factory/81-gate-checks 2
 set_labels factory:gate
 set_checks '[{"name":"ShellCheck","bucket":"fail"}]' 0
 set_comments \
@@ -473,7 +473,7 @@ set_comments \
   $'<!-- factory:gate -->\nblocked: cap\nred: ShellCheck\nScott must act.'
 run_gate
 expect_word blocked
-assert_edit adamsuk/software-factory factory:gate factory:blocked
+assert_edit acme/software-factory factory:gate factory:blocked
 assert_one_comment "$(cat << 'EOF'
 <!-- factory:gate -->
 blocked: repeat
@@ -485,7 +485,7 @@ EOF
 # --- case 5 -----------------------------------------------------------------
 tname="case 5 attempt 3 cap"
 reset_case
-write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 3
+write_order acme/software-factory 81 acme/software-factory factory/81-gate-checks 3
 set_labels factory:gate
 set_checks '[{"name":"ShellCheck","bucket":"fail"}]' 0
 set_comments \
@@ -494,7 +494,7 @@ set_comments \
   $'newest comment is not a marker'
 run_gate
 expect_word blocked
-assert_edit adamsuk/software-factory factory:gate factory:blocked
+assert_edit acme/software-factory factory:gate factory:blocked
 assert_one_comment "$(cat << 'EOF'
 <!-- factory:gate -->
 blocked: cap
@@ -506,7 +506,7 @@ EOF
 # --- case 6 -----------------------------------------------------------------
 tname="case 6 pending"
 reset_case
-write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+write_order acme/software-factory 81 acme/software-factory factory/81-gate-checks 1
 set_labels factory:gate
 set_checks '[{"name":"ShellCheck","bucket":"pending"}]' 8
 run_gate
@@ -518,7 +518,7 @@ assert_invocations 1 pr checks
 # --- case 7 -----------------------------------------------------------------
 tname="case 7 already blocked"
 reset_case
-write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+write_order acme/software-factory 81 acme/software-factory factory/81-gate-checks 1
 set_labels factory:gate factory:blocked
 set_checks '[{"name":"ShellCheck","bucket":"pass"}]' 0
 run_gate
@@ -530,7 +530,7 @@ assert_no_arg pr
 # --- case 8 -----------------------------------------------------------------
 tname="case 8 not gate"
 reset_case
-write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+write_order acme/software-factory 81 acme/software-factory factory/81-gate-checks 1
 set_labels factory:building
 set_checks '[{"name":"ShellCheck","bucket":"pass"}]' 0
 run_gate
@@ -542,7 +542,7 @@ assert_no_arg pr
 # --- case 9 -----------------------------------------------------------------
 tname="case 9 no required checks"
 reset_case
-write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+write_order acme/software-factory 81 acme/software-factory factory/81-gate-checks 1
 set_labels factory:gate
 set_factory << 'EOF'
 agents:
@@ -555,7 +555,7 @@ EOF
 set_checks '[{"name":"ShellCheck","bucket":"pass"}]' 0
 run_gate
 expect_word blocked
-assert_edit adamsuk/software-factory factory:gate factory:blocked
+assert_edit acme/software-factory factory:gate factory:blocked
 assert_one_comment "$(cat << 'EOF'
 <!-- factory:gate -->
 blocked: no-required-checks
@@ -569,7 +569,7 @@ assert_invocations 0 pr checks
 # --- case 10 ----------------------------------------------------------------
 tname="case 10 sorted red names"
 reset_case
-write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+write_order acme/software-factory 81 acme/software-factory factory/81-gate-checks 1
 set_labels factory:gate
 set_factory << 'EOF'
 required_checks:
@@ -591,7 +591,7 @@ EOF
 # --- case 11 ----------------------------------------------------------------
 tname="case 11 pass and pending"
 reset_case
-write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+write_order acme/software-factory 81 acme/software-factory factory/81-gate-checks 1
 set_labels factory:gate
 set_factory << 'EOF'
 required_checks:
@@ -607,7 +607,7 @@ assert_no_comment
 # --- case 12 ----------------------------------------------------------------
 tname="case 12 skipping is red"
 reset_case
-write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+write_order acme/software-factory 81 acme/software-factory factory/81-gate-checks 1
 set_labels factory:gate
 set_factory << 'EOF'
 required_checks:
@@ -629,7 +629,7 @@ EOF
 # --- case 13 ----------------------------------------------------------------
 tname="case 13 absent required check is pending"
 reset_case
-write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+write_order acme/software-factory 81 acme/software-factory factory/81-gate-checks 1
 set_labels factory:gate
 set_checks '[{"name":"CodeRabbit","bucket":"pass","workflow":"ShellCheck"}]' 0
 run_gate
@@ -640,29 +640,29 @@ assert_no_comment
 # --- case 14 ----------------------------------------------------------------
 tname="case 14 empty issue_repo"
 reset_case
-write_order adamsuk/gh-factory 81 "" factory/81-gate-checks 1
+write_order acme/gh-factory 81 "" factory/81-gate-checks 1
 set_labels factory:gate
 set_checks '[{"name":"ShellCheck","bucket":"pass"}]' 0
 run_gate
 expect_word review
-assert_edit adamsuk/gh-factory factory:gate factory:review
-assert_pr_view adamsuk/gh-factory factory/81-gate-checks
-assert_pr_checks adamsuk/gh-factory 481
-if ! gh_has_arg "$(api_url adamsuk/gh-factory)"; then
-  fail "api url did not use adamsuk/gh-factory"
+assert_edit acme/gh-factory factory:gate factory:review
+assert_pr_view acme/gh-factory factory/81-gate-checks
+assert_pr_checks acme/gh-factory 481
+if ! gh_has_arg "$(api_url acme/gh-factory)"; then
+  fail "api url did not use acme/gh-factory"
 fi
 
 # --- case 15 ----------------------------------------------------------------
 tname="case 15 attempt 4"
 reset_case
-write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 4
+write_order acme/software-factory 81 acme/software-factory factory/81-gate-checks 4
 set_labels factory:gate
 expect_exit_2
 
 # Spec clauses the fifteen cases do not already pin down.
 tname="pending wins over red"
 reset_case
-write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+write_order acme/software-factory 81 acme/software-factory factory/81-gate-checks 1
 set_labels factory:gate
 set_factory << 'EOF'
 required_checks:
@@ -677,13 +677,13 @@ assert_no_comment
 
 tname="attempt 1 repeat"
 reset_case
-write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+write_order acme/software-factory 81 acme/software-factory factory/81-gate-checks 1
 set_labels factory:gate
 set_checks '[{"name":"ShellCheck","bucket":"fail"}]' 0
 set_comments $'<!-- factory:gate -->\nred: ShellCheck'
 run_gate
 expect_word blocked
-assert_edit adamsuk/software-factory factory:gate factory:blocked
+assert_edit acme/software-factory factory:gate factory:blocked
 assert_one_comment "$(cat << 'EOF'
 <!-- factory:gate -->
 blocked: repeat
@@ -694,7 +694,7 @@ EOF
 
 tname="cancel is red"
 reset_case
-write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+write_order acme/software-factory 81 acme/software-factory factory/81-gate-checks 1
 set_labels factory:gate
 set_checks '[{"name":"ShellCheck","bucket":"cancel"}]' 0
 run_gate
@@ -707,7 +707,7 @@ EOF
 
 tname="other bucket is red"
 reset_case
-write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+write_order acme/software-factory 81 acme/software-factory factory/81-gate-checks 1
 set_labels factory:gate
 set_checks '[{"name":"ShellCheck","bucket":"success"}]' 0
 run_gate
@@ -720,7 +720,7 @@ EOF
 
 tname="names with spaces and parentheses"
 reset_case
-write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+write_order acme/software-factory 81 acme/software-factory factory/81-gate-checks 1
 set_labels factory:gate
 set_factory << 'EOF'
 required_checks:
@@ -737,18 +737,18 @@ EOF
 
 tname="base64 factory.yml"
 reset_case
-write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+write_order acme/software-factory 81 acme/software-factory factory/81-gate-checks 1
 set_labels factory:gate enhancement
 GH_FACTORY_MODE=json
 export GH_FACTORY_MODE
 set_checks '[{"name":"ShellCheck","bucket":"pass"}]' 0
 run_gate
 expect_word review
-assert_edit adamsuk/software-factory factory:gate factory:review
+assert_edit acme/software-factory factory:gate factory:review
 
 tname="checks exit 1"
 reset_case
-write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+write_order acme/software-factory 81 acme/software-factory factory/81-gate-checks 1
 set_labels factory:gate
 set_checks '[{"name":"ShellCheck","bucket":"pass"}]' 1
 run_gate
@@ -759,24 +759,24 @@ assert_no_comment
 
 tname="issue_repo differs from repo"
 reset_case
-write_order adamsuk/gh-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+write_order acme/gh-factory 81 acme/software-factory factory/81-gate-checks 1
 set_labels factory:gate
 set_checks '[{"name":"ShellCheck","bucket":"pass"}]' 0
 run_gate
 expect_word review
-assert_edit adamsuk/software-factory factory:gate factory:review
-assert_pr_view adamsuk/gh-factory factory/81-gate-checks
-assert_pr_checks adamsuk/gh-factory 481
-if ! gh_has_arg "$(api_url adamsuk/gh-factory)"; then
+assert_edit acme/software-factory factory:gate factory:review
+assert_pr_view acme/gh-factory factory/81-gate-checks
+assert_pr_checks acme/gh-factory 481
+if ! gh_has_arg "$(api_url acme/gh-factory)"; then
   fail "pull request read did not use repo"
 fi
-if gh_has_arg "$(api_url adamsuk/software-factory)"; then
+if gh_has_arg "$(api_url acme/software-factory)"; then
   fail "pull request read used issue_repo"
 fi
 
 tname="invalid yaml exits 7 with no stdout"
 reset_case
-write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+write_order acme/software-factory 81 acme/software-factory factory/81-gate-checks 1
 set_labels factory:gate
 set_factory << 'EOF'
 required_checks: [] # none inline
@@ -795,7 +795,7 @@ grep -q 'could not read factory.yml' "$ROOT/err" || fail "stderr missing parser 
 
 tname="blank line keeps later required checks"
 reset_case
-write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+write_order acme/software-factory 81 acme/software-factory factory/81-gate-checks 1
 set_labels factory:gate
 set_factory << 'EOF'
 required_checks:
@@ -815,7 +815,7 @@ EOF
 
 tname="comment line keeps later required checks"
 reset_case
-write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+write_order acme/software-factory 81 acme/software-factory factory/81-gate-checks 1
 set_labels factory:gate
 set_factory << 'EOF'
 required_checks:
@@ -835,7 +835,7 @@ EOF
 
 tname="quoted required check name"
 reset_case
-write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+write_order acme/software-factory 81 acme/software-factory factory/81-gate-checks 1
 set_labels factory:gate
 set_factory << 'EOF'
 required_checks:
@@ -852,7 +852,7 @@ EOF
 
 tname="double quoted escape in a required check name"
 reset_case
-write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+write_order acme/software-factory 81 acme/software-factory factory/81-gate-checks 1
 set_labels factory:gate
 set_factory << 'EOF'
 required_checks:
@@ -869,7 +869,7 @@ EOF
 
 tname="required checks indented four spaces"
 reset_case
-write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+write_order acme/software-factory 81 acme/software-factory factory/81-gate-checks 1
 set_labels factory:gate
 set_factory << 'EOF'
 required_checks:
@@ -878,12 +878,12 @@ EOF
 set_checks '[{"name":"ShellCheck","bucket":"pass"}]' 0
 run_gate
 expect_word review
-assert_edit adamsuk/software-factory factory:gate factory:review
+assert_edit acme/software-factory factory:gate factory:review
 assert_no_comment
 
 tname="flow required checks"
 reset_case
-write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+write_order acme/software-factory 81 acme/software-factory factory/81-gate-checks 1
 set_labels factory:gate
 set_factory << 'EOF'
 required_checks: [Beta, "Alpha"]
@@ -900,7 +900,7 @@ EOF
 
 tname="required_checks must be a list of strings"
 reset_case
-write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+write_order acme/software-factory 81 acme/software-factory factory/81-gate-checks 1
 set_labels factory:gate
 set_factory << 'EOF'
 required_checks: ShellCheck
@@ -915,7 +915,7 @@ assert_invocations 0 pr checks
 
 tname="non-string required check exits 7"
 reset_case
-write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+write_order acme/software-factory 81 acme/software-factory factory/81-gate-checks 1
 set_labels factory:gate
 set_factory << 'EOF'
 required_checks:
@@ -931,7 +931,7 @@ assert_invocations 0 pr checks
 
 tname="duplicate check name uses every row"
 reset_case
-write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+write_order acme/software-factory 81 acme/software-factory factory/81-gate-checks 1
 set_labels factory:gate
 set_checks '[{"name":"ShellCheck","bucket":"pass","workflow":"a"},{"name":"ShellCheck","bucket":"fail","workflow":"b"}]' 0
 run_gate
@@ -945,7 +945,7 @@ EOF
 
 tname="duplicate check name pending wins"
 reset_case
-write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+write_order acme/software-factory 81 acme/software-factory factory/81-gate-checks 1
 set_labels factory:gate
 set_checks '[{"name":"ShellCheck","bucket":"pass"},{"name":"ShellCheck","bucket":"pending"}]' 0
 run_gate
@@ -955,17 +955,17 @@ assert_no_comment
 
 tname="duplicate check name all pass"
 reset_case
-write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+write_order acme/software-factory 81 acme/software-factory factory/81-gate-checks 1
 set_labels factory:gate
 set_checks '[{"name":"ShellCheck","bucket":"pass"},{"name":"ShellCheck","bucket":"pass"}]' 0
 run_gate
 expect_word review
-assert_edit adamsuk/software-factory factory:gate factory:review
+assert_edit acme/software-factory factory:gate factory:review
 assert_no_comment
 
 tname="duplicate check name non-string bucket is red"
 reset_case
-write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+write_order acme/software-factory 81 acme/software-factory factory/81-gate-checks 1
 set_labels factory:gate
 set_checks '[{"name":"ShellCheck","bucket":"pass"},{"name":"ShellCheck","bucket":null}]' 0
 run_gate
@@ -978,7 +978,7 @@ EOF
 
 tname="blocked edit failure prints no stdout"
 reset_case
-write_order adamsuk/software-factory 81 adamsuk/software-factory factory/81-gate-checks 1
+write_order acme/software-factory 81 acme/software-factory factory/81-gate-checks 1
 set_labels factory:gate
 set_factory << 'EOF'
 required_checks:
@@ -1010,24 +1010,24 @@ bad_order() {
   expect_exit_2
 }
 bad_order "repo without slash" \
-  "---" "repo: adamsuk" "issue: 81" "branch: factory/81-gate-checks" "attempt: 1" "---"
+  "---" "repo: acme" "issue: 81" "branch: factory/81-gate-checks" "attempt: 1" "---"
 bad_order "repo two slashes" \
-  "---" "repo: adamsuk/software/factory" "issue: 81" "branch: factory/81-gate-checks" "attempt: 1" "---"
+  "---" "repo: acme/software/factory" "issue: 81" "branch: factory/81-gate-checks" "attempt: 1" "---"
 bad_order "repo space" \
-  "---" "repo: adamsuk/soft ware" "issue: 81" "branch: factory/81-gate-checks" "attempt: 1" "---"
+  "---" "repo: acme/soft ware" "issue: 81" "branch: factory/81-gate-checks" "attempt: 1" "---"
 bad_order "bad issue_repo" \
-  "---" "repo: adamsuk/software-factory" "issue: 81" "issue_repo: not a repo" \
+  "---" "repo: acme/software-factory" "issue: 81" "issue_repo: not a repo" \
   "branch: factory/81-gate-checks" "attempt: 1" "---"
 bad_order "issue not digits" \
-  "---" "repo: adamsuk/software-factory" "issue: 81a" "branch: factory/81-gate-checks" "attempt: 1" "---"
+  "---" "repo: acme/software-factory" "issue: 81a" "branch: factory/81-gate-checks" "attempt: 1" "---"
 bad_order "empty branch" \
-  "---" "repo: adamsuk/software-factory" "issue: 81" "branch:" "attempt: 1" "---"
+  "---" "repo: acme/software-factory" "issue: 81" "branch:" "attempt: 1" "---"
 bad_order "branch space" \
-  "---" "repo: adamsuk/software-factory" "issue: 81" "branch: factory/81 gate" "attempt: 1" "---"
+  "---" "repo: acme/software-factory" "issue: 81" "branch: factory/81 gate" "attempt: 1" "---"
 bad_order "attempt 0" \
-  "---" "repo: adamsuk/software-factory" "issue: 81" "branch: factory/81-gate-checks" "attempt: 0" "---"
+  "---" "repo: acme/software-factory" "issue: 81" "branch: factory/81-gate-checks" "attempt: 0" "---"
 bad_order "attempt 03" \
-  "---" "repo: adamsuk/software-factory" "issue: 81" "branch: factory/81-gate-checks" "attempt: 03" "---"
+  "---" "repo: acme/software-factory" "issue: 81" "branch: factory/81-gate-checks" "attempt: 03" "---"
 tname="bad: missing file"
 reset_case
 code=0
