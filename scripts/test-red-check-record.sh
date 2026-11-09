@@ -364,7 +364,7 @@ pass() { echo "ok: $tname"; }
 # --- retry: new name, non-marker ignored, previous file replaced -----------
 tname="retry writes a new record and today's comment"
 reset_case
-write_order adamsuk/software-factory 24 adamsuk/software-factory factory/24-red-check-record 1
+write_order acme/software-factory 24 acme/software-factory factory/24-red-check-record 1
 set_labels factory:gate
 set_factory << 'EOF'
 required_checks:
@@ -387,7 +387,7 @@ pass
 # --- older marker, not the latest; attempt 2 stays retry -------------------
 tname="older red name is seen-before and attempt 2 still retries"
 reset_case
-write_order adamsuk/software-factory 24 adamsuk/software-factory factory/24-red-check-record 2
+write_order acme/software-factory 24 acme/software-factory factory/24-red-check-record 2
 set_labels factory:gate
 set_factory << 'EOF'
 required_checks:
@@ -417,7 +417,7 @@ pass
 # --- split on ", " ; latest list differs, so retry -------------------------
 tname="comma-space split marks both names seen-before"
 reset_case
-write_order adamsuk/software-factory 24 adamsuk/software-factory factory/24-red-check-record 1
+write_order acme/software-factory 24 acme/software-factory factory/24-red-check-record 1
 set_labels factory:gate
 set_factory << 'EOF'
 required_checks:
@@ -444,7 +444,7 @@ pass
 # --- exact name, not a prefix ------------------------------------------------
 tname="Shell is seen-before and ShellCheck is new"
 reset_case
-write_order adamsuk/software-factory 24 adamsuk/software-factory factory/24-red-check-record 2
+write_order acme/software-factory 24 acme/software-factory factory/24-red-check-record 2
 set_labels factory:gate
 set_factory << 'EOF'
 required_checks:
@@ -469,7 +469,7 @@ pass
 # --- repeat: newest comment by time, not array order ------------------------
 tname="repeat blocks and records seen-before"
 reset_case
-write_order adamsuk/software-factory 24 adamsuk/software-factory factory/24-red-check-record 1
+write_order acme/software-factory 24 acme/software-factory factory/24-red-check-record 1
 set_labels factory:gate
 set_factory << 'EOF'
 required_checks:
@@ -482,7 +482,7 @@ set_comments_at \
   "2026-10-26T00:00:00Z" $'<!-- factory:gate -->\nred: Gamma'
 run_gate
 expect_word blocked
-assert_edit adamsuk/software-factory factory:gate factory:blocked
+assert_edit acme/software-factory factory:gate factory:blocked
 assert_one_comment "$(cat << 'EOF'
 <!-- factory:gate -->
 blocked: repeat
@@ -498,7 +498,7 @@ pass
 # --- cap still caps when the list is new or seen-before ---------------------
 tname="cap blocks with new and seen-before"
 reset_case
-write_order adamsuk/software-factory 24 adamsuk/software-factory factory/24-red-check-record 3
+write_order acme/software-factory 24 acme/software-factory factory/24-red-check-record 3
 set_labels factory:gate
 set_factory << 'EOF'
 required_checks:
@@ -512,7 +512,7 @@ set_comments \
   $'<!-- factory:gate -->\nred: Alpha'
 run_gate
 expect_word blocked
-assert_edit adamsuk/software-factory factory:gate factory:blocked
+assert_edit acme/software-factory factory:gate factory:blocked
 assert_one_comment "$(cat << 'EOF'
 <!-- factory:gate -->
 blocked: cap
@@ -529,7 +529,7 @@ pass
 # --- sentinel on the latest marker is not a name; older name still counts ---
 tname="sentinel is not a name and attempt 1 still retries"
 reset_case
-write_order adamsuk/software-factory 24 adamsuk/software-factory factory/24-red-check-record 1
+write_order acme/software-factory 24 acme/software-factory factory/24-red-check-record 1
 set_labels factory:gate
 set_factory << 'EOF'
 required_checks:
@@ -558,7 +558,7 @@ pass
 # seen name, so the record flags it new.
 tname="check named dash repeats and is recorded new"
 reset_case
-write_order adamsuk/software-factory 24 adamsuk/software-factory factory/24-red-check-record 1
+write_order acme/software-factory 24 acme/software-factory factory/24-red-check-record 1
 set_labels factory:gate
 set_factory << 'EOF'
 required_checks:
@@ -568,7 +568,7 @@ set_checks '[{"name":"-","bucket":"fail"}]'
 set_comments $'<!-- factory:gate -->\nblocked: no-required-checks\nred: -\nScott must act.'
 run_gate
 expect_word blocked
-assert_edit adamsuk/software-factory factory:gate factory:blocked
+assert_edit acme/software-factory factory:gate factory:blocked
 assert_one_comment "$(cat << 'EOF'
 <!-- factory:gate -->
 blocked: repeat
@@ -582,19 +582,19 @@ pass
 # --- outcomes that must not write a record ----------------------------------
 tname="review does not write a record"
 reset_case
-write_order adamsuk/software-factory 24 adamsuk/software-factory factory/24-red-check-record 1
+write_order acme/software-factory 24 acme/software-factory factory/24-red-check-record 1
 set_labels factory:gate
 set_checks '[{"name":"ShellCheck","bucket":"pass"}]'
 run_gate
 expect_word review
-assert_edit adamsuk/software-factory factory:gate factory:review
+assert_edit acme/software-factory factory:gate factory:review
 assert_no_comment
 assert_no_record
 pass
 
 tname="review leaves an existing record untouched"
 reset_case
-write_order adamsuk/software-factory 24 adamsuk/software-factory factory/24-red-check-record 1
+write_order acme/software-factory 24 acme/software-factory factory/24-red-check-record 1
 set_labels factory:gate
 set_checks '[{"name":"ShellCheck","bucket":"pass"}]'
 printf '%s\n' "STALE" > "${order}.red-record"
@@ -607,7 +607,7 @@ pass
 
 tname="pending does not write a record"
 reset_case
-write_order adamsuk/software-factory 24 adamsuk/software-factory factory/24-red-check-record 1
+write_order acme/software-factory 24 acme/software-factory factory/24-red-check-record 1
 set_labels factory:gate
 set_checks '[{"name":"ShellCheck","bucket":"pending"}]' 8
 run_gate
@@ -619,7 +619,7 @@ pass
 
 tname="skip does not write a record"
 reset_case
-write_order adamsuk/software-factory 24 adamsuk/software-factory factory/24-red-check-record 1
+write_order acme/software-factory 24 acme/software-factory factory/24-red-check-record 1
 set_labels factory:building
 set_checks '[{"name":"ShellCheck","bucket":"fail"}]'
 run_gate
@@ -631,7 +631,7 @@ pass
 
 tname="no-required-checks does not write a record"
 reset_case
-write_order adamsuk/software-factory 24 adamsuk/software-factory factory/24-red-check-record 1
+write_order acme/software-factory 24 acme/software-factory factory/24-red-check-record 1
 set_labels factory:gate
 set_factory << 'EOF'
 required_checks: []
@@ -639,7 +639,7 @@ EOF
 set_checks '[{"name":"ShellCheck","bucket":"fail"}]'
 run_gate
 expect_word blocked
-assert_edit adamsuk/software-factory factory:gate factory:blocked
+assert_edit acme/software-factory factory:gate factory:blocked
 assert_one_comment "$(cat << 'EOF'
 <!-- factory:gate -->
 blocked: no-required-checks
@@ -653,7 +653,7 @@ pass
 
 tname="already blocked does not write a record"
 reset_case
-write_order adamsuk/software-factory 24 adamsuk/software-factory factory/24-red-check-record 1
+write_order acme/software-factory 24 acme/software-factory factory/24-red-check-record 1
 set_labels factory:gate factory:blocked
 set_checks '[{"name":"ShellCheck","bucket":"fail"}]'
 run_gate
