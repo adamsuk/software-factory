@@ -862,6 +862,8 @@ printf '%s\n' "ok: $tname"
 # carry the approver's comment bodies without the triage-ask question or a
 # stranger's comment. Removing the continue after ask_rc==2, or the continue
 # after ask_rc!=0, makes the matching case call run_grok.
+# Isolated harness subshell: these exports must not leak to the caller.
+# shellcheck disable=SC2030,SC2031
 run_watcher_ask() {
   local lane=$1 rc_want=$2 body=${3-}
   local case_dir
@@ -1074,6 +1076,8 @@ printf '%s\n' "ok: $tname"
 # only in an approver comment, which step_build must read with gh issue view.
 # A stranger or the factory app must not supply it. Dry-run stops before
 # clone and grok; the log is the blocked-versus-continue decision.
+# Isolated harness subshell: these exports must not leak to the caller.
+# shellcheck disable=SC2030,SC2031
 run_watcher_build() {
   local lane=$1 body_file=$2 comments_file=$3 approver=${4:-adamsuk}
   local case_dir
