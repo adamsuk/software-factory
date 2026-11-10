@@ -60,6 +60,19 @@ jobs:
 EOF
 }
 
+# A workflow whose job id is the filename stem, so that id also occurs inside
+# .github/workflows/<stem>.yml. stem is a single path segment, not a path.
+write_stem_workflow() {
+  local root=$1 stem=$2
+  mkdir -p "$root/.github/workflows"
+  cat > "$root/.github/workflows/${stem}.yml" << EOF
+name: ${stem}
+jobs:
+  ${stem}:
+    runs-on: ubuntu-latest
+EOF
+}
+
 # A regular file at rel inside a fixture root. The verifier must not run it.
 # Running it would create $root/executed-by-check.
 write_script() {
@@ -150,6 +163,36 @@ write_form "$work/barejob" "- [ ] the tests job exits zero"
 write_lint "$work/barejob"
 capture "$work/barejob"
 [[ $status -eq 1 ]] || fail "expected exit 1, got $status: $out"
+pass
+
+tname="a job id that occurs only inside its workflow path fails"
+bare=$work/barepath
+for stem in changelog size-label ruleset-drift; do
+  write_stem_workflow "$bare" "$stem"
+done
+write_form "$bare" \
+  "- [ ] .github/workflows/changelog.yml" \
+  "- [ ] .github/workflows/size-label.yml" \
+  "- [ ] .github/workflows/ruleset-drift.yml"
+capture "$bare"
+[[ $status -eq 1 ]] || fail "expected exit 1, got $status: $out"
+[[ "$out" == *"neither"* ]] || fail "no explanation: $out"
+[[ "$out" == *"- [ ] .github/workflows/changelog.yml"* ]] || fail "did not quote the changelog checkbox: $out"
+[[ "$out" == *"- [ ] .github/workflows/size-label.yml"* ]] || fail "did not quote the size-label checkbox: $out"
+[[ "$out" == *"- [ ] .github/workflows/ruleset-drift.yml"* ]] || fail "did not quote the ruleset-drift checkbox: $out"
+pass
+
+tname="a job id named beside its workflow path passes"
+named=$work/namedjob
+for stem in changelog size-label ruleset-drift; do
+  write_stem_workflow "$named" "$stem"
+done
+write_form "$named" \
+  "- [ ] the changelog job in .github/workflows/changelog.yml exits zero" \
+  "- [ ] the size-label job in .github/workflows/size-label.yml exits zero" \
+  "- [ ] the ruleset-drift job in .github/workflows/ruleset-drift.yml exits zero"
+capture "$named"
+[[ $status -eq 0 ]] || fail "expected exit 0, got $status: $out"
 pass
 
 tname="a second file under ISSUE_TEMPLATE is scanned"

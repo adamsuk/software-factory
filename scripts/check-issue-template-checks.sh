@@ -6,7 +6,8 @@
 # an existing regular file under ROOT, the tree being checked. It is not
 # executed (a placeholder that names this gate would recurse). A workflow job
 # is a job id plus that file's repo-relative path, for example the tests job
-# in .github/workflows/lint.yml.
+# in .github/workflows/lint.yml. A job id that occurs only inside that path
+# does not count.
 #
 # Usage: scripts/check-issue-template-checks.sh [ROOT]
 # ROOT defaults to this repo. Exit 0 when every checkbox names an existing
@@ -22,7 +23,7 @@ root=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --help)
-      sed -n '2,16p' "$0"
+      sed -n '2,17p' "$0"
       exit 0
       ;;
     --)
@@ -132,14 +133,19 @@ regular_file_under_root() {
 }
 
 names_workflow_job() {
-  local text=$1 pair rel job job_re
+  local text=$1 pair rel job job_re outside
   [[ ${#wf_pairs[@]} -gt 0 ]] || return 1
   for pair in "${wf_pairs[@]}"; do
     rel=${pair%%$'\t'*}
     job=${pair#*$'\t'}
     [[ -n "$job" && "$text" == *"$rel"* ]] || continue
+    # Ignore a job id that occurs only inside its workflow path. Blank each
+    # copy of the path so "changelog" in changelog.yml is not a mention, while
+    # a separate "changelog" beside that path still is. A space keeps the
+    # surrounding text from joining into a new id.
+    outside=${text//"$rel"/" "}
     job_re="(^|[^A-Za-z0-9_-])${job}([^A-Za-z0-9_-]|\$)"
-    [[ "$text" =~ $job_re ]] || continue
+    [[ "$outside" =~ $job_re ]] || continue
     return 0
   done
   return 1
