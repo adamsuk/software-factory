@@ -6,11 +6,12 @@
 # The fixture has no checkable acceptance criteria. Questions are posted
 # as a numbered comment and factory:ready is not applied. The same fixture
 # with the owner's answers on the body or a comment allows ready.
-# A comment counts only when its author is the approver. The script does
+# An answer counts only when its author is the approver. The factory app
+# can set the already-asked marker and cannot answer. The script does
 # not add acceptance criteria the owner did not write.
 set -euo pipefail
 
-unset FACTORY_REPOS FACTORY_APPROVER_LOGIN
+unset FACTORY_REPOS FACTORY_APPROVER_LOGIN FACTORY_LOGIN
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 root=$(cd "$here/.." && pwd)
@@ -215,6 +216,27 @@ cat > "$ROOT/marker-only.txt" << 'EOF'
 Answer on this issue, in a comment or in the issue body.
 EOF
 
+cat > "$ROOT/target-only.txt" << 'EOF'
+Target repo: adamsuk/software-factory
+EOF
+
+cat > "$ROOT/target-line.txt" << 'EOF'
+Target repo: adamsuk/line
+EOF
+
+cat > "$ROOT/no-target.txt" << 'EOF'
+The save button stays grey after the form becomes valid.
+EOF
+
+cat > "$ROOT/target-twice.txt" << 'EOF'
+Target repo: adamsuk/software-factory
+Target repo: adamsuk/software-factory
+EOF
+
+cat > "$ROOT/size-only.txt" << 'EOF'
+Size: M
+EOF
+
 cat > "$ROOT/complete.txt" << 'EOF'
 The save button stays grey after the form becomes valid.
 
@@ -276,6 +298,7 @@ reset_gh() {
   : > "$GH_LOG"
   GH_STATUS=0
   rm -f "$CANARY"
+  unset FACTORY_LOGIN
 }
 
 gh_has() {
@@ -620,6 +643,103 @@ grep -F -q '<!-- factory:triage-ask -->' "$OUT" || fail "missing marker"
 assert_no_label
 printf '%s\n' "ok: $tname"
 
+tname="factory app marker is already asked and is not re-posted"
+reset_gh
+unset FACTORY_LOGIN
+for author in software-factory-line 'software-factory-line[bot]'; do
+  reset_gh
+  comments_from "$ROOT/app-marker.json" --author "$author" "$ROOT/marker-only.txt"
+  write_issue "Colour is wrong" "$ROOT/fixture.txt" "$ROOT/app-marker.json"
+  run adamsuk/software-factory 310
+  [[ "$status" -eq 2 ]] || fail "expected exit 2 for ${author}, got $status"
+  [[ ! -s "$OUT" ]] || fail "questions re-emitted for ${author}"
+  assert_view_only
+  assert_no_label
+done
+printf '%s\n' "ok: $tname"
+
+tname="factory app marker comment is not an answer"
+reset_gh
+unset FACTORY_LOGIN
+combine_bodies "$ROOT/app-marked-answer.txt" "$ROOT/marker-only.txt" "$ROOT/answer.txt"
+for author in software-factory-line 'software-factory-line[bot]'; do
+  reset_gh
+  comments_from "$ROOT/app-marked-answer.json" --author "$author" "$ROOT/app-marked-answer.txt"
+  write_issue "Colour is wrong" "$ROOT/fixture.txt" "$ROOT/app-marked-answer.json"
+  run adamsuk/software-factory 310
+  [[ "$status" -eq 2 ]] || fail "app marker answer unlocked ready for ${author}, exit $status"
+  [[ ! -s "$OUT" ]] || fail "app marker answer was re-asked or treated as an answer for ${author}"
+  assert_no_label
+done
+printf '%s\n' "ok: $tname"
+
+tname="factory app answer does not unlock ready"
+reset_gh
+unset FACTORY_LOGIN
+for author in software-factory-line 'software-factory-line[bot]'; do
+  reset_gh
+  comments_from "$ROOT/app-answer.json" --author "$author" "$ROOT/answer.txt"
+  write_issue "Colour is wrong" "$ROOT/fixture.txt" "$ROOT/app-answer.json"
+  run adamsuk/software-factory 310
+  [[ "$status" -eq 2 ]] || fail "app answer unlocked ready for ${author}, exit $status"
+  [[ -s "$OUT" ]] || fail "app answer suppressed the questions for ${author}"
+  grep -F -q '<!-- factory:triage-ask -->' "$OUT" || fail "missing marker for ${author}"
+  [[ "$(numbered_count "$OUT")" -eq 3 ]] || fail "expected the three unanswered questions for ${author}"
+  grep -F -q 'Which repository should this change land in?' "$OUT" || fail "app supplied the target repo for ${author}"
+  grep -F -q 'What size is this change?' "$OUT" || fail "app supplied the size for ${author}"
+  grep -F -q 'What are the done-checks?' "$OUT" || fail "app supplied the done-checks for ${author}"
+  assert_no_label
+done
+printf '%s\n' "ok: $tname"
+
+tname="FACTORY_LOGIN marker matches with or without [bot] and is not an answer"
+reset_gh
+export FACTORY_LOGIN=custom-line
+comments_from "$ROOT/custom-bot-marker.json" --author 'custom-line[bot]' "$ROOT/marker-only.txt"
+write_issue "Colour is wrong" "$ROOT/fixture.txt" "$ROOT/custom-bot-marker.json"
+run adamsuk/software-factory 310
+[[ "$status" -eq 2 ]] || fail "custom-line[bot] marker: expected exit 2, got $status"
+[[ ! -s "$OUT" ]] || fail "FACTORY_LOGIN=[bot] form re-posted questions"
+assert_no_label
+reset_gh
+export FACTORY_LOGIN='custom-line[bot]'
+comments_from "$ROOT/custom-bare-marker.json" --author custom-line "$ROOT/marker-only.txt"
+write_issue "Colour is wrong" "$ROOT/fixture.txt" "$ROOT/custom-bare-marker.json"
+run adamsuk/software-factory 310
+[[ "$status" -eq 2 ]] || fail "custom-line marker: expected exit 2, got $status"
+[[ ! -s "$OUT" ]] || fail "FACTORY_LOGIN bare form re-posted questions"
+assert_no_label
+reset_gh
+export FACTORY_LOGIN=custom-line
+comments_from "$ROOT/custom-answer.json" --author custom-line "$ROOT/answer.txt"
+write_issue "Colour is wrong" "$ROOT/fixture.txt" "$ROOT/custom-answer.json"
+run adamsuk/software-factory 310
+[[ "$status" -eq 2 ]] || fail "FACTORY_LOGIN answer unlocked ready, exit $status"
+[[ -s "$OUT" ]] || fail "FACTORY_LOGIN answer suppressed the questions"
+[[ "$(numbered_count "$OUT")" -eq 3 ]] || fail "FACTORY_LOGIN answer was partly accepted"
+assert_no_label
+reset_gh
+export FACTORY_LOGIN=custom-line
+comments_from "$ROOT/stranger-while-login.json" --author stranger "$ROOT/marker-only.txt"
+write_issue "Colour is wrong" "$ROOT/fixture.txt" "$ROOT/stranger-while-login.json"
+run adamsuk/software-factory 310
+[[ "$status" -eq 2 ]] || fail "stranger under FACTORY_LOGIN: expected exit 2, got $status"
+[[ -s "$OUT" ]] || fail "stranger marker counted while FACTORY_LOGIN was set"
+grep -F -q '<!-- factory:triage-ask -->' "$OUT" || fail "missing marker"
+[[ "$(numbered_count "$OUT")" -eq 3 ]] || fail "stranger marker suppressed a question"
+assert_no_label
+# The documented app slug still counts when FACTORY_LOGIN names another slug.
+reset_gh
+export FACTORY_LOGIN=custom-line
+comments_from "$ROOT/default-app-marker.json" --author software-factory-line "$ROOT/marker-only.txt"
+write_issue "Colour is wrong" "$ROOT/fixture.txt" "$ROOT/default-app-marker.json"
+run adamsuk/software-factory 310
+[[ "$status" -eq 2 ]] || fail "default app slug: expected exit 2, got $status"
+[[ ! -s "$OUT" ]] || fail "software-factory-line was ignored while FACTORY_LOGIN was set"
+unset FACTORY_LOGIN
+assert_no_label
+printf '%s\n' "ok: $tname"
+
 tname="FACTORY_APPROVER_LOGIN comment unlocks and the default owner does not"
 reset_gh
 export FACTORY_APPROVER_LOGIN=maint
@@ -863,6 +983,8 @@ harness_fail() {
   cat "$STEP_CASE/stderr" >&2 2>/dev/null || true
   echo "--- trace ---" >&2
   cat "$STEP_CASE/trace" >&2 2>/dev/null || true
+  echo "--- watch log ---" >&2
+  cat "$STEP_CASE/root/watch.log" >&2 2>/dev/null || true
   fail "$*"
 }
 
@@ -945,6 +1067,220 @@ for lane in "$root/scripts/watcher/watch.sh" "$root/scripts/watcher/watch.new.sh
     /UNTRUSTED_DATA>>>/ { inside = 0 }
     END { exit (body && note > body) ? 0 : 1 }
   ' "$prompt" || harness_fail "approver comment was not inside the untrusted issue block in ${lane}"
+done
+printf '%s\n' "ok: $tname"
+
+# step_build target. The issue cache has no comments. The target may live
+# only in an approver comment, which step_build must read with gh issue view.
+# A stranger or the factory app must not supply it. Dry-run stops before
+# clone and grok; the log is the blocked-versus-continue decision.
+run_watcher_build() {
+  local lane=$1 body_file=$2 comments_file=$3 approver=${4:-adamsuk}
+  local case_dir
+  case_dir=$(mktemp -d "$ROOT/build.XXXXXX")
+  STEP_CASE=$case_dir
+  : > "$case_dir/trace"
+  (
+    set -euo pipefail
+    export FACTORY_WATCH_ROOT=$case_dir/root
+    export FACTORY_BUDGET_FILE=$case_dir/budget.json
+    export FACTORY_LEDGER_FILE=$case_dir/ledger.csv
+    export FACTORY_HOME_REPO=adamsuk/software-factory
+    export FACTORY_REPOS="adamsuk/software-factory adamsuk/gh-factory adamsuk/activity-feed adamsuk/line adamsuk/adamsuk"
+    unset FACTORY_BLOCKED_OWNERS FACTORY_LOGIN
+    if [[ $approver == owner ]]; then
+      unset FACTORY_APPROVER_LOGIN
+    else
+      export FACTORY_APPROVER_LOGIN=$approver
+    fi
+    mkdir -p "$FACTORY_WATCH_ROOT/state" "$FACTORY_WATCH_ROOT/work" "$FACTORY_WATCH_ROOT/orders" "$case_dir/bin"
+    python3 - "$FACTORY_BUDGET_FILE" "$case_dir/issue.json" "$case_dir/issues.jsonl" "$body_file" "$comments_file" << 'PY'
+import json, pathlib, sys
+budget, issue, cache, body_file, comments_file = sys.argv[1:]
+pathlib.Path(budget).write_text(json.dumps({
+    "max_grok_build_runs_per_week": 20,
+    "max_grok_build_runs_per_day": 20,
+    "max_runs_per_loop": 5,
+    "focus_issues": [],
+    "merge_protected_issues": [],
+}))
+comments = json.loads(pathlib.Path(comments_file).read_text())
+pathlib.Path(issue).write_text(json.dumps({"comments": comments}))
+pathlib.Path(cache).write_text(json.dumps({
+    "repo": "adamsuk/software-factory",
+    "number": 310,
+    "title": "Colour",
+    "body": pathlib.Path(body_file).read_text(),
+    "createdAt": "2026-11-01T00:00:00Z",
+    "labels": [{"name": "factory:ready"}],
+}) + "\n")
+PY
+    cat > "$case_dir/bin/gh" << 'EOF'
+#!/usr/bin/env bash
+set -u
+printf '%s\n' "$*" >> "${GH_LOG:?}"
+if [[ "${1:-}" == issue && "${2:-}" == view ]]; then
+  filter=""
+  shift 2 || true
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --jq) filter=$2; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  if [[ -n $filter ]]; then
+    jq -r "$filter" "${GH_ISSUE_JSON:?}"
+  else
+    cat "${GH_ISSUE_JSON:?}"
+  fi
+  exit 0
+fi
+if [[ "${1:-}" == issue && "${2:-}" == edit ]]; then
+  exit 0
+fi
+echo "unexpected gh: $*" >&2
+exit 99
+EOF
+    chmod +x "$case_dir/bin/gh"
+    export PATH="$case_dir/bin:$PATH"
+    export GH_LOG=$case_dir/gh.log
+    export GH_ISSUE_JSON=$case_dir/issue.json
+    : > "$GH_LOG"
+    # shellcheck disable=SC1090
+    source "$lane"
+    # shellcheck disable=SC2034
+    DRY=1
+    # shellcheck disable=SC2034
+    ISSUE_CACHE=$case_dir/issues.jsonl
+    export TRACE=$case_dir/trace
+    # shellcheck disable=SC2329
+    clone_sf_main() {
+      printf 'CLONE\n' >> "$TRACE"
+      return 0
+    }
+    # shellcheck disable=SC2329
+    run_grok() {
+      printf 'GROK %s\n' "$1" >> "$TRACE"
+      return 0
+    }
+    set +e
+    step_build
+    exit 0
+  ) >"$case_dir/stdout" 2>"$case_dir/stderr" || harness_fail "build harness failed for ${lane}"
+}
+
+assert_build_continued() {
+  local target=$1
+  local log=$STEP_CASE/root/watch.log
+  [[ -f $log ]] || harness_fail "watcher log missing"
+  if grep -F -q 'need exactly one Target repo line' "$log"; then
+    harness_fail "build treated the target as missing"
+  fi
+  if grep -F -q 'factory:blocked' "$log"; then
+    harness_fail "build set factory:blocked"
+  fi
+  grep -F -q "DRY-RUN would build adamsuk/software-factory#310 target ${target}:" "$log" \
+    || harness_fail "build did not resolve target ${target}"
+  if [[ -f $STEP_CASE/gh.log ]] && grep -F -q -- '--add-label' "$STEP_CASE/gh.log"; then
+    harness_fail "build edited labels"
+  fi
+  if [[ -f $STEP_CASE/trace ]] && grep -q '^CLONE$' "$STEP_CASE/trace"; then
+    harness_fail "build cloned while resolving the target"
+  fi
+  if [[ -f $STEP_CASE/trace ]] && grep -q '^GROK' "$STEP_CASE/trace"; then
+    harness_fail "build ran grok while resolving the target"
+  fi
+  grep -F -q 'issue view' "$STEP_CASE/gh.log" || harness_fail "build did not read issue comments"
+}
+
+assert_build_blocked() {
+  local log=$STEP_CASE/root/watch.log
+  [[ -f $log ]] || harness_fail "watcher log missing"
+  grep -F -q 'need exactly one Target repo line' "$log" \
+    || harness_fail "build did not skip for a missing target"
+  grep -F -q 'factory:blocked' "$log" \
+    || harness_fail "build did not block for a missing target"
+  if grep -F -q 'DRY-RUN would build ' "$log"; then
+    harness_fail "build continued without a single target"
+  fi
+  if [[ -f $STEP_CASE/gh.log ]] && grep -F -q -- '--add-label' "$STEP_CASE/gh.log"; then
+    harness_fail "dry-run build edited labels"
+  fi
+  grep -F -q 'issue view' "$STEP_CASE/gh.log" || harness_fail "build did not read issue comments"
+}
+
+tname="build_issue_target stays in sync and resolves approver comments"
+fn_build_a=$ROOT/build-target-watch.sh
+fn_build_b=$ROOT/build-target-watch-new.sh
+awk '/^build_issue_target\(\) \{/,/^}$/' "$root/scripts/watcher/watch.sh" > "$fn_build_a"
+awk '/^build_issue_target\(\) \{/,/^}$/' "$root/scripts/watcher/watch.new.sh" > "$fn_build_b"
+[[ -s $fn_build_a && -s $fn_build_b ]] || fail "build_issue_target is missing"
+cmp -s "$fn_build_a" "$fn_build_b" || fail "build_issue_target differs between the two watchers"
+awk '/^step_build\(\) \{/,/^}$/' "$root/scripts/watcher/watch.sh" > "$ROOT/step-build-watch.sh"
+awk '/^step_build\(\) \{/,/^}$/' "$root/scripts/watcher/watch.new.sh" > "$ROOT/step-build-watch-new.sh"
+cmp -s "$ROOT/step-build-watch.sh" "$ROOT/step-build-watch-new.sh" || fail "step_build differs between the two watchers"
+combine_bodies "$ROOT/marker-and-target.txt" "$ROOT/marker-only.txt" "$ROOT/target-only.txt"
+python3 - "$ROOT/mixed-comments.json" "$ROOT/target-line.txt" "$ROOT/target-only.txt" << 'PY'
+import json, pathlib, sys
+dest, other, approver = sys.argv[1:]
+pathlib.Path(dest).write_text(json.dumps([
+    {"author": {"login": "stranger"}, "body": pathlib.Path(other).read_text()},
+    {"author": {"login": "software-factory-line"}, "body": pathlib.Path(other).read_text()},
+    {"author": {"login": "adamsuk"}, "body": pathlib.Path(approver).read_text()},
+]))
+PY
+for lane in "$root/scripts/watcher/watch.sh" "$root/scripts/watcher/watch.new.sh"; do
+  comments_from "$ROOT/approver-target.json" --author adamsuk "$ROOT/target-only.txt"
+  run_watcher_build "$lane" "$ROOT/no-target.txt" "$ROOT/approver-target.json" adamsuk
+  assert_build_continued adamsuk/software-factory
+
+  comments_from "$ROOT/stranger-target.json" --author stranger "$ROOT/target-only.txt"
+  run_watcher_build "$lane" "$ROOT/no-target.txt" "$ROOT/stranger-target.json" adamsuk
+  assert_build_blocked
+
+  comments_from "$ROOT/app-target.json" --author software-factory-line "$ROOT/target-only.txt"
+  run_watcher_build "$lane" "$ROOT/no-target.txt" "$ROOT/app-target.json" adamsuk
+  assert_build_blocked
+
+  comments_from "$ROOT/app-bot-target.json" --author 'software-factory-line[bot]' "$ROOT/target-only.txt"
+  run_watcher_build "$lane" "$ROOT/no-target.txt" "$ROOT/app-bot-target.json" adamsuk
+  assert_build_blocked
+
+  run_watcher_build "$lane" "$ROOT/prose-ready.txt" "$EMPTY" adamsuk
+  assert_build_continued adamsuk/software-factory
+
+  comments_from "$ROOT/repeat-target.json" --author adamsuk "$ROOT/target-only.txt"
+  run_watcher_build "$lane" "$ROOT/prose-ready.txt" "$ROOT/repeat-target.json" adamsuk
+  assert_build_continued adamsuk/software-factory
+
+  comments_from "$ROOT/size-comment.json" --author adamsuk "$ROOT/size-only.txt"
+  run_watcher_build "$lane" "$ROOT/prose-ready.txt" "$ROOT/size-comment.json" adamsuk
+  assert_build_continued adamsuk/software-factory
+
+  comments_from "$ROOT/other-target.json" --author adamsuk "$ROOT/target-line.txt"
+  run_watcher_build "$lane" "$ROOT/prose-ready.txt" "$ROOT/other-target.json" adamsuk
+  assert_build_blocked
+
+  comments_from "$ROOT/marker-target.json" --author adamsuk "$ROOT/marker-and-target.txt"
+  run_watcher_build "$lane" "$ROOT/no-target.txt" "$ROOT/marker-target.json" adamsuk
+  assert_build_blocked
+
+  run_watcher_build "$lane" "$ROOT/target-twice.txt" "$EMPTY" adamsuk
+  assert_build_blocked
+
+  comments_from "$ROOT/maint-target.json" --author maint "$ROOT/target-only.txt"
+  run_watcher_build "$lane" "$ROOT/no-target.txt" "$ROOT/maint-target.json" maint
+  assert_build_continued adamsuk/software-factory
+
+  comments_from "$ROOT/owner-not-approver.json" --author adamsuk "$ROOT/target-only.txt"
+  run_watcher_build "$lane" "$ROOT/no-target.txt" "$ROOT/owner-not-approver.json" maint
+  assert_build_blocked
+
+  run_watcher_build "$lane" "$ROOT/no-target.txt" "$ROOT/approver-target.json" owner
+  assert_build_continued adamsuk/software-factory
+
+  run_watcher_build "$lane" "$ROOT/no-target.txt" "$ROOT/mixed-comments.json" adamsuk
+  assert_build_continued adamsuk/software-factory
 done
 printf '%s\n' "ok: $tname"
 

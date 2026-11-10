@@ -4252,7 +4252,7 @@ step_build() {
       continue
     fi
     slug=$(repo_slug "$repo")
-    if ! target=$(one_target_repo "$body"); then
+    if ! target=$(build_issue_target "$repo" "$num" "$body"); then
       note "build skip ${repo}#${num}: need exactly one Target repo line"
       if (( DRY )); then
         log "DRY-RUN would set ${repo}#${num} factory:blocked (target repo line missing or ambiguous) and needs-scott"
@@ -4948,6 +4948,28 @@ approver_issue_notes() {
     notes=""
   fi
   printf '%s' "$notes"
+}
+
+# Single build target. one_target_repo still decides a body on its own
+# (a repeated line in that body stays ambiguous). Approver comments can
+# supply the only Target repo line, or repeat the body's target. Identical
+# tokens count once. A different target stays ambiguous. The factory app
+# and anyone else are not a source of Target repo.
+build_issue_target() {
+  local repo=$1 num=$2 body=$3 notes text
+  notes=$(approver_issue_notes "$repo" "$num")
+  if [[ -z ${notes//[[:space:]]/} ]]; then
+    one_target_repo "$body"
+    return
+  fi
+  # One line per distinct token, then the same one_target_repo rule.
+  text=$(
+    {
+      target_repo_lines "$body"
+      target_repo_lines "$notes"
+    } | awk 'NF && !seen[$0]++ { print "Target repo: " $0 }'
+  )
+  one_target_repo "$text"
 }
 
 # Title, body, and approver comment bodies. The whole result is untrusted.

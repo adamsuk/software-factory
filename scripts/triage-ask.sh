@@ -18,9 +18,12 @@
 # Exit 1: bad arguments, or the issue could not be read.
 #
 # The closed set is FACTORY_REPOS (space-separated owner/repo). Unset or
-# empty keeps the five-repo default. A comment counts only when author.login
+# empty keeps the five-repo default. An answer counts only when author.login
 # is FACTORY_APPROVER_LOGIN, which defaults to the owner of the first repo
-# in that set. The issue body is the filer's text and is still read.
+# in that set. The already-asked marker also counts from that approver and
+# from the factory app: software-factory-line, with or without a trailing
+# [bot], and FACTORY_LOGIN the same way when it is set. An app comment is
+# never an answer. The issue body is the filer's text and is still read.
 set -euo pipefail
 
 die() { echo "triage-ask: $2" >&2; exit "$1"; }
@@ -55,6 +58,10 @@ DEFAULT_REPOS = (
 REPO_TOKEN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 SIZES = ("S", "M", "L")
 MARKER = "<!-- factory:triage-ask -->"
+# Documented app slug. gh issue comment from the app shows this login, with
+# or without a trailing [bot]. FACTORY_LOGIN, when set, is accepted as well.
+DEFAULT_APP_LOGIN = "software-factory-line"
+BOT_SUFFIX = "[bot]"
 
 
 def load_repos():
@@ -133,10 +140,43 @@ def comment_author(item):
     return login if isinstance(login, str) else ""
 
 
+def login_forms(login):
+    # The raw login, plus the same value with a trailing [bot] removed or added.
+    if not isinstance(login, str):
+        return set()
+    raw = login.strip()
+    if not raw:
+        return set()
+    forms = {raw}
+    if raw.endswith(BOT_SUFFIX):
+        bare = raw[: -len(BOT_SUFFIX)].strip()
+        if bare:
+            forms.add(bare)
+    else:
+        forms.add(raw + BOT_SUFFIX)
+    return forms
+
+
+def app_logins():
+    # The documented slug always counts, so a preset FACTORY_LOGIN cannot hide
+    # the comment the app posts. A set FACTORY_LOGIN counts too, marker only.
+    forms = login_forms(DEFAULT_APP_LOGIN)
+    forms |= login_forms(os.environ.get("FACTORY_LOGIN") or "")
+    return forms
+
+
+APP_LOGINS = app_logins()
+
+
 def approver_comment(item):
-    # gh issue view --json comments includes author.login. Anyone else is
-    # ignored, including a comment that only carries the asked marker.
+    # Answers, and the asked marker. gh issue view --json comments includes
+    # author.login. Anyone else is not an answer.
     return comment_author(item) == APPROVER
+
+
+def app_comment(item):
+    # Factory app login. The asked marker counts. The body is never an answer.
+    return comment_author(item) in APP_LOGINS
 
 
 def unique(items):
@@ -304,13 +344,19 @@ def main():
     asked = False
     parts = [norm(body)]
     for item in raw_comments:
-        if not approver_comment(item):
-            continue
         text = norm(comment_body(item))
-        if MARKER in text:
-            asked = True
+        if approver_comment(item):
+            if MARKER in text:
+                asked = True
+                continue
+            parts.append(text)
             continue
-        parts.append(text)
+        # The app may post the marker. Skip the body either way so a bot
+        # comment cannot supply Target repo, Size, done-checks, or the problem.
+        if app_comment(item):
+            if MARKER in text:
+                asked = True
+            continue
     missing = questions_for("\n".join(parts))
     if not missing:
         sys.exit(0)
