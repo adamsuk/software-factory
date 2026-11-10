@@ -10,6 +10,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The triage question is not posted again once the factory app has commented with `<!-- factory:triage-ask -->`. That marker counts from `software-factory-line` or `software-factory-line[bot]`, and from `FACTORY_LOGIN` when set (the value as given, and the same value with a trailing `[bot]` removed or added). The app comment is not an answer, so it cannot supply the target repo, the size, the done-checks, or the problem statement. A stranger's copy of the marker still does not silence the questions. The maintainer's comments still answer, and they still count as the marker (#310).
 - Build reads `Target repo` from the issue body and from the maintainer's comments (`FACTORY_APPROVER_LOGIN`). The same target named in both places is still one target. Two different targets stay ambiguous and the build stays blocked. A comment from the factory app, or from anyone other than the maintainer, does not supply the target. Both watchers follow this rule (#310).
 
+## 2026-11-10 (private-org redaction)
+
+### Changed
+
+- Redacted remaining references to a private organisation and its repos from historical audits, a work order, and earlier changelog entries, ahead of making this repository public.
+
 ## 2026-11-10 (triage fence)
 
 ### Fixed
@@ -537,7 +543,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   runs the read-only `gh factory plan --json` and fails the job (exit 1) naming each
   repo whose enforced ruleset differs from `factory.yml` on `required_status_checks` or
   `bypass_actors`. The workflow needs a read-only `FACTORY_READ_TOKEN` secret that can read
-  every enrolled repo, and passes `--owner adamsuk --owner touchlineHQ` explicitly. The
+  every enrolled repo, and passes `--owner adamsuk` and a private organisation explicitly. The
   output keeps four outcomes apart: confirmed drift (exit 1), rulesets `unavailable` to
   gh-factory (exit 3), `bypass_actors` that cannot be verified because GitHub shows it only
   to write access (reported, exit 0, never "matches"), and a plan with no enrolled repos
@@ -1002,7 +1008,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - AGENTS.md section 6: merging also needs the review gate for the repo's `agents.review_bot`.
   `coderabbit` needs no blocking CodeRabbit findings plus PR Reviewer's review; `none` (the
   default) needs PR Reviewer's review with no unresolved should-fix items. Required checks must
-  still be green, and the touchlineHQ merge pause is unchanged.
+  still be green, and the private-org merge pause is unchanged.
 - Builder brief: run `agents.test_command` before opening a PR (or read CI and name the command in
   the PR body), and reference issues as `#N` in the same repo or `owner/repo#N` in another repo.
   A `Refs` issue in another repo is closed by hand after its PR merges.
@@ -1037,7 +1043,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   data, one issue per run, a branch per issue, tests required, a dated changelog entry or the
   `skip-changelog` label, at most 3 fix-loop attempts, protected paths (tests, CI, lockfiles) go to
   a person, no merging unless `agents.merge: true` and required checks are green (plus the
-  touchlineHQ merge pause), no secrets, the Resend `RESEND_WEBHOOK_SECRET` guard, generic CI.
+  private-org merge pause), no secrets, the Resend `RESEND_WEBHOOK_SECRET` guard, generic CI.
 - `agents/roles/`: briefs for the foreman (the new Software Factory bot), intake, research,
   builder and reviewer roles, including the work order format.
 - `agents/grok-build.md`: how to run Grok Build 1.0.70 headless for a work order, with the docs
