@@ -10,6 +10,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The triage question is not posted again once the factory app has commented with `<!-- factory:triage-ask -->`. That marker counts from `software-factory-line` or `software-factory-line[bot]`, and from `FACTORY_LOGIN` when set (the value as given, and the same value with a trailing `[bot]` removed or added). The app comment is not an answer, so it cannot supply the target repo, the size, the done-checks, or the problem statement. A stranger's copy of the marker still does not silence the questions. The maintainer's comments still answer, and they still count as the marker (#310).
 - Build reads `Target repo` from the issue body and from the maintainer's comments (`FACTORY_APPROVER_LOGIN`). The same target named in both places is still one target. Two different targets stay ambiguous and the build stays blocked. A comment from the factory app, or from anyone other than the maintainer, does not supply the target. Both watchers follow this rule (#310).
 
+## 2026-11-10 (Europe/London)
+
+### Changed
+
+- Generalised the rollback runbook by deployment approach (GitHub Pages and
+  Cloudflare Worker): `docs/runbooks/rollback-pages-and-workers.md` (#309).
+
 ## 2026-11-09
 
 ### Added
@@ -19,6 +26,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - Readiness takes the target-repo closed set from `FACTORY_REPOS`, and keeps the five-repo list when that variable is unset or empty. `Size: M.` is accepted. A plain-prose done-check passes when it names a test, a command, a file path, or a concrete outcome. Only comments by `FACTORY_APPROVER_LOGIN` count as answers. The watcher runs that ask before it clones, and it feeds the approver's comment bodies into intake and the work-order prompt (#310).
+
+## 2026-11-09 (rollback runbook)
+
+### Added
+
+- Rollback runbook for a GitHub Pages deployment and a Cloudflare Worker:
+  `docs/runbooks/rollback-pages-and-workers.md` (#309).
 
 ## 2026-11-09 (pull request size labels)
 
