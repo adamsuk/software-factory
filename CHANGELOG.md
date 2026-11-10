@@ -13,6 +13,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   is owned in this repo, and its acceptance-criteria checkboxes name those
   checks. Covered by `scripts/test-issue-template-checks.sh` (#303).
 
+## 2026-11-10 (Europe/London)
+
+### Changed
+
+- Generalised the rollback runbook by deployment approach (GitHub Pages and
+  Cloudflare Worker): `docs/runbooks/rollback-pages-and-workers.md` (#309).
+
+## 2026-11-09 (rollback runbook)
+
+### Added
+
+- Rollback runbook for a GitHub Pages deployment and a Cloudflare Worker:
+  `docs/runbooks/rollback-pages-and-workers.md` (#309).
+
 ## 2026-11-09 (pull request size labels)
 
 ### Added
