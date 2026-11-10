@@ -9,6 +9,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - The triage question is not posted again once the factory app has commented with `<!-- factory:triage-ask -->`. That marker counts from `software-factory-line` or `software-factory-line[bot]`, and from `FACTORY_LOGIN` when set (the value as given, and the same value with a trailing `[bot]` removed or added). The app comment is not an answer, so it cannot supply the target repo, the size, the done-checks, or the problem statement. A stranger's copy of the marker still does not silence the questions. The maintainer's comments still answer, and they still count as the marker (#310).
 - Build reads `Target repo` from the issue body and from the maintainer's comments (`FACTORY_APPROVER_LOGIN`). The same target named in both places is still one target. Two different targets stay ambiguous and the build stays blocked. A comment from the factory app, or from anyone other than the maintainer, does not supply the target. Both watchers follow this rule (#310).
+## 2026-11-10 (issue template checks)
+
+### Added
+
+- `scripts/check-issue-template-checks.sh` fails when a markdown checkbox in
+  `.github/ISSUE_TEMPLATE/` names neither a path under `scripts/` nor a
+  workflow job (the job id and its `.github/workflows` file). A named
+  `scripts/` path must be an existing regular file in the tree being checked.
+  The named script is not executed. The task form is owned in this repo, and
+  its acceptance-criteria checkboxes name those checks. Covered by
+  `scripts/test-issue-template-checks.sh` (#303).
 
 ## 2026-11-10 (private-org redaction)
 
