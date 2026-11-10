@@ -4,7 +4,9 @@
 #
 # The suite itself exits non-zero when the verifier is missing, and when the
 # verifier exits zero on a checkbox that names no command. It exits zero when
-# that checkbox names a path under scripts/ (and the other cases below hold).
+# that checkbox names an existing regular file under scripts/ in the tree
+# being checked (and the other cases below hold). A scripts/ path that is not
+# a regular file in that tree fails.
 set -euo pipefail
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -58,6 +60,15 @@ jobs:
 EOF
 }
 
+# A regular file at rel inside a fixture root. The verifier must not run it.
+# Running it would create $root/executed-by-check.
+write_script() {
+  local root=$1 rel=$2 marker
+  mkdir -p "$root/$(dirname -- "$rel")"
+  marker=$(printf '%q' "$root/executed-by-check")
+  printf '%s\n' '#!/usr/bin/env bash' "touch ${marker}" 'exit 0' > "$root/$rel"
+}
+
 # These two re-enter this file. They run only for the real verifier, so a
 # child invoked with CHECK_ISSUE_TEMPLATE_BIN does not re-enter them.
 if [[ -z ${CHECK_ISSUE_TEMPLATE_BIN:-} ]]; then
@@ -91,12 +102,24 @@ capture "$work/prose"
 pass
 
 tname="a checkbox that names a path under scripts/ passes"
-write_form "$work/script" "- [ ] scripts/does-not-exist.sh exits zero"
+write_script "$work/script" "scripts/example.sh"
+write_form "$work/script" "- [ ] scripts/example.sh exits zero"
 capture "$work/script"
+[[ -f "$work/script/scripts/example.sh" ]] || fail "fixture script was not created"
 [[ $status -eq 0 ]] || fail "expected exit 0 for a scripts/ path, got $status: $out"
+[[ ! -e "$work/script/executed-by-check" ]] || fail "verifier executed the named script"
+pass
+
+tname="a checkbox that names a missing scripts/ path fails"
+write_form "$work/missing" "- [ ] scripts/does-not-exist.sh exits zero"
+capture "$work/missing"
+[[ $status -eq 1 ]] || fail "expected exit 1 for a missing scripts/ path, got $status: $out"
+[[ "$out" == *"scripts/does-not-exist.sh"* ]] || fail "output did not name the missing path: $out"
+[[ "$out" == *"- [ ] scripts/does-not-exist.sh exits zero"* ]] || fail "output does not quote the checkbox: $out"
 pass
 
 tname="a checked box naming a scripts/ path passes"
+write_script "$work/checked" "scripts/example.sh"
 write_form "$work/checked" "- [x] scripts/example.sh exits zero"
 capture "$work/checked"
 [[ $status -eq 0 ]] || fail "expected exit 0, got $status: $out"
@@ -130,6 +153,7 @@ capture "$work/barejob"
 pass
 
 tname="a second file under ISSUE_TEMPLATE is scanned"
+write_script "$work/tree" "scripts/example.sh"
 write_form "$work/tree" "- [ ] scripts/example.sh exits zero"
 printf '%s\n' '- [ ] prose only' > "$work/tree/.github/ISSUE_TEMPLATE/extra.md"
 capture "$work/tree"

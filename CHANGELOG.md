@@ -9,9 +9,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - `scripts/check-issue-template-checks.sh` fails when a markdown checkbox in
   `.github/ISSUE_TEMPLATE/` names neither a path under `scripts/` nor a
-  workflow job (the job id and its `.github/workflows` file). The task form
-  is owned in this repo, and its acceptance-criteria checkboxes name those
-  checks. Covered by `scripts/test-issue-template-checks.sh` (#303).
+  workflow job (the job id and its `.github/workflows` file). A named
+  `scripts/` path must be an existing regular file in the tree being checked.
+  The named script is not executed. The task form is owned in this repo, and
+  its acceptance-criteria checkboxes name those checks. Covered by
+  `scripts/test-issue-template-checks.sh` (#303).
 
 ## 2026-11-10 (private-org redaction)
 

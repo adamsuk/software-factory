@@ -2,14 +2,17 @@
 # Fail when a markdown checkbox under .github/ISSUE_TEMPLATE/ names neither a
 # path under scripts/ nor a workflow job from .github/workflows/.
 #
-# A script path looks like scripts/check-issue-template-checks.sh. It is not
+# A script path looks like scripts/check-issue-template-checks.sh. It must be
+# an existing regular file under ROOT, the tree being checked. It is not
 # executed (a placeholder that names this gate would recurse). A workflow job
 # is a job id plus that file's repo-relative path, for example the tests job
 # in .github/workflows/lint.yml.
 #
 # Usage: scripts/check-issue-template-checks.sh [ROOT]
-# ROOT defaults to this repo. Exit 0 when every checkbox names one. Exit 1
-# when one does not. Exit 2 on bad usage or a missing ISSUE_TEMPLATE directory.
+# ROOT defaults to this repo. Exit 0 when every checkbox names an existing
+# scripts/ file or a workflow job. Exit 1 when one does not, including a
+# scripts/ path that is not a regular file under ROOT. Exit 2 on bad usage
+# or a missing ISSUE_TEMPLATE directory.
 # Reads the tree only; no network calls and no writes.
 set -euo pipefail
 
@@ -19,7 +22,7 @@ root=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --help)
-      sed -n '2,13p' "$0"
+      sed -n '2,16p' "$0"
       exit 0
       ;;
     --)
@@ -90,8 +93,42 @@ load_workflow_jobs() {
   done
 }
 
-names_script_path() {
-  [[ "$1" =~ $script_path_re ]]
+# Paths named in one checkbox body. The leading boundary character from
+# script_path_re is not part of the path. script_paths is global.
+script_paths=()
+collect_script_paths() {
+  local text=$1 match path prefix before
+  script_paths=()
+  while [[ "$text" =~ $script_path_re ]]; do
+    match=${BASH_REMATCH[0]}
+    if [[ "$match" == scripts/* ]]; then
+      path=$match
+    else
+      path=${match:1}
+    fi
+    script_paths+=("$path")
+    prefix=${text%%"$match"*}
+    before=$text
+    text=${text#"$prefix$match"}
+    # A match that does not consume text would loop forever.
+    [[ "$text" != "$before" ]] || break
+  done
+}
+
+# 0 when rel is an existing regular file under root. The named script is
+# not executed. "." and ".." components are rejected so the path cannot
+# leave root.
+regular_file_under_root() {
+  local rel=$1 part candidate
+  local -a parts=()
+  [[ "$rel" == scripts/* ]] || return 1
+  local IFS=/
+  read -r -a parts <<< "$rel" || return 1
+  for part in "${parts[@]}"; do
+    [[ -n "$part" && "$part" != "." && "$part" != ".." ]] || return 1
+  done
+  candidate=$root/$rel
+  [[ -f "$candidate" ]]
 }
 
 names_workflow_job() {
@@ -126,7 +163,23 @@ for f in "${files[@]}"; do
     [[ "$line" =~ $checkbox_re ]] || continue
     body=${BASH_REMATCH[1]}
     count=$((count + 1))
-    if ! names_script_path "$body" && ! names_workflow_job "$body"; then
+    collect_script_paths "$body"
+    if [[ ${#script_paths[@]} -gt 0 ]]; then
+      missing=
+      for path in "${script_paths[@]}"; do
+        if ! regular_file_under_root "$path"; then
+          missing=$path
+          break
+        fi
+      done
+      if [[ -n "$missing" ]]; then
+        bad=1
+        echo "check-issue-template-checks: ${rel}:${lineno}: checkbox names ${missing}, which is not an existing regular file" >&2
+        echo "    ${line}" >&2
+      fi
+      continue
+    fi
+    if ! names_workflow_job "$body"; then
       bad=1
       echo "check-issue-template-checks: ${rel}:${lineno}: checkbox names neither a scripts/ path nor a workflow job" >&2
       echo "    ${line}" >&2
