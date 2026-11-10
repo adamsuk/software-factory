@@ -1,4 +1,3 @@
-# factory-managed: maintained by https://github.com/adamsuk/gh-factory. Remove this line to take ownership.
 name: Task
 description: A change to make, with clear acceptance criteria
 body:
@@ -29,9 +28,10 @@ body:
     id: acceptance
     attributes:
       label: Acceptance criteria
-      description: How we know it is done. One checkable item per line.
+      description: How we know it is done. One checkable item per line. Each item names a path under scripts/ or a workflow job (the job id and its .github/workflows file).
       placeholder: |
-        - [ ] The thing works as described
+        - [ ] scripts/check-issue-template-checks.sh exits zero on .github/ISSUE_TEMPLATE
+        - [ ] the tests job in .github/workflows/lint.yml exits zero
     validations:
       required: true
   - type: textarea

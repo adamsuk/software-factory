@@ -3,6 +3,16 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-10 (issue template checks)
+
+### Added
+
+- `scripts/check-issue-template-checks.sh` fails when a markdown checkbox in
+  `.github/ISSUE_TEMPLATE/` names neither a path under `scripts/` nor a
+  workflow job (the job id and its `.github/workflows` file). The task form
+  is owned in this repo, and its acceptance-criteria checkboxes name those
+  checks. Covered by `scripts/test-issue-template-checks.sh` (#303).
+
 ## 2026-11-09 (pull request size labels)
 
 ### Added
