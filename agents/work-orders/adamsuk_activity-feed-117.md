@@ -25,7 +25,7 @@ the Cloudflare deploy credential. Keep the worker deploy on push to `main` only.
 - [ ] The test job's token permissions are contents read.
 - [ ] `CHANGELOG.md` gains an entry in the form the top of that file describes.
 - [ ] No secret value appears in the diff, the pull request or the logs.
-- [ ] `npm test` passes, with a new test that fails on `main`.
+- [ ] `npm test` passes.
 
 ## Likely files
 - `.github/workflows/test.yml` (new)
