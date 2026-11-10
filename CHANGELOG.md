@@ -3,6 +3,20 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-10 (Europe/London)
+
+### Changed
+
+- Generalised the rollback runbook by deployment approach (GitHub Pages and
+  Cloudflare Worker): `docs/runbooks/rollback-pages-and-workers.md` (#309).
+
+## 2026-11-09 (rollback runbook)
+
+### Added
+
+- Rollback runbook for a GitHub Pages deployment and a Cloudflare Worker:
+  `docs/runbooks/rollback-pages-and-workers.md` (#309).
+
 ## 2026-11-09 (pull request size labels)
 
 ### Added
