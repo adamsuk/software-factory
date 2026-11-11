@@ -364,4 +364,26 @@ if grep -Fq 'FC_BODY_TEXT' "$fc/out.txt"; then fail "unfenced issue text reached
 grep -Fq 'refusing to run' "$fc/err.txt" || fail "no clear error for the failing fence script"
 echo "ok: fail-closed"
 
+# The fence script is run with bash, so the exec bit is not required; readable
+# is. Readable but not executable still fences; unreadable fails closed.
+tname="fence-script-modes"
+cp "$suite_dir/fence-untrusted.sh" "$fc/fence-untrusted.sh"
+chmod 644 "$fc/fence-untrusted.sh"
+[[ ! -x "$fc/fence-untrusted.sh" ]] || fail "could not make the fence script non-executable"
+rc=0; run_fc || rc=$?
+assert_eq "$rc" "0"
+grep -Fq 'FC_BODY_TEXT' "$fc/out.txt" || fail "non-executable fence script lost the body"
+grep -Eq '^<<<UNTRUSTED_DATA:[0-9a-f]{24}$' "$fc/out.txt" || fail "non-executable fence script produced no fence"
+chmod 000 "$fc/fence-untrusted.sh"
+if [[ -r "$fc/fence-untrusted.sh" ]]; then
+  echo "skip: unreadable fence script case (file stays readable, running as root)"
+else
+  rc=0; run_fc || rc=$?
+  [[ "$rc" != "0" ]] || fail "unreadable fence script did not fail closed"
+  if grep -Fq 'FC_BODY_TEXT' "$fc/out.txt"; then fail "unfenced issue text reached the output"; fi
+  grep -Fq 'fence-untrusted.sh' "$fc/err.txt" || fail "no clear error for the unreadable fence script"
+fi
+chmod 644 "$fc/fence-untrusted.sh"
+echo "ok: fence-script-modes"
+
 echo "ok  run-work-order fence tests"
