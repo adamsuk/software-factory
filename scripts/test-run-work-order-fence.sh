@@ -315,4 +315,53 @@ assert_eq "$close_count" "1"
 grep -qF "[escaped fence marker] $FENCE_CLOSE_MARKER" "$work/stdin.txt" \
   || fail "claude's stdin does not show the forged close marker as escaped"
 
+# --- fail closed (#346): a missing or failing fence script stops the run ---
+# before anything is composed. A copy of run-work-order.sh sits in a scratch
+# dir with its own sibling fence script, so the real one is never touched.
+
+tname="fail-closed"
+fc=$ROOT/failclosed
+mkdir -p "$fc"
+suite_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+cp "$suite_dir/run-work-order.sh" "$fc/run-work-order.sh"
+fc_order=$fc/order.md
+printf '%s\n' '---' 'repo: acme/widgets' '---' '' '## Goal' '' 'g' '' \
+  '## Issue text (untrusted)' '' '> FC_BODY_TEXT' > "$fc_order"
+
+# shellcheck disable=SC2016  # literal source text, not expansion
+main_src=$(declare -f main)
+fence_call=$(printf '%s\n' "$main_src" | grep -n 'fence_issue_text >' | head -n 1 | cut -d: -f1)
+launch_line=$(printf '%s\n' "$main_src" | grep -n -e '--prompt-file' | head -n 1 | cut -d: -f1)
+[[ -n "$fence_call" && -n "$launch_line" && "$fence_call" -lt "$launch_line" ]] \
+  || fail "main does not fence before the grok invocation"
+
+run_fc() {
+  (
+    # shellcheck source=scripts/run-work-order.sh
+    source "$fc/run-work-order.sh"
+    order=$fc_order
+    fence_issue_text > "$fc/out.txt" 2> "$fc/err.txt" )
+}
+
+# Sanity: with a working fence script the copy fences and exits 0.
+cp "$suite_dir/fence-untrusted.sh" "$fc/fence-untrusted.sh"
+rc=0; run_fc || rc=$?
+assert_eq "$rc" "0"
+grep -Fq 'FC_BODY_TEXT' "$fc/out.txt" || fail "baseline run lost the body"
+
+# Missing fence script.
+rm -f "$fc/fence-untrusted.sh"
+rc=0; run_fc || rc=$?
+[[ "$rc" != "0" ]] || fail "missing fence script did not fail"
+[[ ! -s "$fc/out.txt" ]] || fail "output was produced without the fence script"
+grep -Fq 'fence-untrusted.sh' "$fc/err.txt" || fail "no clear error for the missing fence script"
+
+# Fence script that exits non-zero (as when perl is absent).
+printf '%s\n' '#!/usr/bin/env bash' 'cat > /dev/null' 'exit 3' > "$fc/fence-untrusted.sh"
+rc=0; run_fc || rc=$?
+[[ "$rc" != "0" ]] || fail "failing fence script did not fail the run"
+if grep -Fq 'FC_BODY_TEXT' "$fc/out.txt"; then fail "unfenced issue text reached the output"; fi
+grep -Fq 'refusing to run' "$fc/err.txt" || fail "no clear error for the failing fence script"
+pass
+
 echo "ok  run-work-order fence tests"

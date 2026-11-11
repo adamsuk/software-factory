@@ -44,8 +44,19 @@ FENCE_CLOSE_MARKER='===== END UNTRUSTED ISSUE TEXT ====='
 # no such heading (nothing to fence, so no label either) passes through
 # unchanged too. Both backends read the result, never the raw order.
 fence_issue_text() {
+  local fence_script pre body fenced
+  fence_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fence-untrusted.sh"
+  # Fail closed (#346): no fence script, no run. Nothing is printed before this.
+  [[ -f "$fence_script" && -r "$fence_script" ]] \
+    || die 2 "missing or unreadable scripts/fence-untrusted.sh, refusing to run with unfenced issue text"
+  pre=$(mktemp) || die 2 "could not create temporary files for the fence"
+  body=$(mktemp) || die 2 "could not create temporary files for the fence"
+  fenced=$(mktemp) || die 2 "could not create temporary files for the fence"
+  # The body is only extracted here (rm first: a file left behind means a
+  # section was found). The inner fence runs below so its exit status is checked.
+  rm -f "$body"
   awk -v heading='## Issue text (untrusted)' \
-    -v fence_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fence-untrusted.sh" \
+    -v body_file="$body" \
     -v fence_open="$FENCE_OPEN_MARKER" -v fence_close="$FENCE_CLOSE_MARKER" '
     BEGIN { found = 0 }
     !found && ($0 == heading || $0 == heading "\r") {
@@ -80,13 +91,22 @@ fence_issue_text() {
       # The body also goes through scripts/fence-untrusted.sh (#346): random
       # inner fence, control and zero-width characters removed, length cap.
       # The fixed markers stay as the outer wrapper.
-      fflush()
-      cmd = "bash \"" fence_script "\" --label \"issue text\""
-      for (i = 1; i <= n; i++) print body[i] | cmd
-      close(cmd)
-      print fence_close
+      printf "" > body_file
+      for (i = 1; i <= n; i++) print body[i] > body_file
+      close(body_file)
     }
-  ' "$order"
+  ' "$order" > "$pre" || { rm -f "$pre" "$body" "$fenced"; die 2 "could not read the work order"; }
+  if [[ -e "$body" ]]; then
+    if ! bash "$fence_script" --label "issue text" < "$body" > "$fenced"; then
+      rm -f "$pre" "$body" "$fenced"
+      die 2 "scripts/fence-untrusted.sh failed, refusing to run with unfenced issue text"
+    fi
+    cat "$pre" "$fenced"
+    printf '%s\n' "$FENCE_CLOSE_MARKER"
+  else
+    cat "$pre"
+  fi
+  rm -f "$pre" "$body" "$fenced"
 }
 
 # The Claude Code deny rule for the secrets directory:

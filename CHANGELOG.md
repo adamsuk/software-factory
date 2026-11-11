@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- `scripts/run-work-order.sh` fails closed: a missing or unreadable `scripts/fence-untrusted.sh`, or one that exits non-zero (for example no `perl`), stops the run with a clear error before the prompt is composed or grok starts, instead of dropping the issue text (#346).
 - `scripts/station-run.sh` passes the work order's quoted issue text and all additional context through the fence before composing the prompt, and `scripts/run-work-order.sh` passes the builder's issue-text body through it inside its existing fixed markers. It builds on the `<<<UNTRUSTED_DATA` fence of `scripts/watcher/watch.sh` and the markers from #281 and #320 rather than replacing them. `scripts/test-untrusted-issue.sh` gains a case proving `station-run.sh --dry-run` output holds issue text only inside the fence (#346).
 
 ## 2026-11-11 (weekly metrics)
