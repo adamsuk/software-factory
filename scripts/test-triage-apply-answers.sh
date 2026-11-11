@@ -46,7 +46,7 @@ if [[ "${1:-}" == issue && "${2:-}" == edit ]]; then
 import json, pathlib, sys
 path = pathlib.Path(sys.argv[1])
 data = json.loads(path.read_text())
-data["body"] = pathlib.Path(sys.argv[2]).read_text()
+data["body"] = open(sys.argv[2], newline="").read()
 path.write_text(json.dumps(data))
 PY
   exit 0
