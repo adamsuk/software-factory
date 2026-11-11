@@ -1544,4 +1544,76 @@ for lane in "$root/scripts/watcher/watch.sh" "$root/scripts/watcher/watch.new.sh
 done
 printf '%s\n' "ok: $tname"
 
+# #347: with FACTORY_TRIAGE_APPLY=1 the approver's numbered answers are
+# written into the body before the ready check. This case uses its own
+# stateful fake gh that also accepts `issue edit --body-file`.
+tname="withheld issue becomes ready after the approver's answer is applied"
+APPLY_BIN=$ROOT/apply-bin
+mkdir -p "$APPLY_BIN"
+cat > "$APPLY_BIN/gh" << 'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "$@" >> "${GH_LOG:?}"
+if [[ "${1:-}" == issue && "${2:-}" == view ]]; then
+  cat "${GH_ISSUE_JSON:?}"
+  exit 0
+fi
+if [[ "${1:-}" == issue && "${2:-}" == edit ]]; then
+  file=
+  while [[ $# -gt 0 ]]; do
+    [[ $1 == --body-file ]] && file=$2
+    shift
+  done
+  python3 - "$GH_ISSUE_JSON" "$file" << 'PY2'
+import json, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+data = json.loads(path.read_text())
+data["body"] = pathlib.Path(sys.argv[2]).read_text()
+path.write_text(json.dumps(data))
+PY2
+  exit 0
+fi
+echo "unexpected gh: $*" >&2
+exit 99
+EOF
+chmod +x "$APPLY_BIN/gh"
+cat > "$ROOT/no-facts.txt" << 'EOF'
+The save button stays grey after the form becomes valid.
+
+- [ ] `bash scripts/test-colour.sh` fails while the button stays grey and passes once it enables
+EOF
+cat > "$ROOT/numbered-answer.txt" << 'EOF'
+1. adamsuk/line
+2. M
+EOF
+# shellcheck disable=SC2031
+OLD_PATH=$PATH
+PATH="$APPLY_BIN:$OLD_PATH"
+hash -r
+reset_gh
+export FACTORY_TRIAGE_APPLY=1
+write_issue "Colour is wrong" "$ROOT/no-facts.txt" "$EMPTY"
+run adamsuk/software-factory 310
+[[ "$status" -eq 2 ]] || fail "unanswered issue was not withheld, got $status"
+gh_has edit && fail "edited the issue with no answer"
+comments_from "$ROOT/numbered-comments.json" "$ROOT/numbered-answer.txt"
+write_issue "Colour is wrong" "$ROOT/no-facts.txt" "$ROOT/numbered-comments.json"
+run adamsuk/software-factory 310
+[[ "$status" -eq 0 ]] || fail "expected exit 0 after the answer, got $status"
+[[ ! -s "$OUT" ]] || fail "allow path printed a comment"
+gh_has edit || fail "answers were not applied to the body"
+# shellcheck disable=SC2031
+python3 - "$GH_ISSUE_JSON" << 'PY'
+import json, sys
+body = json.load(open(sys.argv[1]))["body"].split("\n")
+assert "Target repo: adamsuk/line" in body, body
+assert "Size: M" in body, body
+PY
+gh_has factory:ready && fail "gh received factory:ready"
+gh_has --add-label && fail "gh received --add-label"
+unset FACTORY_TRIAGE_APPLY
+PATH=$OLD_PATH
+hash -r
+printf '%s\n' "ok: $tname"
+
 printf '%s\n' "ok: triage-ask"
