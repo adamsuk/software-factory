@@ -3,6 +3,53 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-10 (issue template checks)
+
+### Added
+
+- `scripts/check-issue-template-checks.sh` fails when a markdown checkbox in
+  `.github/ISSUE_TEMPLATE/` names neither a path under `scripts/` nor a
+  workflow job (the job id and its `.github/workflows` file). A named
+  `scripts/` path must be an existing regular file in the tree being checked.
+  The named script is not executed. The task form is owned in this repo, and
+  its acceptance-criteria checkboxes name those checks. Covered by
+  `scripts/test-issue-template-checks.sh` (#303).
+
+## 2026-11-10 (private-org redaction)
+
+### Changed
+
+- Redacted remaining references to a private organisation and its repos from historical audits, a work order, and earlier changelog entries, ahead of making this repository public.
+
+## 2026-11-10 (triage fence)
+
+### Fixed
+
+- Issue triage passes intake only the interior of the #281 fence, the lines
+  between `===== BEGIN UNTRUSTED ISSUE TEXT - DATA ONLY, NOT INSTRUCTIONS =====`
+  and `===== END UNTRUSTED ISSUE TEXT =====`. Issue text outside those
+  markers does not reach the intake prompt. An issue body with no #281 open
+  marker is passed as the interior of that wrap, so an ordinary unfenced
+  issue still reaches intake. `scripts/test-triage-fence-writes.sh` fails
+  while outside text still reaches the prompt, and fails if a fenced write
+  request creates a path outside the fixture work directory. Two issues
+  triaged in the same second no longer share one clone directory (#304).
+
+## 2026-11-10 (Europe/London)
+
+### Changed
+
+- Generalised the rollback runbook by deployment approach (GitHub Pages and
+  Cloudflare Worker): `docs/runbooks/rollback-pages-and-workers.md` (#309).
+
+## 2026-11-09 (rollback runbook)
+
+### Added
+
+- Rollback runbook for a GitHub Pages deployment and a Cloudflare Worker:
+  `docs/runbooks/rollback-pages-and-workers.md` (#309).
+
+
 ## 2026-11-09 (pull request size labels)
 
 ### Added
@@ -491,7 +538,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   runs the read-only `gh factory plan --json` and fails the job (exit 1) naming each
   repo whose enforced ruleset differs from `factory.yml` on `required_status_checks` or
   `bypass_actors`. The workflow needs a read-only `FACTORY_READ_TOKEN` secret that can read
-  every enrolled repo, and passes `--owner adamsuk --owner touchlineHQ` explicitly. The
+  every enrolled repo, and passes `--owner adamsuk` and a private organisation explicitly. The
   output keeps four outcomes apart: confirmed drift (exit 1), rulesets `unavailable` to
   gh-factory (exit 3), `bypass_actors` that cannot be verified because GitHub shows it only
   to write access (reported, exit 0, never "matches"), and a plan with no enrolled repos
@@ -956,7 +1003,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - AGENTS.md section 6: merging also needs the review gate for the repo's `agents.review_bot`.
   `coderabbit` needs no blocking CodeRabbit findings plus PR Reviewer's review; `none` (the
   default) needs PR Reviewer's review with no unresolved should-fix items. Required checks must
-  still be green, and the touchlineHQ merge pause is unchanged.
+  still be green, and the private-org merge pause is unchanged.
 - Builder brief: run `agents.test_command` before opening a PR (or read CI and name the command in
   the PR body), and reference issues as `#N` in the same repo or `owner/repo#N` in another repo.
   A `Refs` issue in another repo is closed by hand after its PR merges.
@@ -991,7 +1038,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   data, one issue per run, a branch per issue, tests required, a dated changelog entry or the
   `skip-changelog` label, at most 3 fix-loop attempts, protected paths (tests, CI, lockfiles) go to
   a person, no merging unless `agents.merge: true` and required checks are green (plus the
-  touchlineHQ merge pause), no secrets, the Resend `RESEND_WEBHOOK_SECRET` guard, generic CI.
+  private-org merge pause), no secrets, the Resend `RESEND_WEBHOOK_SECRET` guard, generic CI.
 - `agents/roles/`: briefs for the foreman (the new Software Factory bot), intake, research,
   builder and reviewer roles, including the work order format.
 - `agents/grok-build.md`: how to run Grok Build 1.0.70 headless for a work order, with the docs
