@@ -14,7 +14,8 @@ check() {
   record=$(awk '/^3\. \*\*Record\.\*\*/{on=1} /^4\. \*\*Stop/{on=0} on' "$file" | tr -s ' \n' '  ')
   [[ -n "$measure" ]] || { echo "Measure step not found"; return 1; }
   [[ -n "$record" ]] || { echo "Record step not found"; return 1; }
-  grep -qF 'scripts/review-bot-metrics.sh --repo adamsuk/software-factory' <<< "$measure" || { echo "Measure does not run review-bot-metrics.sh for adamsuk/software-factory"; return 1; }
+  # shellcheck disable=SC2016 # literal $FACTORY_HOME_REPO in the brief, not an expansion
+  grep -qF 'scripts/review-bot-metrics.sh --repo "$FACTORY_HOME_REPO"' <<< "$measure" || { echo "Measure does not run review-bot-metrics.sh for \$FACTORY_HOME_REPO"; return 1; }
   grep -qF 'review-bot' <<< "$record" || { echo "Record does not append the review-bot stdout"; return 1; }
   grep -q 'stdout' <<< "$record" || { echo "Record does not mention stdout"; return 1; }
 }
@@ -25,6 +26,7 @@ echo "ok: monitor Measure runs review-bot-metrics.sh and Record appends its stdo
 # Non-vacuous: a copy without the command must fail.
 tmp=$(mktemp)
 trap 'rm -f "$tmp"' EXIT
-grep -vF 'review-bot' "$brief" | sed 's#scripts/review-bot-metrics.sh --repo adamsuk/software-factory##' > "$tmp"
+# shellcheck disable=SC2016 # literal $FACTORY_HOME_REPO in the brief, not an expansion
+grep -vF 'review-bot' "$brief" | sed 's#scripts/review-bot-metrics.sh --repo "$FACTORY_HOME_REPO"##' > "$tmp"
 if check "$tmp" >/dev/null; then fail "check passes against a copy with the review-bot lines removed"; fi
 echo "ok: check fails against a mutated copy"

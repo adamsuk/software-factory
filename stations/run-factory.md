@@ -1,6 +1,6 @@
 # Running a ticket through the factory
 
-This repo (`adamsuk/software-factory`) already defines its own pipeline —
+This repo already defines its own pipeline —
 `AGENTS.md`, `stations/README.md`, and the scripts under `scripts/` are the
 canonical rules, and they're deliberately provider-agnostic (`grok`,
 `opencode`, `claudecode`, or none at all — a person just running the
@@ -12,6 +12,11 @@ agent operating this repo, or by a person doing the same steps by hand —
 nothing below assumes a particular tool. (If you're using Claude Code,
 there's also a thin skill at `.claude/skills/run-factory/SKILL.md` that
 just points back here, so this stays the one copy of the actual content.)
+
+The examples below write this repo's `<owner>/<repo>` as `$FACTORY_HOME_REPO`.
+Set it once per shell before following them, for example
+`export FACTORY_HOME_REPO=<owner>/<repo>`. It is a convention of this doc,
+not a variable the scripts read.
 
 **Core discipline: only ever act through this repo's own scripts, never by
 hand-editing a label or calling `gh issue edit` / `gh pr create` / `gh pr
@@ -89,9 +94,9 @@ whichever was chosen.
 ## Step 1 — pick the ticket
 
 If the user gave an issue number, use it directly. The issue lives in
-`adamsuk/software-factory`, but it may name a different **target repo** via
+`$FACTORY_HOME_REPO`, but it may name a different **target repo** via
 a `Target repo: owner/repo` line in its triage comment or body — track both:
-`issue_repo` (always `adamsuk/software-factory` unless told otherwise) and
+`issue_repo` (always `$FACTORY_HOME_REPO` unless told otherwise) and
 `repo` (the target).
 
 If no issue number was given, pick one, in this order, and say which rule
@@ -101,7 +106,7 @@ picked it:
    explicitly queued by the user from the board; work the top one (it's
    already sorted P0→P3, then issue number). This script is read-only.
 2. No flagged work → oldest open `factory:ready` issue:
-   `gh issue list --repo adamsuk/software-factory --state open --label factory:ready --json number,title,labels,createdAt`,
+   `gh issue list --repo "$FACTORY_HOME_REPO" --state open --label factory:ready --json number,title,labels,createdAt`,
    preferring one also labelled `quick win`.
 3. Nothing `factory:ready` either → look at `factory:triage` issues that are
    **not** labelled `decision` and don't obviously need a protected-path
@@ -113,7 +118,7 @@ picked it:
 ## Step 2 — intake (only if the issue is `factory:triage` or unlabelled)
 
 ```bash
-scripts/station-run.sh --provider "$PROVIDER" --issue <N> --repo adamsuk/software-factory intake /dev/null
+scripts/station-run.sh --provider "$PROVIDER" --issue <N> --repo "$FACTORY_HOME_REPO" intake /dev/null
 ```
 
 This posts the triage comment and sets `factory:ready` or `factory:blocked`
@@ -125,7 +130,7 @@ issue forward yourself; intake is deliberately forbidden from doing that too.
 ## Step 3 — foreman pick / build (once `factory:ready`)
 
 ```bash
-scripts/foreman-orchestrate.sh pick --provider "$PROVIDER" --issue <N> --repo adamsuk/software-factory
+scripts/foreman-orchestrate.sh pick --provider "$PROVIDER" --issue <N> --repo "$FACTORY_HOME_REPO"
 ```
 
 **Pass the Step 1 issue explicitly — `pick` with no `--issue` does not
@@ -159,7 +164,7 @@ there's nothing to reconstruct:
 # and silently proceeding on that is how this ends up checking the wrong
 # content.
 git fetch origin "<branch>" --quiet || { echo "fetch failed" >&2; exit 1; }
-git cat-file -e "origin/<branch>:agents/work-orders/adamsuk_software-factory-<issue>.md" 2>/dev/null \
+git cat-file -e "origin/<branch>:agents/work-orders/<owner>_<repo-name>-<issue>.md" 2>/dev/null \
   && echo "found on <branch>" || echo "missing"
 
 # Cross-repo ticket: check main (a chore PR may already be merged), and —
@@ -169,7 +174,7 @@ git cat-file -e "origin/<branch>:agents/work-orders/adamsuk_software-factory-<is
 git fetch origin main --quiet || { echo "fetch failed" >&2; exit 1; }
 git cat-file -e "origin/main:agents/work-orders/<owner>_<repo-name>-<issue>.md" 2>/dev/null \
   && echo "found on main" || echo "not on main"
-chore_pr=$(gh pr list --repo adamsuk/software-factory --head "chore/<issue>-work-order" --state open --json number --jq '.[0].number // empty')
+chore_pr=$(gh pr list --repo "$FACTORY_HOME_REPO" --head "chore/<issue>-work-order" --state open --json number --jq '.[0].number // empty')
 if [[ -n "$chore_pr" ]]; then
   git fetch origin "chore/<issue>-work-order" --quiet || { echo "fetch failed" >&2; exit 1; }
   git cat-file -e "origin/chore/<issue>-work-order:agents/work-orders/<owner>_<repo-name>-<issue>.md" 2>/dev/null \
@@ -186,13 +191,13 @@ own diff/title (same front-matter shape foreman.md documents — `repo`,
 `setup_command`, `changelog`, `merge_allowed`, `review_bot`, `attempt`,
 `created`), then land it the way the ticket's shape calls for:
 
-- **Cross-repo ticket** (target repo ≠ `adamsuk/software-factory`): open a
-  dedicated `chore/<issue>-work-order` PR into `adamsuk/software-factory`
+- **Cross-repo ticket** (target repo ≠ `$FACTORY_HOME_REPO`): open a
+  dedicated `chore/<issue>-work-order` PR into `$FACTORY_HOME_REPO`
   (branch `chore/<issue>-work-order`, title
-  `chore: work order for adamsuk/software-factory#<issue>`, label
+  `chore: work order for <owner>/<repo>#<issue>`, label
   `skip-changelog`, body `Work order for #<issue> (<short description>). Built in <target-repo>#<pr-number>.` —
   matches existing examples like #248, #249, #277).
-- **Same-repo ticket** (target repo == `adamsuk/software-factory`): commit
+- **Same-repo ticket** (target repo == `$FACTORY_HOME_REPO`): commit
   the file directly onto the PR's own branch instead — it rides in with the
   real PR, no separate chore PR (see #275/#276 for the pattern). Use a
   throwaway worktree so you don't disturb the branch you're actually working
@@ -246,7 +251,7 @@ exactly what conflicts before deciding who should fix it.
 
 **Work in the PR's own repo, not this one.** `<repo>` here is the ticket's
 **target** repo (from Step 1) — for a cross-repo ticket that is *not*
-`adamsuk/software-factory`, so the PR's branch lives there, not in this
+`$FACTORY_HOME_REPO`, so the PR's branch lives there, not in this
 checkout, and this checkout's `origin` must never stand in for it. Clone it
 fresh rather than reusing anything local. Also validate the branch name
 before it ever reaches a shell command — it's going to be interpolated, and
@@ -322,14 +327,14 @@ Fetch the work order locally if needed, then run the real gate script —
 it's deterministic, not a judgment call, so run it directly rather than
 through an agent.
 
-**The work order always lives in `adamsuk/software-factory` (this repo),
+**The work order always lives in `$FACTORY_HOME_REPO` (this repo),
 never in the target repo** — even for a cross-repo ticket, where it rode in
 on its own `chore/<issue>-work-order` PR rather than on `<branch>` (the
 target repo's PR branch from Step 4). So the ref to read it from is a
 *factory-repo* ref, not the PR branch:
 
 - **Same-repo ticket**: the factory ref *is* `<branch>` — `origin` here
-  already points at `adamsuk/software-factory`.
+  already points at `$FACTORY_HOME_REPO`.
 - **Cross-repo ticket**: the factory ref is `main` once the chore PR has
   merged, or `chore/<issue>-work-order` while it's still open — Step 3
   already checked both of those specific refs, so reuse that result rather
@@ -411,7 +416,7 @@ template for each:
 | Intake → `factory:blocked` | "Intake blocked #N: <reason from its comment>. How do you want to proceed?" | Answer the decision myself / Skip this ticket, pick another / Something else |
 | Conflict needs a protected file edited | "Resolving the conflict on <branch> means editing <protected file>. That's a person's call per AGENTS.md §5." | I'll resolve it myself / Resolve it anyway, it's trivial / Skip for now |
 | Gate `retry`, attempt < 3, non-protected | "<Check> failed on <PR>: <summary>. Want me to attempt a fix?" | Try a fix (one round) / I'll handle it / Stop here |
-| Gate `retry`, attempt == 3 or protected | "<PR> has exhausted its fix-loop budget / needs a protected-path fix. Scott must act (AGENTS.md §4/§5)." | Acknowledge, I'll take it from here / Something else |
+| Gate `retry`, attempt == 3 or protected | "<PR> has exhausted its fix-loop budget / needs a protected-path fix. The maintainer must act (AGENTS.md §4/§5)." | Acknowledge, I'll take it from here / Something else |
 | Review FIX, substantive/protected | "<PR> needs a fix that <reason it's not safe to auto-apply>." | I'll apply it myself / Hand it to a builder run / Skip for now |
 | Review ESCALATE | "Reviewer escalated <PR>: <stated reason>." | Tell me more / I'll look at it myself / Something else |
 | Review PASS | "<PR> passed review, all checks green. Ready to merge, but that's your call (agents.merge: false)." | Approve & merge it yourself now / I'll handle it later / Reopen as the bot first (see below) |

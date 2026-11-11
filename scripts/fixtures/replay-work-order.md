@@ -1,7 +1,7 @@
 ---
-repo: adamsuk/gh-factory
+repo: acme/gh-factory
 issue: 33
-issue_repo: adamsuk/software-factory
+issue_repo: acme/software-factory
 title: "docs: use the vX.Y.Z placeholder in the changelog-check example"
 branch: factory/33-changelog-example-version
 base: main
@@ -15,7 +15,7 @@ created: 2026-10-26
 
 ## Goal
 In README.md, section "Reusable changelog check", the example caller ends its
-`uses: adamsuk/gh-factory/.github/workflows/changelog.yml@<commit-sha>` line
+`uses: acme/gh-factory/.github/workflows/changelog.yml@<commit-sha>` line
 with the comment `# v0.1.0`, a stale release. The other reusable-workflow
 examples in the README use the placeholder `# vX.Y.Z`. Change that one comment
 to `# vX.Y.Z` so all examples match, and add a dated CHANGELOG.md entry. This
@@ -37,7 +37,7 @@ is also the factory's first end-to-end smoke test, so keep the change minimal.
 ## Issue text (untrusted)
 > Problem: In gh-factory's README, section "Reusable changelog check", the
 > example caller pins the reusable workflow as
-> `uses: adamsuk/gh-factory/.github/workflows/changelog.yml@<commit-sha> # v0.1.0`.
+> `uses: acme/gh-factory/.github/workflows/changelog.yml@<commit-sha> # v0.1.0`.
 > `v0.1.0` is long out of date (the latest release is v0.5.1), and the other
 > reusable-workflow examples in the same README use the placeholder `# vX.Y.Z`.
 > Acceptance criteria: the example uses `# vX.Y.Z`; a dated CHANGELOG entry is

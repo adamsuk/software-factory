@@ -1,6 +1,6 @@
 # software-factory
 
-Scott's end-to-end software factory: an agent-driven pipeline that triages
+An end-to-end software factory: an agent-driven pipeline that triages
 incoming issues, builds and tests fixes, reviews them, and ships the
 result, built on top of [adamsuk/gh-factory](https://github.com/adamsuk/gh-factory)'s
 generic repo baseline. This repo holds the backlog of changes and the
@@ -27,8 +27,8 @@ when the audit ran.
 
 ## Long-term aim
 
-- **A generic repo setup:** every repo under touchlineHQ and adamsuk gets the
-  same baseline (settings, rulesets, labels, starter files) from
+- **A generic repo setup:** every enrolled repo, in this account and in other
+  enrolled organisations, gets the same baseline (settings, rulesets, labels, starter files) from
   [adamsuk/gh-factory](https://github.com/adamsuk/gh-factory).
 - **As much shared automation as possible:** reusable workflows hosted in
   gh-factory, and the Grok Bot agents (Issue Shipper, PR Reviewer, Signal
@@ -44,8 +44,8 @@ when the audit ran.
 | --- | --- | --- |
 | Generic baseline and the `gh factory` CLI | [adamsuk/gh-factory](https://github.com/adamsuk/gh-factory) | public, reusable |
 | The guide audits are scored against | [adamsuk/line](https://github.com/adamsuk/line) | public |
-| Audits, backlog and decisions | this repo, and the "Software Factory" GitHub Project | **private** |
-| Delivery repos | touchlineHQ's delivery app, the second delivery app, touchlineHQ, .github | org |
+| Audits, backlog and decisions | this repo, and your GitHub Project board | **private** |
+| Delivery repos | repos in other enrolled organisations | org |
 | Agents | Grok Bot: Issue Shipper, PR Reviewer, Signal Issues, Research Scout | — |
 
 A backlog issue in this repo names one target repository. Issue Shipper does
@@ -91,6 +91,36 @@ environment. Shell lint requires `shellcheck` **0.11.0**, the version CI pins in
 Install it from the [official release](https://github.com/koalaman/shellcheck/releases/tag/v0.11.0)
 (or `brew install shellcheck` if it gives 0.11.0) and check `shellcheck --version`.
 
+## Environment
+
+The scripts and the watcher read their machine paths and owner settings from
+these variables, so they run on any machine and for any owner. Unset means the
+default below.
+
+| Variable | Default | Used for |
+| --- | --- | --- |
+| `FACTORY_HOME` | `${XDG_DATA_HOME:-$HOME/.local/share}/software-factory` | base directory every path below derives from |
+| `FACTORY_WATCH_ROOT` | `$FACTORY_HOME/factory-watch` | watcher root: logs, `state/`, orders |
+| `FACTORY_BUDGET_FILE` | `$FACTORY_HOME/factory-budget.json` | watcher budget |
+| `FACTORY_LEDGER_FILE` | `$FACTORY_HOME/factory-ledger.csv` | run ledger |
+| `FACTORY_CLONE_ROOT` | `$FACTORY_HOME` | parent of the `wo-*` build clones |
+| `FACTORY_WORKSPACE` | `$FACTORY_HOME` | clone root for `scripts/run-work-order.sh` (falls back to a loud temp dir when unusable) |
+| `FACTORY_HOME_REPO` | `$GITHUB_REPOSITORY`, then the `origin` remote of the current checkout, then `gh repo view` | `owner/repo` that holds work orders and epics |
+| `FACTORY_REPOS` | `$FACTORY_HOME_REPO` | space-separated `owner/repo` list the watcher works on; default for `pr-status.sh`, `review-bot-metrics.sh --all` and `factory-flagged.sh` |
+| `FACTORY_APPROVER_LOGIN` | owner part of `FACTORY_HOME_REPO` | human login whose comments count as approval (`<!-- factory:approve -->`) or factory review |
+| `FACTORY_BLOCKED_OWNERS` | empty (none) | space-separated owners the watcher never clones, modifies or merges |
+| `FACTORY_SECRETS_DIR` | `$HOME/.factory-secrets` | secrets directory the Claude Code backend is denied (`Read(/<absolute path>/**)`) |
+| `FACTORY_BOARD_OWNER` | unset (board sync off) | project board owner |
+| `FACTORY_BOARD_NUMBER` | unset (board sync off) | project board number |
+| `FACTORY_BOARD_PROJECT_ID` | unset (board sync off) | project node id |
+| `FACTORY_BOARD_FIELD_ID` | unset (board sync off) | node id of the `factory status` field |
+| `FACTORY_BOARD_OPTIONS` | unset (board sync off) | JSON object: status name to option id |
+| `TMPDIR` | `/tmp` | where `scripts/station-run.sh` makes its temp directories |
+
+With any `FACTORY_BOARD_*` variable unset, `board-sync.sh` prints `board sync
+not configured` and exits 0. More detail on the watcher's variables is in
+[`scripts/watcher/README.md`](scripts/watcher/README.md).
+
 ## Audits
 
 - [`audits/2026-10-24.md`](audits/2026-10-24.md): the first Line audit.
@@ -108,8 +138,9 @@ Audits are read-only and never print secret values.
 
 ## Working from the board
 
-The [Software Factory board](https://github.com/users/adamsuk/projects/2) is the
-place to work. `scripts/watcher/board-sync.sh` keeps it in step with the labels,
+Your GitHub Project board is the place to work. To set one up, create a GitHub
+Project for the repo owner and point `scripts/watcher/board-sync.sh` at it with
+the `FACTORY_BOARD_*` variables (see [Environment](#environment)). That script keeps the board in step with the labels,
 one way only: **labels are the source of truth** (AGENTS.md §9), so nothing the
 board shows can overwrite them, and nothing can loop.
 
@@ -139,7 +170,7 @@ then P1, P2, P3, unprioritised last, and by issue number within a priority. It
 is read-only and picks up nothing itself.
 
 Each flagged issue still goes through the stations
-([`stations/README.md`](stations/README.md)), and merging stays with Scott
+([`stations/README.md`](stations/README.md)), and merging stays with the maintainer
 (`agents.merge: false`).
 
 ### What the board needs
@@ -171,12 +202,11 @@ with the `bash` on your `PATH`, not macOS's `/bin/bash`, which is 3.2.
 | `area: observability` | Metrics, drift and re-audits |
 | `area: gh-factory` | Changes to the gh-factory tool or baseline |
 | `quick win` / `big gain` | As the audit lists them under quick wins or biggest gains |
-| `decision` | Needs Scott's call before anyone acts |
+| `decision` | Needs the maintainer's call before anyone acts |
 | `station` / `station: NN <name>` | Creates or runs one Line station (01 Backlog to 09 Return) |
 | `priority: next` | Flagged for pickup from the board. May be on several issues; work them in `priority: P0`-`P3` order with [`scripts/factory-flagged.sh`](scripts/factory-flagged.sh). Additive, so it never displaces a `factory:*` status. |
-| `priority: P0` / `P1` / `P2` / `P3` | Urgent, high, medium, low. Set by an audit; Scott re-ranks. |
+| `priority: P0` / `P1` / `P2` / `P3` | Urgent, high, medium, low. Set by an audit; the maintainer re-ranks. |
 | `factory:triage`, `factory:ready`, `factory:building`, `factory:gate`, `factory:review`, `factory:merge`, `factory:release`, `factory:done`, `factory:blocked` | Exactly one status label at a time. Who sets each one is in [AGENTS.md section 9 (Status labels)](AGENTS.md#9-status-labels-43). |
 
-The [Software Factory](https://github.com/users/adamsuk/projects) GitHub
-Project tracks the same issues with Type, Area, Effort, Target repo and Audit
+Your GitHub Project board tracks the same issues with Type, Area, Effort, Target repo and Audit
 date fields.

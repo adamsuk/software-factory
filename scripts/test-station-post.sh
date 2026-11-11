@@ -266,7 +266,8 @@ out=$("$post" verdict --repo acme/widgets --pr 1 --issue 7 --sha abcdef123456789
 assert_eq "$(label_names)" "factory:blocked"
 first=$(jq -r '.comments[-1].body' "$MOCK/issue.json" | head -n 1)
 assert_eq "$first" "<!-- factory:review -->"
-grep -q 'Scott must act' "$MOCK/issue.json" || fail "missing scott line"
+grep -q 'The maintainer must act' "$MOCK/issue.json" || fail "missing maintainer line"
+! grep -q 'Scott' "$MOCK/issue.json" || fail "posted text names a person"
 
 seed_review_pr() {
   python3 - << PY

@@ -5,7 +5,7 @@ set -euo pipefail
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # Private HOME before any factory script runs, so this suite never opens
-# /home/box/.factory-secrets or a real key. Drop ambient secret names too,
+# the host's real secrets directory or a real key. Drop ambient secret names too,
 # without printing their values.
 HOME=$(mktemp -d)
 export HOME
@@ -916,47 +916,47 @@ assert_no_issue_edit() {
 
 tname="gate-label-building"
 reset_gh
-write_gate_order "adamsuk/gh-factory" "adamsuk/software-factory" "78"
+write_gate_order "acme/gh-factory" "acme/software-factory" "78"
 GH_LABELS=$(printf '%s\n' "factory:building" "enhancement")
 export GH_LABELS
 run_fail 0 set_gate_label
-assert_gate_view "adamsuk/software-factory" "78"
-assert_gate_edit "adamsuk/software-factory" "78"
+assert_gate_view "acme/software-factory" "78"
+assert_gate_edit "acme/software-factory" "78"
 assert_no_pr
 
 tname="gate-label-ready"
 reset_gh
-write_gate_order "adamsuk/gh-factory" "adamsuk/software-factory" "78"
+write_gate_order "acme/gh-factory" "acme/software-factory" "78"
 GH_LABELS=$(printf '%s\n' "factory:ready")
 export GH_LABELS
 run_fail 0 set_gate_label
-assert_gate_view "adamsuk/software-factory" "78"
+assert_gate_view "acme/software-factory" "78"
 assert_no_issue_edit
 assert_no_pr
 
 tname="gate-label-blocked"
 reset_gh
-write_gate_order "adamsuk/gh-factory" "adamsuk/software-factory" "78"
+write_gate_order "acme/gh-factory" "acme/software-factory" "78"
 GH_LABELS=$(printf '%s\n' "factory:blocked" "factory:building")
 export GH_LABELS
 run_fail 0 set_gate_label
-assert_gate_view "adamsuk/software-factory" "78"
+assert_gate_view "acme/software-factory" "78"
 assert_no_issue_edit
 assert_no_pr
 
 tname="gate-label-empty-issue-repo"
 reset_gh
-write_gate_order "adamsuk/gh-factory" "" "78"
+write_gate_order "acme/gh-factory" "" "78"
 GH_LABELS=$(printf '%s\n' "factory:building" "enhancement")
 export GH_LABELS
 run_fail 0 set_gate_label
-assert_gate_view "adamsuk/gh-factory" "78"
-assert_gate_edit "adamsuk/gh-factory" "78"
+assert_gate_view "acme/gh-factory" "78"
+assert_gate_edit "acme/gh-factory" "78"
 assert_no_pr
 
 tname="gate-label-gh-fails"
 reset_gh
-write_gate_order "adamsuk/gh-factory" "adamsuk/software-factory" "78"
+write_gate_order "acme/gh-factory" "acme/software-factory" "78"
 GH_LABELS=$(printf '%s\n' "factory:building")
 GH_VIEW_STATUS=1
 export GH_LABELS GH_VIEW_STATUS
@@ -964,14 +964,14 @@ run_fail 7 set_gate_label
 assert_no_issue_edit
 assert_no_pr
 reset_gh
-write_gate_order "adamsuk/gh-factory" "adamsuk/software-factory" "78"
+write_gate_order "acme/gh-factory" "acme/software-factory" "78"
 GH_LABELS=$(printf '%s\n' "factory:building" "enhancement")
 GH_VIEW_STATUS=0
 GH_EDIT_STATUS=1
 export GH_LABELS GH_VIEW_STATUS GH_EDIT_STATUS
 run_fail 7 set_gate_label
-assert_gate_view "adamsuk/software-factory" "78"
-assert_gate_edit "adamsuk/software-factory" "78"
+assert_gate_view "acme/software-factory" "78"
+assert_gate_edit "acme/software-factory" "78"
 assert_no_pr
 
 tname="gate-label-main-placement"
@@ -1152,7 +1152,7 @@ assert_log_lacks() {
 
 tname="publish-pr-create"
 reset_publish_gh
-write_publish_order "adamsuk/software-factory" "adamsuk/software-factory" "102" "true"
+write_publish_order "acme/software-factory" "acme/software-factory" "102" "true"
 GH_LABELS=$(printf '%s\n' "factory:gate" "enhancement")
 export GH_LABELS
 write_standard_bench "1" "1.05" "12"
@@ -1161,8 +1161,8 @@ run_fail 0 publish_pr
 assert_eq "$(cat "$dir.bench.txt")" "$bench_before"
 assert_log_has "pr create"
 assert_log_lacks "pr edit"
-assert_log_has "issue view 102 --repo adamsuk/software-factory"
-assert_log_has "--repo adamsuk/software-factory"
+assert_log_has "issue view 102 --repo acme/software-factory"
+assert_log_has "--repo acme/software-factory"
 assert_log_has "--base main"
 assert_log_has "--head factory/102-pr-run-cost"
 assert_log_has "--title feat: record Grok Build cost and attempt on the pull request"
@@ -1184,7 +1184,7 @@ assert_log_has "Closes #102"
 
 tname="publish-pr-edit"
 reset_publish_gh
-write_publish_order "adamsuk/software-factory" "adamsuk/software-factory" "102" "true"
+write_publish_order "acme/software-factory" "acme/software-factory" "102" "true"
 GH_LABELS=$(printf '%s\n' "factory:gate")
 GH_PR_NUMBER=55
 export GH_LABELS GH_PR_NUMBER
@@ -1217,7 +1217,7 @@ fi
 
 tname="publish-pr-blocked"
 reset_publish_gh
-write_publish_order "adamsuk/software-factory" "adamsuk/software-factory" "102" "true"
+write_publish_order "acme/software-factory" "acme/software-factory" "102" "true"
 GH_LABELS=$(printf '%s\n' "factory:blocked" "factory:building")
 export GH_LABELS
 write_standard_bench "1" "1.05" "12"
@@ -1229,17 +1229,17 @@ assert_log_lacks "pr edit"
 
 tname="publish-pr-refs"
 reset_publish_gh
-write_publish_order "adamsuk/software-factory" "adamsuk/gh-factory" "102" "true"
+write_publish_order "acme/software-factory" "acme/gh-factory" "102" "true"
 GH_LABELS=$(printf '%s\n' "factory:gate")
 export GH_LABELS
 write_standard_bench "1" "1.05" "12"
 run_fail 0 publish_pr
-assert_log_has "issue view 102 --repo adamsuk/gh-factory"
-assert_log_has "pr create --repo adamsuk/software-factory"
-assert_log_has "Refs adamsuk/gh-factory#102"
+assert_log_has "issue view 102 --repo acme/gh-factory"
+assert_log_has "pr create --repo acme/software-factory"
+assert_log_has "Refs acme/gh-factory#102"
 assert_log_lacks "Closes #102"
 assert_body \
-  "Refs adamsuk/gh-factory#102" \
+  "Refs acme/gh-factory#102" \
   "attempt: 1" \
   "test_command: shellcheck scripts/*.sh" \
   "tests: pass" \
@@ -1248,7 +1248,7 @@ assert_body \
 
 tname="publish-pr-skip-changelog"
 reset_publish_gh
-write_publish_order "adamsuk/software-factory" "adamsuk/software-factory" "102" "false"
+write_publish_order "acme/software-factory" "acme/software-factory" "102" "false"
 GH_LABELS=$(printf '%s\n' "factory:gate")
 export GH_LABELS
 write_standard_bench "1" "1.05" "12"
@@ -1260,7 +1260,7 @@ assert_log_lacks "pr edit"
 
 tname="publish-pr-edit-skip-changelog"
 reset_publish_gh
-write_publish_order "adamsuk/software-factory" "adamsuk/software-factory" "102" "false"
+write_publish_order "acme/software-factory" "acme/software-factory" "102" "false"
 GH_LABELS=$(printf '%s\n' "factory:gate")
 GH_PR_NUMBER=55
 export GH_LABELS GH_PR_NUMBER
@@ -1280,12 +1280,12 @@ assert_body \
 
 tname="publish-pr-empty-issue-repo"
 reset_publish_gh
-write_publish_order "adamsuk/software-factory" "" "102" "true"
+write_publish_order "acme/software-factory" "" "102" "true"
 GH_LABELS=$(printf '%s\n' "factory:building")
 export GH_LABELS
 write_standard_bench "3" "8" "4"
 run_fail 0 publish_pr
-assert_log_has "issue view 102 --repo adamsuk/software-factory"
+assert_log_has "issue view 102 --repo acme/software-factory"
 assert_log_has "pr create"
 assert_log_has "Closes #102"
 assert_log_lacks "Refs "
@@ -1302,7 +1302,7 @@ expect_cost() {
   local raw=$1 want=$2
   tname="publish-pr-cost-${raw}"
   reset_publish_gh
-  write_publish_order "adamsuk/software-factory" "adamsuk/software-factory" "102" "true"
+  write_publish_order "acme/software-factory" "acme/software-factory" "102" "true"
   GH_LABELS=$(printf '%s\n' "factory:gate")
   export GH_LABELS
   write_standard_bench "1" "$raw" "12"
@@ -1326,7 +1326,7 @@ expect_cost "8" "8"
 
 tname="publish-pr-gh-fails"
 reset_publish_gh
-write_publish_order "adamsuk/software-factory" "adamsuk/software-factory" "102" "true"
+write_publish_order "acme/software-factory" "acme/software-factory" "102" "true"
 GH_LABELS=$(printf '%s\n' "factory:gate")
 GH_STATUS=1
 export GH_LABELS GH_STATUS
@@ -1360,17 +1360,39 @@ fi
 # --- bench clone root --------------------------------------------------------
 
 tname="bench-clone-root-default"
-unset FACTORY_WORKSPACE
-if [[ -d /workspace && -w /workspace && -x /workspace ]]; then
-  root_default=$(choose_clone_root)
-  assert_eq "$root_default" "/workspace"
-else
-  err_file=$ROOT/default-workspace.err
-  root_default=$(choose_clone_root 2>"$err_file")
-  [[ "$root_default" != "/workspace" ]] || fail "should fall back when /workspace unusable"
-  grep -Fq "clone root unusable: /workspace" "$err_file" || fail "missing fallback message: $(cat "$err_file")"
-  grep -Fq "falling back to $root_default" "$err_file" || fail "missing fallback target: $(cat "$err_file")"
-fi
+# Portable default: none of the factory vars set, a private HOME, no XDG.
+unset FACTORY_WORKSPACE FACTORY_CLONE_ROOT FACTORY_HOME XDG_DATA_HOME
+root_default=$(choose_clone_root)
+assert_eq "$root_default" "$HOME/.local/share/software-factory"
+[[ -d "$root_default" && -w "$root_default" ]] || fail "default root was not created"
+
+tname="bench-clone-root-xdg-default"
+root_xdg=$(XDG_DATA_HOME="$ROOT/xdg" choose_clone_root)
+assert_eq "$root_xdg" "$ROOT/xdg/software-factory"
+
+tname="bench-clone-root-factory-home"
+root_fh=$(FACTORY_HOME="$ROOT/factory-home" choose_clone_root)
+assert_eq "$root_fh" "$ROOT/factory-home"
+
+tname="bench-clone-root-factory-clone-root"
+root_cr=$(FACTORY_HOME="$ROOT/factory-home" FACTORY_CLONE_ROOT="$ROOT/clone-root" choose_clone_root)
+assert_eq "$root_cr" "$ROOT/clone-root"
+root_ws=$(FACTORY_CLONE_ROOT="$ROOT/clone-root" FACTORY_WORKSPACE="$ROOT/ws-wins" choose_clone_root)
+assert_eq "$root_ws" "$ROOT/ws-wins"
+
+tname="bench-clone-root-default-fallback"
+# The default root is unusable: the loud temp-dir fallback still applies.
+ro_home=$ROOT/ro-home
+mkdir -p "$ro_home"
+chmod 555 "$ro_home" || fail "chmod failed"
+err_file=$ROOT/default-root.err
+root_fb_default=$(HOME="$ro_home" choose_clone_root 2>"$err_file")
+chmod 755 "$ro_home" || true
+[[ "$root_fb_default" != "$ro_home"/* ]] || fail "should fall back when the default root is unusable"
+[[ -d "$root_fb_default" && -w "$root_fb_default" ]] || fail "fallback root not usable"
+grep -Fq "clone root unusable: $ro_home/.local/share/software-factory" "$err_file" \
+  || fail "missing fallback message: $(cat "$err_file")"
+grep -Fq "falling back to $root_fb_default" "$err_file" || fail "missing fallback target: $(cat "$err_file")"
 
 tname="bench-clone-root-explicit"
 export FACTORY_WORKSPACE="$ROOT/override-workspace"
@@ -1403,9 +1425,13 @@ unset FACTORY_WORKSPACE
 
 tname="bench-clone-root-main-no-literal-workspace"
 main_src=$(declare -f main)
-if printf '%s\n' "$main_src" | grep -Fq '/workspace'; then
-  fail "main still contains the literal /workspace"
-fi
+# No fixed machine directory in main or the clone-root helper: the root comes
+# from FACTORY_WORKSPACE, FACTORY_CLONE_ROOT or FACTORY_HOME only.
+for fn_src in "$main_src" "$(declare -f choose_clone_root)"; do
+  if printf '%s\n' "$fn_src" | grep -Eq '(^|[^A-Za-z_])/(workspace|home|Users)(/|[^A-Za-z]|$)'; then
+    fail "a fixed machine directory is still in the clone-root code"
+  fi
+done
 
 tname="bench-clone-root-main-calls-helper"
 printf '%s\n' "$main_src" | grep -Fq 'choose_clone_dir' || fail "main does not call choose_clone_dir"
@@ -1498,7 +1524,7 @@ case "$HOME" in
   /tmp/*|/var/tmp/*|"${TMPDIR:-/tmp}"/*) ;;
   *) fail "HOME is not a mktemp directory" ;;
 esac
-[[ "$HOME" != /home/box ]] || fail "HOME is the box home"
+[[ "$HOME" != /home/* && "$HOME" != /Users/* ]] || fail "HOME is a real user home"
 [[ ! -e "$HOME/.factory-secrets" ]] || fail "fake HOME contains factory-secrets"
 scrub_dir=$ROOT/scrub
 mkdir -p "$scrub_dir/bin"

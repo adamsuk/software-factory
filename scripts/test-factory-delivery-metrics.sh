@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Behaviour tests for scripts/factory-delivery-metrics.sh.
 # A fake gh is the only gh on PATH. This file never calls the real gh.
-# Fixtures are files under a temp directory. This file does not read
-# /workspace/factory-ledger.csv.
+# Fixtures are files under a temp directory. This file does not read the
+# live ledger (FACTORY_LEDGER_FILE, default $FACTORY_HOME/factory-ledger.csv).
 set -euo pipefail
 
 tname=startup
@@ -34,9 +34,12 @@ read -r shebang < "$metrics"
 [[ "$shebang" == "#!/usr/bin/env bash" ]] || fail "metrics shebang is [$shebang]"
 read -r shebang < "$here/test-factory-delivery-metrics.sh"
 [[ "$shebang" == "#!/usr/bin/env bash" ]] || fail "test shebang is [$shebang]"
-if grep -F -q '/workspace/factory-ledger.csv' "$metrics"; then
+# The ledger is always --ledger PATH: no ledger path, in any directory, and no
+# FACTORY_HOME default is baked into the metrics script.
+if grep -E -q 'factory-ledger\.csv|FACTORY_HOME' "$metrics"; then
   fail "metrics script hardcodes the live ledger path"
 fi
+live_ledger="${FACTORY_LEDGER_FILE:-${FACTORY_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/software-factory}/factory-ledger.csv}"
 
 root=$(mktemp -d)
 trap 'rm -rf "$root"' EXIT
@@ -167,7 +170,7 @@ while IFS= read -r _; do
 done < <(type -ap gh)
 [[ "$gh_count" -eq 1 ]] || fail "expected one gh on PATH, found ${gh_count}"
 
-default_repo=adamsuk/software-factory
+default_repo=acme/software-factory
 default_since=2026-10-20
 default_until=2026-10-27
 ledger_header='date_utc,kind,repo,issue_or_pr,grok_sessions,api_equiv_usd,result'
@@ -190,7 +193,7 @@ prepare() {
 run_script() {
   local arg
   for arg in "$@"; do
-    [[ "$arg" != "/workspace/factory-ledger.csv" ]] || fail "refusing to pass the live ledger"
+    [[ "$arg" != "$live_ledger" && "$arg" != */factory-ledger.csv ]] || fail "refusing to pass the live ledger"
   done
   : > "$log"
   status=0
@@ -474,7 +477,7 @@ prs = [
     pr(212, "factory/hotfix-140", "2026-10-21T07:00:00Z", "fix: #140"),
     pr(15, "feature/not-factory", "2026-10-21T08:00:00Z", "feat: human"),
     pr(16, "factory/16-exact", "2026-10-20T08:00:00Z", "feat: exact"),
-    pr(205, "chore/exact", "2026-10-27T08:00:00Z", "Revert", "Reverts adamsuk/software-factory#16"),
+    pr(205, "chore/exact", "2026-10-27T08:00:00Z", "Revert", "Reverts acme/software-factory#16"),
     pr(17, "factory/17-lower", "2026-10-21T01:00:00Z", "feat: lower"),
     pr(206, "chore/lower", "2026-10-21T02:00:00Z", "docs", "reverts #17"),
     pr(18, "factory/18-nonfactory-fix", "2026-10-21T03:00:00Z", "feat: outside"),
@@ -482,7 +485,7 @@ prs = [
     pr(19, "factory/19-hot", "2026-10-21T05:00:00Z", "feat: hot"),
     pr(208, "factory/19-hotfix", "2026-10-28T05:00:00Z", "HOTFIX for #19"),
     pr(20, "factory/20-space", "2026-10-21T06:00:00Z", "feat: space"),
-    pr(209, "factory/100-space", "2026-10-28T00:00:00Z", "Fix close the gap", "See adamsuk/software-factory#20"),
+    pr(209, "factory/100-space", "2026-10-28T00:00:00Z", "Fix close the gap", "See acme/software-factory#20"),
     pr(21, "factory/21-at-until", "2026-10-27T00:00:00Z", "feat: boundary"),
     pr(22, "factory/22-just-in", "2026-10-26T23:59:59Z", "feat: just in"),
     pr(23, "factory/23-other", "2026-10-21T09:00:00Z", "feat: other repo"),
@@ -538,12 +541,12 @@ with open(sys.argv[1], "w", encoding="utf-8") as handle:
 PY
 cat > "$ledger" << EOF
 ${ledger_header}
-2020-01-01T00:00:00Z,build,adamsuk/software-factory,30,1,1.00,ok
-2026-10-21T00:00:00Z,fix,adamsuk/software-factory,30,1,0.50,ok
+2020-01-01T00:00:00Z,build,acme/software-factory,30,1,1.00,ok
+2026-10-21T00:00:00Z,fix,acme/software-factory,30,1,0.50,ok
 2026-10-21T00:00:00Z,fix,other/repo,31,1,9.99,ok
-2026-10-21T00:00:00Z,build,adamsuk/software-factory,31,1,1.00,ok
-2026-10-21T00:00:00Z,build,adamsuk/software-factory,32,1,,blank
-2026-10-21T00:00:00Z,build,adamsuk/software-factory,32,1,n/a,blank
+2026-10-21T00:00:00Z,build,acme/software-factory,31,1,1.00,ok
+2026-10-21T00:00:00Z,build,acme/software-factory,32,1,,blank
+2026-10-21T00:00:00Z,build,acme/software-factory,32,1,n/a,blank
 2026-10-21T00:00:00Z,build,other/repo,30,1,9.99,ignored
 EOF
 run_default
@@ -573,9 +576,9 @@ with open(sys.argv[1], "w", encoding="utf-8") as handle:
 PY
 cat > "$ledger" << EOF
 ${ledger_header}
-2026-10-21T00:00:00Z,Fix,adamsuk/software-factory,40,1,1.00,ok
-2026-10-21T00:00:00Z,fixes,adamsuk/software-factory,40,1,1.00,ok
-2026-10-21T00:00:00Z,build,adamsuk/software-factory,40,1,1.00,ok
+2026-10-21T00:00:00Z,Fix,acme/software-factory,40,1,1.00,ok
+2026-10-21T00:00:00Z,fixes,acme/software-factory,40,1,1.00,ok
+2026-10-21T00:00:00Z,build,acme/software-factory,40,1,1.00,ok
 EOF
 run_default
 assert_status 0
@@ -599,7 +602,7 @@ with open(sys.argv[1], "w", encoding="utf-8") as handle:
 PY
 cat > "$ledger" << EOF
 ${ledger_header}
-2026-10-21T00:00:00Z,fix,adamsuk/software-factory,7,1,2.50,ok
+2026-10-21T00:00:00Z,fix,acme/software-factory,7,1,2.50,ok
 EOF
 run_default
 assert_status 0
@@ -623,7 +626,7 @@ with open(sys.argv[1], "w", encoding="utf-8") as handle:
 PY
 cat > "$ledger" << EOF
 ${ledger_header}
-2026-10-21T00:00:00Z,build,adamsuk/software-factory,8,1,1.005,ok
+2026-10-21T00:00:00Z,build,acme/software-factory,8,1,1.005,ok
 EOF
 run_default
 assert_status 0
@@ -876,7 +879,19 @@ grep -F -q 'scripts/factory-label-metrics.sh' "$monitor" || fail "monitor omits 
 grep -F -q 'scripts/factory-pr-metrics.sh' "$monitor" || fail "monitor omits pull request metrics"
 grep -F -q 'scripts/factory-delivery-metrics.sh' "$monitor" || fail "monitor omits delivery metrics"
 grep -F -q 'FACTORY_LEDGER_FILE' "$monitor" || fail "monitor omits FACTORY_LEDGER_FILE"
-grep -F -q '/workspace/factory-ledger.csv' "$monitor" || fail "monitor omits the committed ledger default"
+# shellcheck disable=SC2016 # literal env vars in the brief, not an expansion
+grep -F -q '`$FACTORY_LEDGER_FILE`, defaulting to `$FACTORY_HOME/factory-ledger.csv`, where `$FACTORY_HOME` defaults to `${XDG_DATA_HOME:-$HOME/.local/share}/software-factory`' "$monitor" || fail "monitor omits the configurable ledger default"
+if grep -F -q '/workspace/factory-ledger.csv' "$monitor"; then
+  fail "monitor brief hardcodes the live ledger path"
+fi
+grep -F -q 'factory-ledger.csv' "$monitor" || fail "monitor omits the ledger file"
+readme=$repo_root/README.md
+# shellcheck disable=SC2016  # literal README text, not expansion
+grep -F -q '| `FACTORY_LEDGER_FILE` | `$FACTORY_HOME/factory-ledger.csv` |' "$readme" \
+  || fail "README omits the committed ledger default"
+# shellcheck disable=SC2016  # literal README text, not expansion
+grep -F -q '| `FACTORY_LEDGER_FILE` | `$FACTORY_HOME/factory-ledger.csv` |' "$repo_root/scripts/watcher/README.md" \
+  || fail "watcher README omits the committed ledger default"
 grep -F -q 'ShellCheck' "$monitor" || fail "monitor omits ShellCheck"
 grep -F -q 'changelog / changelog' "$monitor" || fail "monitor omits changelog / changelog"
 grep -F -q -- '--required-check' "$monitor" || fail "monitor omits --required-check"

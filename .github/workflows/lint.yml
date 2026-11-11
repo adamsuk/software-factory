@@ -2,7 +2,7 @@ name: Lint
 
 on:
   pull_request:
-    # labeled/unlabeled so the Test assertions job re-runs when Scott adds or
+    # labeled/unlabeled so the Test assertions job re-runs when the maintainer adds or
     # removes the approved-test-change override.
     types: [opened, synchronize, reopened, labeled, unlabeled]
   push:

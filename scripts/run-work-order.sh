@@ -82,17 +82,28 @@ fence_issue_text() {
   ' "$order"
 }
 
-# Choose the bench clone root. FACTORY_WORKSPACE chooses the root; unset keeps
-# /workspace as the default. Create missing roots if possible; fall back to a
-# temporary directory on failure with a loud stderr message. Exit 8 if neither
-# is usable.
+# The Claude Code deny rule for the secrets directory:
+# Read(/<absolute path>/**), where the absolute path keeps its own leading `/`,
+# so the rule starts with the `//` anchor. FACTORY_SECRETS_DIR, default
+# $HOME/.factory-secrets; a relative value is taken from $PWD.
+secrets_deny_rule() {
+  local d="${FACTORY_SECRETS_DIR:-${HOME:?}/.factory-secrets}"
+  [[ "$d" == /* ]] || d="$PWD/$d"
+  while [[ "$d" == *//* ]]; do d=${d//\/\//\/}; done
+  d=${d%/}
+  [[ -n "$d" ]] || return 1
+  printf 'Read(/%s/**)\n' "$d"
+}
+
+# Choose the bench clone root. FACTORY_WORKSPACE, then FACTORY_CLONE_ROOT,
+# chooses the root; unset falls back to FACTORY_HOME, whose default is
+# ${XDG_DATA_HOME:-$HOME/.local/share}/software-factory. Create missing roots
+# if possible; fall back to a temporary directory on failure with a loud
+# stderr message. Exit 8 if neither is usable.
 choose_clone_root() {
-  local root fallback_dir
-  if [[ -n "${FACTORY_WORKSPACE:-}" ]]; then
-    root="$FACTORY_WORKSPACE"
-  else
-    root="/workspace"
-  fi
+  local root fallback_dir factory_home
+  factory_home="${FACTORY_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/software-factory}"
+  root="${FACTORY_WORKSPACE:-${FACTORY_CLONE_ROOT:-$factory_home}}"
   # mktemp keeps a relative template relative, and main cd's into the clone.
   [[ "$root" == /* ]] || root="$PWD/$root"
 
@@ -732,9 +743,10 @@ main() {
     # mirrors grok's --always-approve; --setting-sources user stops a cloned
     # repo's own .claude/settings.json (e.g. a SessionStart hook) from running,
     # since bypassPermissions does not gate hooks; --disallowedTools keeps the
-    # box's /home/box/.factory-secrets out of reach (the leading `//` anchors
-    # an absolute path for Claude Code, a single `/` would anchor at the
-    # project dir instead), blocks `git push`/`gh` the same way grok's --deny
+    # host's secrets directory (FACTORY_SECRETS_DIR, default
+    # $HOME/.factory-secrets, made absolute) out of reach (the leading `//`
+    # anchors an absolute path for Claude Code, a single `/` would anchor at
+    # the project dir instead), blocks `git push`/`gh` the same way grok's --deny
     # does (bypassPermissions alone would let either run), and drops
     # WebSearch/WebFetch, the parity for grok's --disable-web-search.
     # GH_CONFIG_DIR and GIT_TERMINAL_PROMPT=0 (with GIT_ASKPASS/SSH_AUTH_SOCK
@@ -744,8 +756,9 @@ main() {
     # that read that file for total_cost_usd/num_turns need no change
     # (AGENTS.md section 3; see agents/grok-build.md).
     claude_prompt="$dir.claude-prompt.txt"
+    secrets_deny=$(secrets_deny_rule) || die 2 "could not resolve the secrets directory"
     { cat "$rules"; printf '\n\n'; cat "$fenced_order"; } > "$claude_prompt"
-    # shellcheck disable=SC2016  # $1.."$4" below expand in the inner bash -c, not this script
+    # shellcheck disable=SC2016  # $1.."$5" below expand in the inner bash -c, not this script
     env -u GH_TOKEN -u GITHUB_TOKEN \
       -u GH_ENTERPRISE_TOKEN \
       -u GITHUB_ENTERPRISE_TOKEN \
@@ -767,9 +780,9 @@ main() {
       GH_CONFIG_DIR="$gh_config_dir" GIT_TERMINAL_PROMPT=0 \
       bash -c 'cd "$1" && exec "$2" -p --output-format json --max-turns "$3" \
         --permission-mode bypassPermissions --setting-sources user \
-        --disallowedTools "Read(//home/box/.factory-secrets/**)" "Bash(*factory-secrets*)" \
+        --disallowedTools "$5" "Bash(*factory-secrets*)" \
           "Bash(git push*)" "Bash(gh *)" "Bash(gh)" "WebSearch" "WebFetch" \
-        < "$4"' _ "$dir" "$claude_bin" "${CLAUDE_MAX_TURNS:-${GROK_MAX_TURNS:-60}}" "$claude_prompt" \
+        < "$4"' _ "$dir" "$claude_bin" "${CLAUDE_MAX_TURNS:-${GROK_MAX_TURNS:-60}}" "$claude_prompt" "$secrets_deny" \
       > "$dir.claude-raw.json" || status=$?
     jq '. + {stopReason: (
           if .subtype == "success" and ((.is_error // false) | not) then "end_turn"

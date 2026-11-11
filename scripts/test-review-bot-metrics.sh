@@ -122,6 +122,18 @@ run_script --repo o/alpha
 assert_status 0
 grep -q -x 'limit=20' "$log" || fail "default limit is not 20"
 
+tname=all-defaults-to-factory-home-repo
+(unset REVIEW_BOT_REPOS FACTORY_REPOS GITHUB_REPOSITORY; export FACTORY_HOME_REPO=o/alpha
+  exec "$metrics" --all > "$stdout_file" 2> "$stderr_file") || fail "--all with FACTORY_HOME_REPO failed"
+grep -q '^| o/alpha | ' "$stdout_file" || fail "--all did not read FACTORY_HOME_REPO"
+[[ $(grep -c '^| o/' "$stdout_file") -eq 1 ]] || fail "--all read more than FACTORY_HOME_REPO"
+
+tname=all-reads-factory-repos
+(unset REVIEW_BOT_REPOS GITHUB_REPOSITORY FACTORY_HOME_REPO; export FACTORY_REPOS="o/alpha o/beta"
+  exec "$metrics" --all > "$stdout_file" 2> "$stderr_file") || fail "--all with FACTORY_REPOS failed"
+grep -q '^| o/alpha | ' "$stdout_file" || fail "--all did not read o/alpha from FACTORY_REPOS"
+grep -q '^| o/beta | ' "$stdout_file" || fail "--all did not read o/beta from FACTORY_REPOS"
+
 tname=all
 export REVIEW_BOT_REPOS="o/alpha o/beta o/empty"
 run_script --all

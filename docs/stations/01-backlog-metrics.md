@@ -3,7 +3,9 @@
 Station 01 (Backlog) asks for one hand check of three metrics that can be read
 from issue label events. This note names those metrics and gives one read-only
 command for each. Each command is a GitHub API `GET` through `gh api --method GET`.
-The backlog for this check is [adamsuk/software-factory](https://github.com/adamsuk/software-factory).
+The backlog for this check is this repo (upstream:
+[adamsuk/software-factory](https://github.com/adamsuk/software-factory)). In the
+commands, `<owner>/<repo>` is the repo whose backlog you are measuring.
 
 The three metrics are:
 
@@ -13,8 +15,8 @@ The three metrics are:
 
 Label events are `labeled` entries. On an event, `label.name` is the label and
 `created_at` is the timestamp. One issue's events are
-`GET /repos/adamsuk/software-factory/issues/<number>/timeline`. Every issue in
-the repo is `GET /repos/adamsuk/software-factory/issues/events`, and each event
+`GET /repos/<owner>/<repo>/issues/<number>/timeline`. Every issue in
+the repo is `GET /repos/<owner>/<repo>/issues/events`, and each event
 there includes `issue.number` and `issue.body`.
 
 `--paginate --slurp` fetches every page and prints one JSON array of those pages.
@@ -24,19 +26,19 @@ own `--jq` flag, so the filter always runs in `jq`.
 
 Who sets each `factory:*` label is in [AGENTS.md section 9](../../AGENTS.md#9-status-labels-43).
 What a triaged issue contains is in the [intake brief](../../agents/roles/intake.md).
-Weekly measurement stays on [#14](https://github.com/adamsuk/software-factory/issues/14).
-Station 08 stays on [#50](https://github.com/adamsuk/software-factory/issues/50).
+Weekly measurement stays on #14.
+Station 08 stays on #50.
 
-## Worked example: software-factory#52
+## Worked example: #52
 
-[software-factory#52](https://github.com/adamsuk/software-factory/issues/52)
+Issue #52
 has a `labeled` event on its timeline for label `factory:done` at timestamp
 `2026-10-26T11:32:05Z`. That label and timestamp were read from the timeline on
 2026-10-26.
 
 ```sh
 gh api --method GET --paginate --slurp \
-  "/repos/adamsuk/software-factory/issues/52/timeline?per_page=100" \
+  "/repos/<owner>/<repo>/issues/52/timeline?per_page=100" \
   | jq '.[] | .[] | select(.event == "labeled" and .label.name == "factory:done") | {event, label: .label.name, at: .created_at}'
 ```
 
@@ -64,8 +66,8 @@ the responses under `/tmp`, and prints `opened`, `label`, `at`, and
 
 ```sh
 n=52 &&
-gh api --method GET "/repos/adamsuk/software-factory/issues/${n}" > "/tmp/sf-issue-${n}.json" &&
-gh api --method GET --paginate --slurp "/repos/adamsuk/software-factory/issues/${n}/timeline?per_page=100" > "/tmp/sf-timeline-${n}.json" &&
+gh api --method GET "/repos/<owner>/<repo>/issues/${n}" > "/tmp/sf-issue-${n}.json" &&
+gh api --method GET --paginate --slurp "/repos/<owner>/<repo>/issues/${n}/timeline?per_page=100" > "/tmp/sf-timeline-${n}.json" &&
 jq -n --slurpfile issue "/tmp/sf-issue-${n}.json" --slurpfile pages "/tmp/sf-timeline-${n}.json" '
   $issue[0].created_at as $opened
   | [ $pages[0] | add | .[]
@@ -109,7 +111,7 @@ count divided by `ready`. When `ready` is 0, there is no share to take.
 
 ```sh
 gh api --method GET --paginate --slurp \
-  "/repos/adamsuk/software-factory/issues/events?per_page=100" \
+  "/repos/<owner>/<repo>/issues/events?per_page=100" \
   | jq '
     add
     | [ .[]
@@ -153,7 +155,7 @@ lists each one with `building_at` and `triage_at`.
 
 ```sh
 gh api --method GET --paginate --slurp \
-  "/repos/adamsuk/software-factory/issues/events?per_page=100" \
+  "/repos/<owner>/<repo>/issues/events?per_page=100" \
   | jq '
     add
     | [ .[]

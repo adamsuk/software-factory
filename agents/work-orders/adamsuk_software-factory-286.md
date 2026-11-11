@@ -86,7 +86,7 @@ audit file is deleted or re-scored.
 - [ ] Existing tests, CI/workflow files, lockfiles, and anything under
   `agents/roles/**`, `agents/grok-build.md`, `AGENTS.md`, or `CODEOWNERS` are
   untouched. `scripts/test-watcher-tree.sh` and the literal it checks for are
-  untouched. The touchlineHQ merge-pause wording, its selector, every
+  untouched. The private-org merge-pause wording, its selector, every
   auth/merge control, and every board/project field id stay byte-for-byte as
   they are.
 - [ ] PR body names the test command actually run and states, if any existing
@@ -121,7 +121,7 @@ audit file is deleted or re-scored.
 - `scripts/test-watcher-tree.sh` or the literal it checks for.
 - Any git history rewrite, any repository-visibility change, any licence file
   (a separate, later issue once this merges).
-- Any change to the touchlineHQ merge pause, its selector, any auth/merge
+- Any change to the private-org merge pause, its selector, any auth/merge
   control, or any board/project id.
 - Discussion/comment cleanup; deleting any audit file; re-scoring any Line
   recommendation.

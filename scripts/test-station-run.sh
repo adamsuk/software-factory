@@ -232,7 +232,7 @@ chmod +x "$BIN/opencode"
 mkwo() { printf -- '---\nrepo: %s\nissue: 1\n---\nbody\nrepo: other/ignored\n' "$1" > "$work/wo-$2.md"; }
 run_xr() {
   PATH="$BIN:$PATH" FACTORY_PROVIDER=opencode FAKE_OUT="$OUT" \
-    FACTORY_SELF_REPO=adamsuk/software-factory FACTORY_CLONE_BASE="$xr_base" \
+    FACTORY_SELF_REPO=acme/software-factory FACTORY_CLONE_BASE="$xr_base" \
     bash "$root_dir/scripts/station-run.sh" --work-order "$work/wo-$1.md" builder /dev/null 2>&1
 }
 tree_sum() { (cd "$root_dir" && git ls-files -z | xargs -0 cksum | cksum; git rev-parse HEAD); }
@@ -256,7 +256,7 @@ pass
 tname="the cross-repo clone survives exit and its path is printed on stdout"
 rm -f "$OUT"
 out_stdout=$(PATH="$BIN:$PATH" FACTORY_PROVIDER=opencode FAKE_OUT="$OUT" \
-  FACTORY_SELF_REPO=adamsuk/software-factory FACTORY_CLONE_BASE="$xr_base" \
+  FACTORY_SELF_REPO=acme/software-factory FACTORY_CLONE_BASE="$xr_base" \
   bash "$root_dir/scripts/station-run.sh" --work-order "$work/wo-xr.md" builder /dev/null 2> /dev/null)
 cwd=$(grep '^cwd=' "$OUT" | cut -d= -f2-)
 [[ "$(printf '%s\n' "$out_stdout" | tail -n1)" == "station-run: writable-clone-path $cwd" ]] \
@@ -267,7 +267,7 @@ rm -rf "$(dirname "$cwd")"
 pass
 
 tname="a work order naming this repo still runs in place"
-mkwo adamsuk/software-factory self
+mkwo acme/software-factory self
 rm -f "$OUT"
 run_xr self > /dev/null
 [[ "$(grep '^cwd=' "$OUT" | cut -d= -f2-)" == "$root_dir" ]] || fail "did not run in place"

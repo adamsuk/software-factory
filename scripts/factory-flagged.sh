@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
-# Lists the issues Scott has flagged for pickup on the Software Factory board,
+# Lists the issues the maintainer has flagged for pickup on the Software Factory board,
 # in the order they should be worked.
 #
 # Usage: scripts/factory-flagged.sh [--repo OWNER/REPO] [--label LABEL]
+# The default repo is the first entry of FACTORY_REPOS, which defaults to
+# FACTORY_HOME_REPO (the env value, then GITHUB_REPOSITORY, then this
+# checkout's origin remote, then gh repo view).
 #
 # The flag is the `priority: next` label, set from the board's item pane. It is
 # additive, so it never displaces an issue's single factory:* status
@@ -14,7 +17,21 @@ set -euo pipefail
 
 die() { echo "factory-flagged: $2" >&2; exit "$1"; }
 
-repo="adamsuk/software-factory"
+# FACTORY_HOME_REPO: the env value, then GITHUB_REPOSITORY, then the origin
+# remote of this checkout, then gh repo view. Prints nothing when none resolves.
+factory_home_repo() {
+  local r="${FACTORY_HOME_REPO:-${GITHUB_REPOSITORY:-}}" top url
+  if [[ -z "$r" ]] && top=$(git rev-parse --show-toplevel 2>/dev/null) \
+    && url=$(git -C "$top" remote get-url origin 2>/dev/null); then
+    r=$(printf '%s\n' "$url" | sed -nE 's#\.git/?$##; s#^.*[:/]([^/:]+/[^/:]+)/?$#\1#p')
+  fi
+  if [[ -z "$r" ]]; then
+    r=$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null) || r=""
+  fi
+  printf '%s\n' "$r"
+}
+
+repo=""
 label="priority: next"
 
 while [[ $# -gt 0 ]]; do
@@ -25,11 +42,16 @@ while [[ $# -gt 0 ]]; do
     --label)
       [[ $# -ge 2 ]] || die 2 "missing value for --label"
       label="$2"; shift 2 ;;
-    --help) sed -n '2,13p' "$0"; exit 0 ;;
+    --help) sed -n '2,16p' "$0"; exit 0 ;;
     *) die 2 "unknown argument: $1" ;;
   esac
 done
 
+if [[ -z "$repo" ]]; then
+  read -r repo _ <<< "${FACTORY_REPOS:-}" || true
+  [[ -n "$repo" ]] || repo=$(factory_home_repo)
+  [[ -n "$repo" ]] || die 2 "no repo: pass --repo, or set FACTORY_REPOS or FACTORY_HOME_REPO"
+fi
 [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || die 2 "bad --repo: $repo"
 command -v gh > /dev/null 2>&1 || die 2 "gh not found in PATH"
 command -v jq > /dev/null 2>&1 || die 2 "jq not found in PATH"
@@ -71,4 +93,4 @@ printf '%s' "$json" | jq -r '
 echo
 echo "Work them top down. Each goes through the stations; nothing is picked up"
 echo "automatically (AGENTS.md section 9: only factory:ready may be built, and"
-echo "merging stays with Scott)."
+echo "merging stays with the maintainer)."

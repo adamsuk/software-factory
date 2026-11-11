@@ -12,6 +12,9 @@ trap 'rm -rf "$work"' EXIT
 BIN=$work/bin
 mkdir -p "$BIN"
 export MOCK_GH="$work"
+# Pin the default repo so it never depends on the checkout's remote.
+export FACTORY_HOME_REPO=acme/software-factory
+unset FACTORY_REPOS GITHUB_REPOSITORY
 
 tname="startup"
 fail() { echo "FAIL ($tname): $*" >&2; exit 1; }
@@ -101,6 +104,25 @@ pass
 tname="a bad --repo is a usage error"
 out=$(run --repo nonsense || true)
 [[ "$out" == *"bad --repo"* ]] || fail "expected a usage error"
+pass
+
+tname="the default repo is FACTORY_HOME_REPO"
+rm -f "$work/calls"
+set_issues '[]'
+FACTORY_HOME_REPO=acme/home run > /dev/null
+grep -q -- "--repo acme/home " "$work/calls" || fail "default repo is not FACTORY_HOME_REPO: $(cat "$work/calls")"
+pass
+
+tname="FACTORY_REPOS wins over FACTORY_HOME_REPO"
+rm -f "$work/calls"
+FACTORY_REPOS="acme/first acme/second" run > /dev/null
+grep -q -- "--repo acme/first " "$work/calls" || fail "default repo is not the first FACTORY_REPOS entry: $(cat "$work/calls")"
+pass
+
+tname="--repo wins over the defaults"
+rm -f "$work/calls"
+FACTORY_REPOS="acme/first" run --repo acme/explicit > /dev/null
+grep -q -- "--repo acme/explicit " "$work/calls" || fail "--repo was not used: $(cat "$work/calls")"
 pass
 
 echo "all factory-flagged tests passed"
