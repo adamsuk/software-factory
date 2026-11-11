@@ -3,6 +3,17 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-11 (fence untrusted)
+
+### Added
+
+- `scripts/fence-untrusted.sh`, one deterministic filter for untrusted issue, comment, PR and CI-log text. It reads stdin and prints it inside a labelled fence with a random per-call delimiter, removes control, zero-width and bidi characters, caps the length (20000 characters by default, noted inside the fence), and counts lines that look like instructions to an agent: `flagged: <n>` on stderr, plus a note after the fence for the station. Flagged lines are kept, not removed. `scripts/test-fence-untrusted.sh` covers delimiter injection, zero-width characters, an over-length body and an instruction-like line (#346).
+
+### Changed
+
+- `scripts/run-work-order.sh` fails closed: a missing or unreadable `scripts/fence-untrusted.sh`, or one that exits non-zero (for example no `perl`), stops the run with a clear error before the prompt is composed or grok starts, instead of dropping the issue text (#346). The fence script is run with bash, so the exec bit is not required.
+- `scripts/station-run.sh` passes the work order's quoted issue text and all additional context through the fence before composing the prompt, and `scripts/run-work-order.sh` passes the builder's issue-text body through it inside its existing fixed markers. It builds on the `<<<UNTRUSTED_DATA` fence of `scripts/watcher/watch.sh` and the markers from #281 and #320 rather than replacing them. `scripts/test-untrusted-issue.sh` gains a case proving `station-run.sh --dry-run` output holds issue text only inside the fence (#346).
+
 ## 2026-11-11 (triage answers)
 
 ### Added
