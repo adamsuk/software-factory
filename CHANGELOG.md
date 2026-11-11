@@ -3,6 +3,20 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-11 (criteria resolve)
+
+### Added
+
+- `scripts/check-criteria-resolve.sh <criteria-file> [ROOT | --repo owner/repo]` checks that every `scripts/` or `.github/workflows/` path and every workflow job (`` `name` job ``) a done-check names exists in the repo (or its default branch with `--repo`). A name marked `(new)` is allowed. It prints one missing name per line and exits 1. `scripts/test-check-criteria-resolve.sh` covers it and runs in the `tests` job (#345).
+
+### Fixed
+
+- `scripts/check-criteria-resolve.sh` no longer counts a symlink (a file link, a link to a directory, or one pointing inside the tree) or a path with an empty segment such as `scripts//ok.sh` as a resolving file (#345).
+
+### Changed
+
+- `scripts/triage-ask.sh` runs that check against the target repo's default branch before allowing `factory:ready`. A missing name withholds ready and is listed in the triage-ask comment; an unreadable repo exits 1. `FACTORY_CRITERIA_RESOLVE=0` skips the step. `scripts/test-triage-ask.sh` sets it to 0 in a setup line for its earlier cases (no assertion changed) and gains cases for the new step (#345).
+
 ## 2026-11-11 (fence untrusted)
 
 ### Added

@@ -9,9 +9,14 @@
 # An answer counts only when its author is the approver. The factory app
 # can set the already-asked marker and cannot answer. The script does
 # not add acceptance criteria the owner did not write.
+# shellcheck disable=SC2016,SC2015  # fixtures hold literal backticks
 set -euo pipefail
 
 unset FACTORY_REPOS FACTORY_APPROVER_LOGIN FACTORY_LOGIN
+# The cases below predate the criteria-resolve step (#345) and name stand-in
+# paths such as scripts/test-foo.sh. They run with the step off; the cases at
+# the end turn it on.
+export FACTORY_CRITERIA_RESOLVE=0
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 root=$(cd "$here/.." && pwd)
@@ -31,6 +36,7 @@ mkdir -p "$FAKE_BIN"
 printf '%s\n' '[]' > "$EMPTY"
 export GH_LOG GH_ISSUE_JSON
 export GH_STATUS=0
+export GH_TREE_FILE=$ROOT/tree.txt GH_WORKFLOW_FILE=$ROOT/workflow.yml
 
 tname="startup"
 status=0
@@ -60,6 +66,15 @@ if [[ "${1:-}" == issue && "${2:-}" == view ]]; then
 fi
 if [[ "${1:-}" == issue && "${2:-}" == comment ]]; then
   printf '%s\n' "https://example.test/comment"
+  exit 0
+fi
+# Read-only repo lookups for scripts/check-criteria-resolve.sh --repo.
+if [[ "${1:-}" == api && "${2:-}" == */git/trees/* ]]; then
+  cat "${GH_TREE_FILE:?}"
+  exit 0
+fi
+if [[ "${1:-}" == api && "${2:-}" == */contents/.github/workflows/* ]]; then
+  cat "${GH_WORKFLOW_FILE:?}"
   exit 0
 fi
 echo "unexpected gh: $*" >&2
@@ -1544,6 +1559,82 @@ for lane in "$root/scripts/watcher/watch.sh" "$root/scripts/watcher/watch.new.sh
 done
 printf '%s\n' "ok: $tname"
 
+# Criteria resolve (#345): names in done-checks must exist in the target repo.
+printf '%s\n' scripts/test-colour.sh scripts/test-foo.sh .github/workflows/lint.yml README.md > "$GH_TREE_FILE"
+cat > "$GH_WORKFLOW_FILE" << 'EOF'
+name: Lint
+on: [push]
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - run: true
+EOF
+
+resolve_issue() {
+  # $1: the done-check line to put in an otherwise ready issue body.
+  printf '%s\n' 'The save button stays grey after the form becomes valid.' '' \
+    'Target repo: adamsuk/software-factory' 'Size: M' '' "$1" > "$ROOT/resolve.txt"
+  write_issue "Colour is wrong" "$ROOT/resolve.txt" "$EMPTY"
+}
+
+unset FACTORY_CRITERIA_RESOLVE
+tname="criteria resolve: existing path and job allow ready"
+reset_gh
+resolve_issue '- [ ] `bash scripts/test-colour.sh` passes inside the `tests` job'
+run adamsuk/software-factory 345
+[[ "$status" -eq 0 ]] || fail "expected exit 0, got $status"
+[[ ! -s "$OUT" ]] || fail "allow path printed a comment"
+assert_no_label
+printf '%s\n' "ok: $tname"
+
+tname="criteria resolve: missing path withholds ready and lists it"
+reset_gh
+resolve_issue '- [ ] `bash scripts/test-missing.sh` passes inside the `tests` job'
+run adamsuk/software-factory 345
+[[ "$status" -eq 2 ]] || fail "expected exit 2, got $status"
+grep -F -q '<!-- factory:triage-ask -->' "$OUT" || fail "missing marker"
+grep -qxF '   - `scripts/test-missing.sh`' "$OUT" || fail "missing name not listed"
+grep -F -q 'test-colour' "$OUT" && fail "listed a name that resolves"
+grep -F -q 'The save button' "$OUT" && fail "question comment copied the issue body"
+assert_no_label
+printf '%s\n' "ok: $tname"
+
+tname="criteria resolve: missing workflow job withholds ready"
+reset_gh
+resolve_issue '- [ ] `bash scripts/test-colour.sh` passes inside the `ghost` job'
+run adamsuk/software-factory 345
+[[ "$status" -eq 2 ]] || fail "expected exit 2, got $status"
+grep -qxF '   - `job ghost`' "$OUT" || fail "missing job not listed"
+printf '%s\n' "ok: $tname"
+
+tname="criteria resolve: (new) path allows ready"
+reset_gh
+resolve_issue '- [ ] `scripts/test-brand-new.sh` (new) passes when run with bash'
+run adamsuk/software-factory 345
+[[ "$status" -eq 0 ]] || fail "expected exit 0, got $status"
+printf '%s\n' "ok: $tname"
+
+tname="criteria resolve: already asked prints nothing but still withholds"
+reset_gh
+resolve_issue '- [ ] `bash scripts/test-missing.sh` passes inside the `tests` job'
+printf '%s\n' '<!-- factory:triage-ask -->' 'asked' > "$ROOT/asked.txt"
+comments_from "$ROOT/asked.json" --author software-factory-line "$ROOT/asked.txt"
+write_issue "Colour is wrong" "$ROOT/resolve.txt" "$ROOT/asked.json"
+run adamsuk/software-factory 345
+[[ "$status" -eq 2 ]] || fail "expected exit 2, got $status"
+[[ ! -s "$OUT" ]] || fail "re-posted the question"
+printf '%s\n' "ok: $tname"
+
+tname="criteria resolve: unreadable target repo is exit 1"
+reset_gh
+resolve_issue '- [ ] `bash scripts/test-colour.sh` passes inside the `tests` job'
+mv "$GH_TREE_FILE" "$GH_TREE_FILE.bak"
+run adamsuk/software-factory 345
+mv "$GH_TREE_FILE.bak" "$GH_TREE_FILE"
+[[ "$status" -ne 0 && "$status" -ne 2 ]] || fail "expected exit 1, got $status"
+printf '%s\n' "ok: $tname"
+
 # #347: with FACTORY_TRIAGE_APPLY=1 the approver's numbered answers are
 # written into the body before the ready check. This case uses its own
 # stateful fake gh that also accepts `issue edit --body-file`.
@@ -1591,6 +1682,7 @@ OLD_PATH=$PATH
 PATH="$APPLY_BIN:$OLD_PATH"
 hash -r
 reset_gh
+export FACTORY_CRITERIA_RESOLVE=0
 export FACTORY_TRIAGE_APPLY=1
 write_issue "Colour is wrong" "$ROOT/no-facts.txt" "$EMPTY"
 run adamsuk/software-factory 310
@@ -1611,7 +1703,7 @@ assert "Size: M" in body, body
 PY
 gh_has factory:ready && fail "gh received factory:ready"
 gh_has --add-label && fail "gh received --add-label"
-unset FACTORY_TRIAGE_APPLY
+unset FACTORY_TRIAGE_APPLY FACTORY_CRITERIA_RESOLVE
 PATH=$OLD_PATH
 hash -r
 printf '%s\n' "ok: $tname"

@@ -17,6 +17,11 @@
 # short free-text question. This script does not add acceptance criteria.
 # Exit 1: bad arguments, or the issue could not be read.
 #
+# Before allowing ready, scripts/check-criteria-resolve.sh checks that every
+# scripts/ path and workflow job a done-check names exists in the target repo's
+# default branch (or is marked "(new)"). A miss exits 2 with the missing names;
+# gh failing exits 1. FACTORY_CRITERIA_RESOLVE=0 skips this step (#345).
+#
 # The closed set is FACTORY_REPOS (space-separated owner/repo). Unset or
 # empty keeps the five-repo default. An answer counts only when author.login
 # is FACTORY_APPROVER_LOGIN, which defaults to the owner of the first repo
@@ -90,6 +95,9 @@ def approver_login(repos):
     return "adamsuk"
 
 
+# The done-checks and target repo of the last questions_for call.
+LAST_TASKS = []
+LAST_REPO = []
 REPOS = load_repos()
 APPROVER = approver_login(REPOS)
 REPO_ALT = "|".join(re.escape(name) for name in REPOS)
@@ -298,6 +306,8 @@ def questions_for(owner, answers=()):
     size_answer = latest_answer(answers, 1)
     if size_answer:
         sizes = [size_answer]
+    LAST_TASKS[:] = tasks
+    LAST_REPO[:] = unique(repos)[:1]
     missing = []
     if len(unique(repos)) != 1:
         missing.append("repo")
@@ -393,6 +403,16 @@ def main():
             continue
     missing = questions_for("\n".join(parts), answers)
     if not missing:
+        # Ready by shape. The caller resolves the names the done-checks use
+        # (scripts/check-criteria-resolve.sh) against the target repo.
+        out = os.environ.get("TRIAGE_CRITERIA_OUT") or ""
+        if out:
+            with open(out + "/criteria.txt", "w") as fh:
+                fh.write("\n".join(LAST_TASKS) + "\n")
+            with open(out + "/target", "w") as fh:
+                fh.write((LAST_REPO[0] if LAST_REPO else "") + "\n")
+            with open(out + "/asked", "w") as fh:
+                fh.write("1\n" if asked else "")
         sys.exit(0)
     if not asked:
         sys.stdout.write(render(missing))
@@ -414,5 +434,32 @@ fi
 gh issue view "$num" --repo "$repo" --json title,body,comments > "$work/issue.json" \
   || die 1 "could not read issue"
 rc=0
-python3 "$work/decide.py" < "$work/issue.json" || rc=$?
+TRIAGE_CRITERIA_OUT=$work python3 "$work/decide.py" < "$work/issue.json" || rc=$?
+# Ready by shape: every scripts/ path and workflow job a done-check names must
+# exist in the target repo (or be marked (new)). Otherwise withhold ready and
+# list the missing names. The names are matched against a narrow character set
+# by the check, so no other issue text reaches the comment.
+if [[ $rc -eq 0 && "${FACTORY_CRITERIA_RESOLVE:-1}" != 0 && -s "$work/target" ]]; then
+  crc=0
+  bash "$(dirname "${BASH_SOURCE[0]}")/check-criteria-resolve.sh" "$work/criteria.txt" \
+    --repo "$(cat "$work/target")" > "$work/unresolved.txt" 2> /dev/null || crc=$?
+  case "$crc" in
+    0) ;;
+    1)
+      if [[ ! -s "$work/asked" ]]; then
+        {
+          echo "<!-- factory:triage-ask -->"
+          echo "These done-checks name something that does not exist in $(cat "$work/target"). Fix the name, or mark a file the change adds with (new). This comment does not add acceptance criteria. factory:ready stays off until then."
+          echo
+          echo "1. Which of these should exist?"
+          while IFS= read -r name; do
+            echo "   - \`${name}\`"
+          done < "$work/unresolved.txt"
+        }
+      fi
+      exit 2
+      ;;
+    *) die 1 "could not resolve the done-checks against the target repo" ;;
+  esac
+fi
 exit "$rc"
