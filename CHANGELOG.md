@@ -3,6 +3,14 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-11 (required checks match the ruleset)
+
+### Changed
+
+- `.github/factory.yml` lists `Test assertions` in `required_checks`. The `factory-main`
+  ruleset already required it, so station 04 now gates on the same four checks GitHub
+  enforces, and `gh factory apply` no longer drops it (#323).
+
 ## 2026-11-10 (issue template checks)
 
 ### Added
