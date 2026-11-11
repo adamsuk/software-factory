@@ -170,22 +170,56 @@ release_file stations/github-writes.md "$bundle_dir/GITHUB_WRITES.md" optional
   echo
 } > "$bundle_dir/CONTEXT.md"
 
-# Include work order if provided
+# Untrusted text (AGENTS.md section 1, #346) reaches the prompt only through
+# scripts/fence-untrusted.sh: a random per-call fence, control and zero-width
+# characters removed, a length cap, and a count of instruction-like lines on
+# stderr. Same markers family as watch.sh's write_untrusted_block.
+fence_untrusted() {
+  local fence="$script_root/scripts/fence-untrusted.sh"
+  [[ -f "$fence" ]] || die 2 "missing scripts/fence-untrusted.sh, refusing to pass untrusted text unfenced"
+  bash "$fence" --label "$1"
+}
+
+# fence_file <label> <file>: the file's text through the fence; an empty file
+# adds nothing.
+fence_file() {
+  [[ -s "$2" ]] || return 0
+  fence_untrusted "$1" < "$2"
+}
+
+# Include work order if provided. Everything above its "## Issue text
+# (untrusted)" heading is the foreman's own words and passes through; the
+# section under the heading is quoted issue text and goes through the fence.
+# An order with no such heading has nothing quoted and passes through.
 if [[ -n "$work_order" && -f "$work_order" ]]; then
+  wo_head="$bundle_dir/wo-head.md"
+  wo_issue="$bundle_dir/wo-issue.md"
+  awk -v head_out="$wo_head" -v issue_out="$wo_issue" '
+    BEGIN { found = 0; printf "" > head_out; printf "" > issue_out }
+    !found && ($0 == "## Issue text (untrusted)" || $0 == "## Issue text (untrusted)\r") {
+      found = 1; print > head_out; next
+    }
+    found { print > issue_out; next }
+    { print > head_out }
+  ' "$work_order"
   {
     echo "# Work Order"
     echo
-    cat "$work_order"
+    cat "$wo_head"
+    if [[ -s "$wo_issue" ]]; then
+      echo
+      fence_file "issue text quoted in the work order" "$wo_issue"
+    fi
     echo
   } >> "$bundle_dir/CONTEXT.md"
 fi
 
-# Include additional context
+# Include additional context: issue, comment, PR and CI-log text, all untrusted.
 if [[ -n "$context_path" && -f "$context_path" ]]; then
   {
     echo "# Additional Context"
     echo
-    cat "$context_path"
+    fence_file "additional context" "$context_path"
     echo
   } >> "$bundle_dir/CONTEXT.md"
 elif [[ -n "$context_path" && -d "$context_path" ]]; then
@@ -195,7 +229,7 @@ elif [[ -n "$context_path" && -d "$context_path" ]]; then
     {
       echo "# Context: $(basename "$f")"
       echo
-      cat "$f"
+      fence_file "context file $(basename "$f")" "$f"
       echo
     } >> "$bundle_dir/CONTEXT.md"
   done
