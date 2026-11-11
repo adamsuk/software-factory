@@ -970,6 +970,22 @@ merge_gate() {
   local ready=0 block_kind=""
   [[ $GATE_VERDICT == ok && $GATE_IR == PASS ]] && ready=1
 
+  # The ready bit above is not enough on its own: scripts/ready-gate.sh is the
+  # one owner-ready decision (independent PASS for this exact head, no open
+  # non-outdated thread, green required checks, CodeRabbit on this head for
+  # size/L and XL). A refusal or an unreadable gate means not ready: no merge,
+  # no "Ready for the maintainer", and the missing items go in the reason.
+  if (( ready )); then
+    local rg_out rg_rc=0
+    rg_out=$(run_ready_gate "$repo" "$pr" "$GATE_SHA") || rg_rc=$?
+    if (( rg_rc != 0 )); then
+      GATE_DECISION=no
+      GATE_REASON="ready-gate refused ${GATE_SHORT}: ${rg_out//$'\n'/; }"
+      (( rg_rc == 1 )) && return 1
+      return 3
+    fi
+  fi
+
   # PASS + green + CLEAN on a non-factory branch is never a merge.
   # Tell the maintainer once per PR and head SHA (step_merge, return 4).
   if (( ready )) && [[ $GATE_MERGE == CLEAN && $factory_head -eq 0 ]]; then
@@ -1040,6 +1056,28 @@ merge_gate() {
   GATE_DECISION=no
   GATE_REASON="ir=${GATE_IR} cr=${GATE_CR} checks=${GATE_CHECKS} merge=${GATE_MERGE} protected=${GATE_PROTECTED}"
   return 1
+}
+
+# scripts/ready-gate.sh for REPO PR SHA. Prints the gate's missing-items text
+# and returns its status: 0 ready, 1 refused, anything else could not decide.
+# READY_GATE_CMD lets a test substitute it. A missing script is not ready.
+run_ready_gate() {
+  local repo=$1 pr=$2 sha=$3 cmd="${READY_GATE_CMD:-}" d candidate
+  if [[ -z $cmd ]]; then
+    d=$(dirname "${BASH_SOURCE[0]}")
+    for candidate in "${d}/../ready-gate.sh" "${d}/ready-gate.sh"; do
+      if [[ -x $candidate ]]; then
+        cmd=$candidate
+        break
+      fi
+    done
+  fi
+  if [[ -z $cmd ]]; then
+    echo "ready-gate.sh not found"
+    return 7
+  fi
+  timeout 180 "$cmd" --repo "$repo" --pr "$pr" --sha "$sha" \
+    --ir-result "$(ir_result_file "$repo" "$pr" "$sha")" 2>&1
 }
 
 # 0 when the PR body closes an issue listed in .merge_protected_issues

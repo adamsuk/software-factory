@@ -27,6 +27,11 @@ WORK="${FACTORY_WATCH_ROOT}/work"
 LOG="${FACTORY_WATCH_ROOT}/watch.log"
 
 mkdir -p "$work/bin"
+# ready-gate.sh has its own suite (test-ready-gate.sh). Here it is stubbed to
+# pass so this suite keeps testing only its own script.
+printf '#!/usr/bin/env bash\nexit 0\n' > "$work/ready-gate-stub.sh"
+chmod +x "$work/ready-gate-stub.sh"
+export READY_GATE_CMD="$work/ready-gate-stub.sh"
 cat > "$work/bin/gh" << 'ENDGH'
 #!/bin/bash
 set -u
@@ -906,6 +911,48 @@ t_ir_record() {
   [[ $(jq -r '.agreed_behaviour' "$dest") == "not available" ]] || fail "missing-output fallback lacks placeholder"
 }
 
+# The watcher's ready bit (green checks plus independent PASS) is not enough:
+# scripts/ready-gate.sh refuses first. A refused or unreadable gate means no
+# merge, no "Ready for the maintainer" note, and the missing items in the
+# reason. Ordinary and sensitive pull requests both stop.
+t_ready_gate_refuses() {
+  local repo=acme/software-factory real=$READY_GATE_CMD
+  t_budget 0 '[]' '[]'
+  printf '#!/usr/bin/env bash\necho "%s"\nexit 1\n' \
+    "unresolved review thread (not outdated) on README.md by coderabbitai: Minor" \
+    > "$work/ready-gate-refuse.sh"
+  chmod +x "$work/ready-gate-refuse.sh"
+  READY_GATE_CMD="$work/ready-gate-refuse.sh"
+  t_prepare_merge "$repo" 21 CLEAN "" README.md "ordinary" "[]" ""
+  t_gate 1 "$repo" 21
+  [[ $GATE_REASON == *"ready-gate refused"*"unresolved review thread"* ]] || fail "reason lacks the missing items: ${GATE_REASON}"
+  step_merge
+  t_no_merge
+  t_prepare_merge "$repo" 22 CLEAN "" AGENTS.md "no close" "[]" ""
+  t_gate 1 "$repo" 22
+  step_merge
+  t_no_merge
+  [[ ! -e ${STATE}/ready-acme_software-factory-22-${SHA_HEAD} ]] || fail "refused head was announced as ready"
+  # A gate that cannot read is a failed read, never a pass.
+  printf '#!/usr/bin/env bash\nexit 7\n' > "$work/ready-gate-unreadable.sh"
+  chmod +x "$work/ready-gate-unreadable.sh"
+  READY_GATE_CMD="$work/ready-gate-unreadable.sh"
+  t_prepare_merge "$repo" 23 CLEAN "" README.md "ordinary" "[]" ""
+  t_gate 3 "$repo" 23
+  step_merge
+  t_no_merge
+  # The gate is handed the exact head and the watcher's per-head result file.
+  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" > "%s/ready-gate-args.txt"\nexit 0\n' "$work" \
+    > "$work/ready-gate-args.sh"
+  chmod +x "$work/ready-gate-args.sh"
+  READY_GATE_CMD="$work/ready-gate-args.sh"
+  t_prepare_merge "$repo" 24 CLEAN "" README.md "ordinary" "[]" ""
+  t_gate 0 "$repo" 24
+  grep -F -q -- "--repo ${repo} --pr 24 --sha ${SHA_HEAD} --ir-result ${STATE}/ireview-result-" "$work/ready-gate-args.txt" \
+    || fail "gate not called with head and result file: $(cat "$work/ready-gate-args.txt")"
+  READY_GATE_CMD=$real
+}
+
 cases=(
   t_helpers
   t_dismiss_set
@@ -917,6 +964,7 @@ cases=(
   t_merge_sensitive
   t_merge_allow_blocked
   t_merge_allow_clean
+  t_ready_gate_refuses
   t_focus_rules
   t_steps_focus
   t_plan_focus

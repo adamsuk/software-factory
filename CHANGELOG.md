@@ -9,6 +9,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - `.github/workflows/metrics.yml` runs the factory label, pull request and delivery metric scripts every Monday (and on demand) and opens a pull request adding `metrics/<date>.md`. `metrics/2026-11-11.md` adds a `## Baseline` section: the pre-agent state is not measured, and the first week (`metrics/2026-10-26.md`) is the reference. `scripts/test-metrics-workflow.sh` checks the workflow, and the `tests` job runs it with the other suites (#340).
 
+## 2026-11-11 (ready gate)
+
+### Added
+
+- `scripts/ready-gate.sh`, one read-only owner-ready check. It reads the pull request's current head and exits 0 only when an independent-review PASS is recorded for that exact head SHA, no unresolved non-outdated review thread is open (any author), required checks are green (the `scripts/pr-status.sh` rule), and, on `size/L` or `size/XL`, CodeRabbit has a review of that same head. Otherwise it prints each missing item on its own line and exits non-zero (#326).
+
+### Changed
+
+- The gate trusts an independent-review comment only from the approver (`FACTORY_APPROVER_LOGIN`, else the repo owner) or `software-factory-line`. A marker comment from anyone else is ignored and reported as from an unrecognised author. The watcher result file path is unchanged (#326).
+- `scripts/watcher/watch.sh`, `scripts/watcher/watch.new.sh`, `scripts/review-issue.sh` and `scripts/station-post.sh` call the gate before `factory:merge`, the needs-scott "Ready for the maintainer" note, or a merge. On a refusal they report the missing items and do none of those. `scripts/pr-status.sh` and `scripts/watcher/board-sync.sh` are unchanged (#326).
+- The `test-station-post.sh`, `test-review-issue.sh` and `test-watcher-dismiss.sh` suites stub the gate with a setup line (no assertion changed), and `test-watcher-dismiss.sh` gains a case for a refused gate (#326).
+
 ## 2026-11-11 (ruleset drift pin)
 
 ### Fixed
