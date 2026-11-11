@@ -86,4 +86,4 @@ The maintainer fills a row only after running that drill. Leave Date, Outcome an
 | Approach | Date | Outcome | Operator |
 | --- | --- | --- | --- |
 | GitHub Pages | 2026-11-11 | Practised on `adamsuk/line`. Cancelled the two waiting deploy runs (queue cleared 08:55 UTC), reran known-good run `41638961238` (`371d2ff`), approved `github-pages`, deploy succeeded (08:57 UTC). Restored main `bb1a7a1` by rerunning `42776879128` (08:59 UTC). Live site content not checked. | adamsuk |
-| Cloudflare Worker | | | |
+| Cloudflare Worker | 2026-11-11 | Practised on `activity-feed` with `wrangler rollback`. Rolled back `d4ef7174` to the previous version `f0bd0eca` (100% of traffic, 10:43 UTC); `https://activities.sradams.co.uk/feed.json` returned 200 before, during and after. Rolled forward to `d4ef7174` (10:43 UTC). | adamsuk |
