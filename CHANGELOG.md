@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-11 (Worker rollback drill)
+
+### Changed
+
+- Rollback runbook practise log records the activity-feed Worker drill (#309).
+
 ## 2026-11-11 (merge queue ready)
 
 ### Changed
