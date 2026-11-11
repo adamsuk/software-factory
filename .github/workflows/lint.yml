@@ -1,6 +1,7 @@
 name: Lint
 
 on:
+  merge_group:
   pull_request:
     # labeled/unlabeled so the Test assertions job re-runs when the maintainer adds or
     # removes the approved-test-change override.

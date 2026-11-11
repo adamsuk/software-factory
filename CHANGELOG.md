@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-11 (merge queue ready)
+
+### Changed
+
+- The Changelog and Lint workflows now also trigger on `merge_group`, so required checks report on a merge queue's temporary branch. Without this, enabling the queue would leave every required check pending and stall merges (#312).
+
 ## 2026-11-11 (required checks match the ruleset)
 
 ### Changed
