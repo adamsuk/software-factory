@@ -576,6 +576,11 @@ t_issue_line() {
 t_steps_focus() {
   local line_a line_b
   DRY=1
+  # Fixture only: step_build reads the approver's comments with gh issue view,
+  # and a failed read skips the issue. These two issues have no comments.
+  mkdir -p "$GH_ROOT/issue"
+  jq -n '{comments:[]}' > "$GH_ROOT/issue/$(t_slug acme/software-factory)_199.json"
+  jq -n '{comments:[]}' > "$GH_ROOT/issue/$(t_slug acme/gh-factory)_10.json"
   t_budget 0 '["acme/software-factory#199"]' '[]'
   line_a=$(t_issue_line acme/software-factory 199 factory:ready $'Target repo: acme/software-factory\n')
   line_b=$(t_issue_line acme/gh-factory 10 factory:ready "no target")

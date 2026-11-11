@@ -11,6 +11,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   ruleset already required it, so station 04 now gates on the same four checks GitHub
   enforces, and `gh factory apply` no longer drops it (#323).
 
+## 2026-11-10
+
+### Fixed
+
+- The triage question is not posted again once the factory app has commented with `<!-- factory:triage-ask -->`. That marker counts from `software-factory-line` or `software-factory-line[bot]`, and from `FACTORY_LOGIN` when set (the value as given, and the same value with a trailing `[bot]` removed or added). The app comment is not an answer, so it cannot supply the target repo, the size, the done-checks, or the problem statement. A stranger's copy of the marker still does not silence the questions. The maintainer's comments still answer, and they still count as the marker (#310).
+- Build reads `Target repo` from the issue body and from the maintainer's comments (`FACTORY_APPROVER_LOGIN`). The same target named in both places is still one target. Two different targets stay ambiguous and the build stays blocked. A comment from the factory app, or from anyone other than the maintainer, does not supply the target. Both watchers follow this rule (#310).
+- Review fixes for the triage ask (#310). The issue title reaches intake only inside the untrusted fence, and issue text can no longer close the outer `<<<UNTRUSTED_DATA` block. The watcher passes `FACTORY_LOGIN` to `scripts/triage-ask.sh`, so a non-default app login no longer re-posts the question every cycle. A failed read of the maintainer's comments is no longer taken for "no comments": build and triage leave the issue for the next cycle and neither block nor build. `scripts/triage-ask.sh` reads `Target repo:` the way the watcher does (any case, first token, trailing text allowed). For target repo and size, the maintainer's latest comment wins over the issue body and over their earlier comments; two different values in the body with no such comment stay ambiguous. Build is unchanged: a maintainer comment naming a different target from the body still blocks the build.
+
 ## 2026-11-10 (issue template checks)
 
 ### Added
@@ -49,6 +57,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Generalised the rollback runbook by deployment approach (GitHub Pages and
   Cloudflare Worker): `docs/runbooks/rollback-pages-and-workers.md` (#309).
+
+## 2026-11-09
+
+### Added
+
+- Triage asks the owner before `factory:ready`. When a ticket is ambiguous, or its done-checks are missing or not checkable, `scripts/triage-ask.sh` writes a numbered comment and the watcher posts it and withholds `factory:ready`. Target repo and size are multiple choice. Any other missing fact is a short free-text question. The owner's answers stay on the issue, and the script leaves acceptance criteria for the owner to write (#310).
+
+### Changed
+
+- Readiness takes the target-repo closed set from `FACTORY_REPOS`, and keeps the five-repo list when that variable is unset or empty. `Size: M.` is accepted. A plain-prose done-check passes when it names a test, a command, a file path, or a concrete outcome. Only comments by `FACTORY_APPROVER_LOGIN` count as answers. The watcher runs that ask before it clones, and it feeds the approver's comment bodies into intake and the work-order prompt (#310).
 
 ## 2026-11-09 (rollback runbook)
 
