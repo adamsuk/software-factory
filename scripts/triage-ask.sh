@@ -93,8 +93,12 @@ def approver_login(repos):
 REPOS = load_repos()
 APPROVER = approver_login(REPOS)
 REPO_ALT = "|".join(re.escape(name) for name in REPOS)
-TARGET_RE = re.compile(rf"^[ \t]*Target repo:[ \t]*({REPO_ALT})[ \t]*$")
-BARE_REPO_RE = re.compile(rf"^[ \t]*({REPO_ALT})[ \t]*$")
+# The watcher's target_repo_lines lowercases the line, takes the first token
+# after "target repo:" and strips punctuation from its ends. Same rule here,
+# so an answer the build accepts is an answer this script accepts.
+REPO_BY_LOWER = {name.lower(): name for name in REPOS}
+TARGET_RE = re.compile(r"^[ \t]*Target repo:[ \t]*(\S+)", re.I)
+BARE_REPO_RE = re.compile(rf"^[ \t]*({REPO_ALT})[ \t]*$", re.I)
 SIZE_RE = re.compile(r"^[ \t]*Size:[ \t]*([SML])[ \t]*(?:\.[ \t]*)?$")
 BARE_SIZE_RE = re.compile(r"^[ \t]*([SML])[ \t]*(?:\.[ \t]*)?$")
 TASK_RE = re.compile(r"^[ \t]*(?:[-*]|\d+\.)[ \t]+\[[ xX]\][ \t]*(.*)$")
@@ -220,16 +224,21 @@ def checkable(text):
     return False
 
 
+def known_repo(token):
+    # The FACTORY_REPOS spelling of a repo token, or None outside the set.
+    token = re.sub(r"^[^a-z0-9]+|[^a-z0-9]+$", "", token.lower())
+    return REPO_BY_LOWER.get(token)
+
+
 def line_facts(line):
     repos = []
     sizes = []
     target = TARGET_RE.match(line)
-    if target:
-        repos.append(target.group(1))
-    else:
-        bare_repo = BARE_REPO_RE.match(line)
-        if bare_repo:
-            repos.append(bare_repo.group(1))
+    bare_repo = None if target else BARE_REPO_RE.match(line)
+    found = target or bare_repo
+    name = known_repo(found.group(1)) if found else None
+    if name:
+        repos.append(name)
     size = SIZE_RE.match(line)
     if size:
         sizes.append(size.group(1))
@@ -248,7 +257,21 @@ def ambiguous(prose):
     return VAGUE_RE.match(squashed) is not None
 
 
-def questions_for(owner):
+def latest_answer(answers, index):
+    # The last Target repo (index 0) or Size (index 1) the approver wrote in
+    # a comment, or None. Comments are in posting order.
+    found = None
+    for text in answers:
+        for line in text.split("\n"):
+            if MARKER in line or TASK_RE.match(line):
+                continue
+            values = line_facts(line)[index]
+            if values:
+                found = values[-1]
+    return found
+
+
+def questions_for(owner, answers=()):
     repos = []
     sizes = []
     tasks = []
@@ -266,6 +289,15 @@ def questions_for(owner):
         if line_repos or line_sizes or HEADING_RE.match(line):
             continue
         prose.append(line)
+    # The approver's latest comment value settles target repo and size. It
+    # wins over the body and over the approver's earlier comments. Without
+    # one, two different values stay ambiguous.
+    repo_answer = latest_answer(answers, 0)
+    if repo_answer:
+        repos = [repo_answer]
+    size_answer = latest_answer(answers, 1)
+    if size_answer:
+        sizes = [size_answer]
     missing = []
     if len(unique(repos)) != 1:
         missing.append("repo")
@@ -343,6 +375,7 @@ def main():
         raw_comments = []
     asked = False
     parts = [norm(body)]
+    answers = []
     for item in raw_comments:
         text = norm(comment_body(item))
         if approver_comment(item):
@@ -350,6 +383,7 @@ def main():
                 asked = True
                 continue
             parts.append(text)
+            answers.append(text)
             continue
         # The app may post the marker. Skip the body either way so a bot
         # comment cannot supply Target repo, Size, done-checks, or the problem.
@@ -357,7 +391,7 @@ def main():
             if MARKER in text:
                 asked = True
             continue
-    missing = questions_for("\n".join(parts))
+    missing = questions_for("\n".join(parts), answers)
     if not missing:
         sys.exit(0)
     if not asked:
