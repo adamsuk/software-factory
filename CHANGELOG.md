@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-11 (ruleset drift pin)
+
+### Fixed
+
+- The Ruleset drift workflow pins gh-factory at `45fa314` instead of v0.6.0. v0.6.0 predates the baseline fix (gh-factory#47), so it compared the live rulesets with an outdated baseline and reported `required_status_checks` drift on all five repos. At `45fa314` the plan shows no ruleset changes.
+
 ## 2026-11-11 (Worker rollback drill)
 
 ### Changed
