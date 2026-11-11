@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-11 (weekly metrics)
+
+### Added
+
+- `.github/workflows/metrics.yml` runs the factory label, pull request and delivery metric scripts every Monday (and on demand) and opens a pull request adding `metrics/<date>.md`. `metrics/2026-11-11.md` adds a `## Baseline` section: the pre-agent state is not measured, and the first week (`metrics/2026-10-26.md`) is the reference. `scripts/test-metrics-workflow.sh` checks the workflow, and the `tests` job runs it with the other suites (#340).
+
 ## 2026-11-11 (ruleset drift pin)
 
 ### Fixed
