@@ -275,7 +275,26 @@ apply_label() {
     --add-label "$add" > /dev/null || die 7 "could not edit labels"
 }
 
+# The one owner-ready decision (scripts/ready-gate.sh) runs on the pull
+# request's current head before factory:merge. READY_GATE_CMD lets a test
+# substitute it; the factory host never sets it. A refusal prints the missing
+# items on stderr and leaves the labels alone. A gate that cannot read is a
+# failed read (exit 7), never a pass.
 apply_merge() {
+  local pr_number gate_out gate_rc=0 gate_dir
+  gate_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  pr_number=$(printf '%s\n' "$pr_json" | jq -r \
+    'if (.number | type) == "number" then .number else "" end') \
+    || die 7 "could not read pull request"
+  [[ "$pr_number" =~ ^[0-9]+$ ]] || die 7 "could not read pull request"
+  gate_out=$("${READY_GATE_CMD:-$gate_dir/ready-gate.sh}" --repo "$repo" --pr "$pr_number") \
+    || gate_rc=$?
+  if [[ "$gate_rc" -eq 1 ]]; then
+    printf '%s\n' "$gate_out" >&2
+    finish wait
+  elif [[ "$gate_rc" -ne 0 ]]; then
+    die 7 "ready-gate could not decide"
+  fi
   apply_label "factory:merge"
   finish merge
 }

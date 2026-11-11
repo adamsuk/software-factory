@@ -10,6 +10,11 @@ trap 'rm -rf "$root"' EXIT
 MOCK=$root/mock
 BIN=$root/bin
 mkdir -p "$MOCK" "$BIN"
+# ready-gate.sh has its own suite (test-ready-gate.sh). Here it is stubbed to
+# pass so this suite keeps testing only its own script.
+printf '#!/usr/bin/env bash\nexit 0\n' > "$root/ready-gate-stub.sh"
+chmod +x "$root/ready-gate-stub.sh"
+export READY_GATE_CMD="$root/ready-gate-stub.sh"
 
 tname="startup"
 fail() { echo "FAIL ($tname): $*" >&2; exit 1; }
