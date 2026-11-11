@@ -119,15 +119,25 @@ for wf in "$root"/.github/workflows/*.yml "$root"/.github/workflows/*.yaml; do
 done
 shopt -u nullglob
 
+# 0 when rel is a regular file under root. Empty, "." and ".." segments are
+# rejected, and so is any symlink among the components (a link inside root
+# that points inside root does not resolve either), so a link cannot fake a
+# hit. The resolved real path must also stay inside the real root.
 regular_file_under_root() {
-  local rel=$1 part
+  local rel=$1 part cur=$root real realroot
   local -a parts=()
+  [[ "$rel" != */ && "$rel" != *//* ]] || return 1
   local IFS=/
   read -r -a parts <<< "$rel" || return 1
   for part in "${parts[@]}"; do
     [[ -n "$part" && "$part" != "." && "$part" != ".." ]] || return 1
+    cur=$cur/$part
+    [[ ! -L "$cur" ]] || return 1
   done
-  [[ -f "$root/$rel" ]]
+  [[ -f "$cur" ]] || return 1
+  real=$(readlink -f -- "$cur") || return 1
+  realroot=$(readlink -f -- "$root") || return 1
+  [[ "$real" == "$realroot"/* ]]
 }
 
 job_exists() {
@@ -140,7 +150,7 @@ job_exists() {
 }
 
 # A path: scripts/... or .github/workflows/..., not glued to an identifier.
-path_re='(^|[^A-Za-z0-9_./-])((scripts|\.github/workflows)/[A-Za-z0-9_.]([A-Za-z0-9._/-]*[A-Za-z0-9_])?)'
+path_re='(^|[^A-Za-z0-9_./-])((scripts|\.github/workflows)/[A-Za-z0-9_./]([A-Za-z0-9._/-]*[A-Za-z0-9_])?)'
 # A job: `name` job  or  job `name`.
 job_a_re='`([A-Za-z_][A-Za-z0-9_. /-]*)`[[:space:]]+job([^A-Za-z0-9_]|$)'
 job_b_re='(^|[^A-Za-z0-9_])job[[:space:]]+`([A-Za-z_][A-Za-z0-9_. /-]*)`'

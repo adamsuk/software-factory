@@ -83,6 +83,25 @@ mkdir -p "$TREE/scripts/sub"
 run 1 '- [ ] see scripts/sub'
 printf '%s\n' "ok: $tname"
 
+tname="symlinks and empty segments do not resolve"
+mkdir -p "$ROOT/outside/dir"
+: > "$ROOT/outside/real.sh"
+: > "$ROOT/outside/dir/inner.sh"
+: > "$TREE/scripts/ok.sh"
+ln -s "$ROOT/outside/real.sh" "$TREE/scripts/link-out.sh"
+ln -s "$ROOT/outside/dir" "$TREE/scripts/linkdir"
+ln -s ok.sh "$TREE/scripts/link-in.sh"
+run 1 '- [ ] see scripts/link-out.sh'
+[[ "$(cat "$OUT")" == "scripts/link-out.sh" ]] || fail "file symlink to outside resolved"
+run 1 '- [ ] see scripts/linkdir/inner.sh'
+[[ "$(cat "$OUT")" == "scripts/linkdir/inner.sh" ]] || fail "directory symlink to outside resolved"
+run 1 '- [ ] see scripts/link-in.sh'
+[[ "$(cat "$OUT")" == "scripts/link-in.sh" ]] || fail "symlink inside root resolved"
+run 0 '- [ ] see scripts/ok.sh'
+run 1 '- [ ] see scripts//ok.sh'
+[[ "$(cat "$OUT")" == "scripts//ok.sh" ]] || fail "empty segment resolved"
+printf '%s\n' "ok: $tname"
+
 tname="criteria text is data"
 run 1 '- [ ] `scripts/x$(touch '"$ROOT"'/canary).sh` exits 0'
 [[ ! -e "$ROOT/canary" ]] || fail "criteria text was executed"
