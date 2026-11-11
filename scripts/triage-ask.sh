@@ -422,6 +422,15 @@ def main():
 if __name__ == "__main__":
     main()
 PY
+# Apply the approver's numbered answers to the body first (#347), so the
+# ready check below reads them. Opt-in with FACTORY_TRIAGE_APPLY=1: it edits
+# the issue body, which a read-only caller must not do. Exit 2 means there was
+# nothing to apply.
+if [[ ${FACTORY_TRIAGE_APPLY:-0} == 1 ]]; then
+  apply_rc=0
+  bash "$(dirname "${BASH_SOURCE[0]}")/triage-apply-answers.sh" "$repo" "$num" >&2 || apply_rc=$?
+  [[ $apply_rc -eq 0 || $apply_rc -eq 2 ]] || die 1 "could not apply answers"
+fi
 gh issue view "$num" --repo "$repo" --json title,body,comments > "$work/issue.json" \
   || die 1 "could not read issue"
 rc=0

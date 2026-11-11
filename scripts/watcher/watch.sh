@@ -5154,7 +5154,7 @@ step_triage() {
     ask_rc=0
     # FACTORY_LOGIN is a shell variable here. The ask script reads it from
     # its environment to recognise the app's own question comment.
-    FACTORY_LOGIN="${FACTORY_LOGIN:-}" bash "$ask_script" "$repo" "$num" > "$ask_out" || ask_rc=$?
+    FACTORY_LOGIN="${FACTORY_LOGIN:-}" FACTORY_TRIAGE_APPLY=1 bash "$ask_script" "$repo" "$num" > "$ask_out" || ask_rc=$?
     if (( ask_rc == 2 )); then
       if [[ -s "$ask_out" ]]; then
         if timeout 60 gh issue comment "$num" -R "$repo" --body-file "$ask_out" > /dev/null; then
