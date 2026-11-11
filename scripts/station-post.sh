@@ -6,6 +6,11 @@ set -euo pipefail
 
 die() { echo "station-post: $2" >&2; exit "$1"; }
 
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# The one owner-ready decision (scripts/ready-gate.sh). READY_GATE_CMD lets a
+# test substitute it; the factory host never sets it.
+ready_gate() { "${READY_GATE_CMD:-$here/ready-gate.sh}" "$@"; }
+
 usage() {
   cat >&2 <<'EOF'
 Usage: scripts/station-post.sh [--dry-run] <command> [options]
@@ -351,6 +356,15 @@ cmd_verdict() {
     fi
     swap_to "factory:blocked" "$json"
     return 0
+  fi
+  local gate_out gate_rc=0
+  gate_out=$(ready_gate --repo "$repo" --pr "$pr" --sha "$sha") || gate_rc=$?
+  if [[ "$gate_rc" -ne 0 ]]; then
+    printf '%s\n' "$gate_out" >&2
+    if [[ "$gate_rc" -eq 1 ]]; then
+      die 4 "${repo}#${pr} is not owner-ready (ready-gate, above); not moving to factory:merge"
+    fi
+    die 7 "ready-gate could not decide for ${repo}#${pr}; not moving to factory:merge"
   fi
   swap_to "factory:merge" "$json"
   echo "not merged: ${repo}#${pr} is factory:merge; merging stays in AGENTS.md section 6"

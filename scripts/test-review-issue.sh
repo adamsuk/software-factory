@@ -12,6 +12,11 @@ FAKE_BIN=$ROOT/bin
 GH_LOG=$ROOT/gh.log
 GH_FACTORY_FILE=$ROOT/factory.yml
 mkdir -p "$FAKE_BIN"
+# ready-gate.sh has its own suite (test-ready-gate.sh). Here it is stubbed to
+# pass so this suite keeps testing only its own script.
+printf '#!/usr/bin/env bash\nexit 0\n' > "$ROOT/ready-gate-stub.sh"
+chmod +x "$ROOT/ready-gate-stub.sh"
+export READY_GATE_CMD="$ROOT/ready-gate-stub.sh"
 : > "$GH_LOG"
 export GH_LOG GH_FACTORY_FILE
 # The approver defaults to the FACTORY_HOME_REPO owner. Pin it so the result
