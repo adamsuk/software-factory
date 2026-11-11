@@ -362,6 +362,6 @@ rc=0; run_fc || rc=$?
 [[ "$rc" != "0" ]] || fail "failing fence script did not fail the run"
 if grep -Fq 'FC_BODY_TEXT' "$fc/out.txt"; then fail "unfenced issue text reached the output"; fi
 grep -Fq 'refusing to run' "$fc/err.txt" || fail "no clear error for the failing fence script"
-pass
+echo "ok: fail-closed"
 
 echo "ok  run-work-order fence tests"
