@@ -18,7 +18,8 @@
 #
 # The only lines this script writes are `Target repo:` and `Size:` in the
 # issue body, plus the `<!-- factory:triage-ask applied -->` marker. Other
-# lines are copied through unchanged. The edit is `gh issue edit --body-file`.
+# lines are copied through unchanged. Only the first such line outside a code
+# fence is replaced, and the body's line endings (LF or CRLF) are kept. The edit is `gh issue edit --body-file`.
 #
 # Exit 0: the body was changed (answers applied).
 # Exit 2: nothing to apply (no approver answer, or the body already says it).
@@ -92,23 +93,34 @@ def answers_in(text):
     return repo, size
 
 
-def set_line(lines, pattern, new):
-    # Replace every matching line with the one answer. Add it when absent.
+def set_line(lines, pattern, new, eol):
+    # Replace only the FIRST matching line outside a code fence (``` or ~~~).
+    # Fenced examples and later prose mentions stay as written. Add the line
+    # at the end when no line outside a fence matches.
     out = []
     hit = False
+    fence = None
     for line in lines:
-        if pattern.match(line):
-            eol = "\r\n" if line.endswith("\r\n") else "\n"
+        mark = re.match(r"^[ \t]*(`{3,}|~{3,})", line)
+        if mark:
+            char = mark.group(1)[0]
+            if fence is None:
+                fence = char
+            elif fence == char:
+                fence = None
+            out.append(line)
+            continue
+        if fence is None and not hit and pattern.match(line):
             out.append(new + eol)
             hit = True
         else:
             out.append(line)
     if not hit:
         if out and not out[-1].endswith("\n"):
-            out[-1] += "\n"
+            out[-1] += eol
         if out and out[-1].strip():
-            out.append("\n")
-        out.append(new + "\n")
+            out.append(eol)
+        out.append(new + eol)
     return out
 
 
@@ -141,18 +153,19 @@ def main():
         size = s or size
     if not repo and not size:
         sys.exit(2)
-    lines = body.splitlines(keepends=True)
+    eol = "\r\n" if "\r\n" in body else "\n"
+    lines = re.findall(r"[^\n]*\n|[^\n]+", body)
     if repo:
-        lines = set_line(lines, BODY_TARGET_RE, f"Target repo: {repo}")
+        lines = set_line(lines, BODY_TARGET_RE, f"Target repo: {repo}", eol)
     if size:
-        lines = set_line(lines, BODY_SIZE_RE, f"Size: {size}")
+        lines = set_line(lines, BODY_SIZE_RE, f"Size: {size}", eol)
     new = "".join(lines)
     if new == body:
         sys.exit(2)
     if APPLIED not in new:
         if not new.endswith("\n"):
-            new += "\n"
-        new += "\n" + APPLIED + "\n"
+            new += eol
+        new += eol + APPLIED + eol
     sys.stdout.write(new)
 
 

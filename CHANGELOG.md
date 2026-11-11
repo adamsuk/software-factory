@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - `scripts/triage-apply-answers.sh` writes the approver's numbered answers (`Target repo:` and `Size:`) from the issue comments into those two lines of the issue body, adds the `<!-- factory:triage-ask applied -->` marker, and exits 0 when applied or 2 when there is nothing to apply. Only the approver (`FACTORY_APPROVER_LOGIN`, else the repo owner) is read; comment text is parsed as data. `scripts/triage-ask.sh` runs it before the ready check when `FACTORY_TRIAGE_APPLY=1`. `scripts/test-triage-apply-answers.sh` and a new `scripts/test-triage-ask.sh` case cover it, and the `tests` job picks both up (#347).
+- `triage-apply-answers.sh` rewrites only the first `Target repo:` and `Size:` line outside code fences and keeps the body's line endings. The watcher's triage ask step (`watch.sh` and `watch.new.sh`) sets `FACTORY_TRIAGE_APPLY=1` (#347).
 
 ## 2026-11-11 (weekly metrics)
 

@@ -186,6 +186,83 @@ issue_body | grep -qxF 'Target repo: adamsuk/activity-feed' || fail "latest repo
 issue_body | grep -qxF 'Size: S' || fail "latest size not used"
 printf '%s\n' "ok: $tname"
 
+tname="fenced decoys and prose mentions are untouched"
+cat > "$ROOT/fenced.txt" << 'EOF'
+Example of the format:
+
+```
+Target repo: example/x
+Size: S
+```
+
+Some prose, then the real lines.
+Target repo: adamsuk/gh-factory
+Size: L
+
+~~~
+Size: S
+~~~
+Later prose repeats it:
+Size: L
+EOF
+write_issue "$ROOT/fenced.txt" "$ROOT/c1.json"
+run adamsuk/software-factory 347
+[[ $status -eq 0 ]] || fail "expected exit 0, got $status"
+issue_body > "$ROOT/fenced-new.txt"
+python3 - "$ROOT/fenced-new.txt" << 'PY' || fail "fence or later line rewritten"
+import sys
+lines = open(sys.argv[1]).read().split("\n")
+assert lines[3:5] == ["Target repo: example/x", "Size: S"], lines
+assert lines[8] == "Target repo: adamsuk/line", lines
+assert lines[9] == "Size: M", lines
+assert lines[11:14] == ["~~~", "Size: S", "~~~"], lines
+assert lines[14:16] == ["Later prose repeats it:", "Size: L"], lines
+PY
+write_issue "$ROOT/fenced.txt" "$ROOT/c1.json"
+python3 - "$GH_ISSUE_JSON" << 'PY'
+import json, pathlib, sys
+p = pathlib.Path(sys.argv[1])
+d = json.loads(p.read_text())
+d["body"] = "```\nTarget repo: example/x\nSize: S\n```\n"
+p.write_text(json.dumps(d))
+PY
+run adamsuk/software-factory 347
+[[ $status -eq 0 ]] || fail "fence-only body: expected exit 0, got $status"
+issue_body | grep -qxF 'Target repo: example/x' || fail "fenced decoy rewritten"
+issue_body | grep -qxF 'Target repo: adamsuk/line' || fail "line not appended outside the fence"
+printf '%s\n' "ok: $tname"
+
+tname="CRLF body stays CRLF"
+python3 - "$GH_ISSUE_JSON" << 'PY'
+import json, pathlib, sys
+p = pathlib.Path(sys.argv[1])
+d = json.loads(p.read_text())
+d["body"] = "Problem text.\r\nTarget repo: adamsuk/gh-factory\r\nSize: L"
+p.write_text(json.dumps(d))
+PY
+run adamsuk/software-factory 347
+[[ $status -eq 0 ]] || fail "expected exit 0, got $status"
+python3 - "$GH_ISSUE_JSON" << 'PY' || fail "line endings not kept"
+import json, sys
+b = json.load(open(sys.argv[1]))["body"]
+assert b == "Problem text.\r\nTarget repo: adamsuk/line\r\nSize: M\r\n\r\n<!-- factory:triage-ask applied -->\r\n", repr(b)
+PY
+python3 - "$GH_ISSUE_JSON" << 'PY'
+import json, pathlib, sys
+p = pathlib.Path(sys.argv[1])
+d = json.loads(p.read_text())
+d["body"] = "Problem text.\r\nNo facts here"
+p.write_text(json.dumps(d))
+PY
+run adamsuk/software-factory 347
+python3 - "$GH_ISSUE_JSON" << 'PY' || fail "appended lines not CRLF"
+import json, sys
+b = json.load(open(sys.argv[1]))["body"]
+assert "\n" not in b.replace("\r\n", ""), repr(b)
+assert b.startswith("Problem text.\r\nNo facts here\r\n"), repr(b)
+PY
+printf '%s\n' "ok: $tname"
+
 tname="non-approver answer ignored"
 comment_file "$ROOT/c3.json" stranger "$ROOT/answer.txt" software-factory-line "$ROOT/other.txt" "software-factory-line[bot]" "$ROOT/other.txt"
 write_issue "$ROOT/body.txt" "$ROOT/c3.json"
