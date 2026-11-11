@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- The gate trusts an independent-review comment only from the approver (`FACTORY_APPROVER_LOGIN`, else the repo owner) or `software-factory-line`. A marker comment from anyone else is ignored and reported as from an unrecognised author. The watcher result file path is unchanged (#326).
 - `scripts/watcher/watch.sh`, `scripts/watcher/watch.new.sh`, `scripts/review-issue.sh` and `scripts/station-post.sh` call the gate before `factory:merge`, the needs-scott "Ready for the maintainer" note, or a merge. On a refusal they report the missing items and do none of those. `scripts/pr-status.sh` and `scripts/watcher/board-sync.sh` are unchanged (#326).
 - The `test-station-post.sh`, `test-review-issue.sh` and `test-watcher-dismiss.sh` suites stub the gate with a setup line (no assertion changed), and `test-watcher-dismiss.sh` gains a case for a refused gate (#326).
 

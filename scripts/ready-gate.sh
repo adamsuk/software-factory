@@ -68,16 +68,25 @@ fi
 # 1. Independent review PASS for this exact head. Comments are in creation
 # order, so the last matching one is the latest. The verdict is read from the
 # marker's own second line only, never from the free-text summary below it.
+# Only the approver (FACTORY_APPROVER_LOGIN, else the repo owner) and the
+# factory bot may post it; anyone else's comment is ignored and reported.
+approver=${FACTORY_APPROVER_LOGIN:-${repo%%/*}}
 # shellcheck disable=SC2016
-ir_comment=$(printf '%s' "$view" | jq -r --arg head "$head" '
+ir_json=$(printf '%s' "$view" | jq -c --arg head "$head" --arg approver "$approver" '
   [ .comments[]?
+    | (.author.login // "") as $who
     | (.body // "") as $b
     | ($b | split("\n") | map(gsub("\r$"; ""))) as $lines
     | select(($lines[0] // "") | test("^<!-- factory:independent-review v2 sha=[0-9a-fA-F]{7,40} -->$"))
     | (($lines[0] | capture("sha=(?<s>[0-9a-fA-F]{7,40})").s) | ascii_downcase) as $s
     | select($head | startswith($s))
-    | ((($lines[1] // "") | [scan("^\\*\\*Independent review \\(after CodeRabbit\\): (PASS|FIX|ESCALATE)\\*\\* on ")] | .[0][0]) // "unreadable")
-  ] | last // "none"') || die 7 "could not read the comments on ${repo}#${pr}"
+    | {trusted: ($who == $approver or $who == "software-factory-line" or $who == "software-factory-line[bot]" or $who == "app/software-factory-line"),
+       v: ((($lines[1] // "") | [scan("^\\*\\*Independent review \\(after CodeRabbit\\): (PASS|FIX|ESCALATE)\\*\\* on ")] | .[0][0]) // "unreadable")}
+  ] | {untrusted: ([.[] | select(.trusted | not)] | length),
+       v: (([.[] | select(.trusted)] | last | .v) // "none")}') \
+  || die 7 "could not read the comments on ${repo}#${pr}"
+ir_comment=$(printf '%s' "$ir_json" | jq -r '.v')
+ir_untrusted=$(printf '%s' "$ir_json" | jq -r '.untrusted')
 ir_file_verdict=""
 if [[ -n "$ir_file" && -s "$ir_file" ]]; then
   ir_file_verdict=$(jq -r '.verdict // ""' "$ir_file" 2> /dev/null || true)
@@ -87,6 +96,9 @@ if [[ "$ir_comment" != "PASS" && "$ir_file_verdict" != "PASS" ]]; then
   [[ "$ir_comment" == "none" ]] || detail="latest independent review comment for this head says ${ir_comment}"
   [[ -z "$ir_file_verdict" ]] || detail="${detail}; watcher result says ${ir_file_verdict}"
   missing+=("independent review: no PASS recorded for head ${short} (${detail})")
+  if [[ "$ir_untrusted" != "0" ]]; then
+    missing+=("independent review comment for head ${short} is from an unrecognised author (only ${approver} or software-factory-line may post it)")
+  fi
 fi
 
 # 2. Unresolved, non-outdated review threads from any author.

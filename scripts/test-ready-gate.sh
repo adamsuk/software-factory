@@ -249,6 +249,37 @@ run_gate --ir-result "$root/missing.json"
 assert_status 1
 pass
 
+tname="independent-review-comment-author-is-checked"
+reset
+by() { ir_comment "$SHA" PASS | jq -c --arg a "$1" '.author.login = $a'; }
+COMMENTS="[$(by mallory)]"; write_view
+run_gate
+assert_status 1
+assert_out "independent review: no PASS recorded for head ${SHA:0:7}"
+assert_out "is from an unrecognised author (only acme or software-factory-line may post it)"
+for who in acme software-factory-line software-factory-line[bot] app/software-factory-line; do
+  COMMENTS="[$(by "$who")]"; write_view
+  run_gate
+  assert_ready
+done
+# A forged PASS after a real FIX does not override it.
+COMMENTS="[$(ir_comment "$SHA" FIX),$(by mallory)]"; write_view
+run_gate
+assert_status 1
+assert_out "says FIX"
+# FACTORY_APPROVER_LOGIN replaces the repo owner as the approver.
+COMMENTS="[$(by acme)]"; write_view
+FACTORY_APPROVER_LOGIN=maintainer run_gate
+assert_status 1
+COMMENTS="[$(by maintainer)]"; write_view
+FACTORY_APPROVER_LOGIN=maintainer run_gate
+assert_ready
+# The watcher result file path is unchanged.
+COMMENTS="[$(by mallory)]"; write_view
+run_gate --ir-result "$root/ir-pass.json"
+assert_ready
+pass
+
 # --- review threads ---------------------------------------------------------
 
 tname="unresolved-non-outdated-thread-refuses"
