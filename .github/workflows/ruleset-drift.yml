@@ -26,11 +26,11 @@ jobs:
           # the default GITHUB_TOKEN only sees this repo.
           GH_TOKEN: ${{ secrets.FACTORY_READ_TOKEN }}
         run: |
-          # Pinned to v0.6.0 (5326ede2333944e41e90ab6d7650a7c2b307db0a): unpinned tracks
+          # Pinned to gh-factory main after #47 and #49 (45fa31482f0b2243bbb083156b4c8589c3679fe3): unpinned tracks
           # main, and this extension runs with FACTORY_READ_TOKEN, which can read every
           # enrolled private repo. Script extensions pin by commit, not tag (gh's own
           # --pin docs).
-          gh extension install adamsuk/gh-factory --pin 5326ede2333944e41e90ab6d7650a7c2b307db0a
+          gh extension install adamsuk/gh-factory --pin 45fa31482f0b2243bbb083156b4c8589c3679fe3
           # Explicit owner: without --owner, plan searches only the token's own account
           # and can find zero repos. The scheduled run covers this repo's owner only.
           bash scripts/ruleset-drift-check.sh --owner "${{ github.repository_owner }}"
