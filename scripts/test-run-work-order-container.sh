@@ -122,6 +122,18 @@ unset FACTORY_CONTAINER_RUNTIME
 PATH=$ORIG_PATH
 export PATH
 
+tname="runtime-absolute-podman"
+podman_bin=$ROOT/podman-bin
+mkdir -p "$podman_bin"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' > "$podman_bin/podman"
+chmod +x "$podman_bin/podman"
+FACTORY_CONTAINER_RUNTIME=$podman_bin/podman
+export FACTORY_CONTAINER_RUNTIME
+build_container_command "$clone" "$fenced_order"
+argv=$(printf '%s ' "${container_cmd[@]}")
+assert_not_contains "$argv" "--user" "an absolute podman path still gets --user"
+unset FACTORY_CONTAINER_RUNTIME
+
 # --- the real launch, through a fake runtime -------------------------------
 # The fake runtime records its argv, then runs the child command the way a
 # container would: a fresh environment holding only the forwarded names (plus

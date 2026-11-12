@@ -712,7 +712,7 @@ build_container_command() {
   # Rootless podman maps container root to the calling user, so files written
   # in the clone stay ours. docker and nerdctl run as root by default and
   # would leave root-owned files for the host to commit; run as us instead.
-  [[ "$runtime" == podman ]] || container_cmd+=(--user "$(id -u):$(id -g)")
+  [[ "$(basename -- "$runtime")" == podman ]] || container_cmd+=(--user "$(id -u):$(id -g)")
   if [[ -n ${XAI_API_KEY:-} ]]; then
     # Name only: the runtime copies the value from this process's environment.
     container_cmd+=(--env XAI_API_KEY)
