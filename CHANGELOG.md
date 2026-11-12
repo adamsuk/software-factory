@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-12 (metrics app token)
+
+### Changed
+
+- `.github/workflows/metrics.yml` mints a short-lived installation token with a SHA-pinned `actions/create-github-app-token` from the `FACTORY_GH_APP_ID` and `FACTORY_GH_APP_PRIVATE_KEY` Actions secrets (names only) and uses it to push `factory/metrics-<date>` and open the pull request, so the required checks run on it. The cost ledger lives on the factory host and cannot be read from CI, so each snapshot now carries a `## Ledger` note saying rework rounds and cost per change are n/a rather than inventing them. `scripts/test-metrics-workflow.sh` asserts the token and ledger wiring (#355).
+
 ## 2026-11-12 (watcher fence)
 
 ### Changed

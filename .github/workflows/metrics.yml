@@ -5,16 +5,17 @@ name: metrics
 # snapshot's `## Baseline` section is the reference; this workflow only adds
 # the new window's tables.
 #
-# TOKEN: no workflow in this repo uses the factory bot (GitHub App) token; it is
-# minted on the factory host (scripts/gh-app-token.sh). So the PR is opened with
-# the workflow's GITHUB_TOKEN. A PR created by GITHUB_TOKEN does NOT trigger the
-# required checks, and the issue asks for the factory bot to open it. The
-# maintainer decides: supply an App token secret, or close and reopen the PR.
-# Needs Settings > Actions > General > "Allow GitHub Actions to create and
-# approve pull requests".
+# TOKEN (#355): the pull request is opened with a short-lived installation token
+# minted from the factory GitHub App, so the required checks run on it (a PR
+# opened with GITHUB_TOKEN does not trigger them). Actions secrets, by name only:
+#   FACTORY_GH_APP_ID, FACTORY_GH_APP_PRIVATE_KEY
+# The metric scripts still read with the workflow's GITHUB_TOKEN. The App needs
+# Contents and Pull requests write on this repo.
 #
-# The delivery script's ledger lives on the factory host, so it is not read
-# here: rework rounds and cost per change show n/a.
+# LEDGER: the delivery script's cost ledger lives on the factory host and is not
+# readable from CI, so rework rounds and cost per change are n/a in each
+# snapshot. Each snapshot says so in its "## Ledger" note rather than inventing
+# numbers (#355).
 
 on:
   schedule:
@@ -36,14 +37,24 @@ jobs:
       contents: write
       pull-requests: write
       issues: read
-    env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
           egress-policy: audit
+      - name: Mint the App installation token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.FACTORY_GH_APP_ID }}
+          private-key: ${{ secrets.FACTORY_GH_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          token: ${{ steps.app-token.outputs.token }}
       - name: Collect the metrics
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           until=$(date -u +%F)
@@ -58,8 +69,16 @@ jobs:
               --required-check ShellCheck --required-check "changelog / changelog" \
               --required-check tests --required-check "Test assertions"
           } > "$RUNNER_TEMP/metrics.md"
+          {
+            echo
+            echo "## Ledger"
+            echo
+            echo "The cost ledger lives on the factory host and is not readable from CI, so rework rounds per pr and cost per change usd are n/a in this snapshot (#355)."
+          } >> "$RUNNER_TEMP/metrics.md"
           echo "until=$until" >> "$GITHUB_ENV"
       - name: Open the pull request
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           set -euo pipefail
           branch="factory/metrics-$until"
@@ -69,8 +88,8 @@ jobs:
             exit 0
           fi
           cp "$RUNNER_TEMP/metrics.md" "$file"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "software-factory-line[bot]"
+          git config user.email "noreply@github.com"
           git switch -c "$branch"
           git add "$file"
           git commit -m "docs: weekly factory metrics $until (#340)"
