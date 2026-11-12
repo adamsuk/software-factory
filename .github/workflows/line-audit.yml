@@ -136,6 +136,7 @@ jobs:
     steps:
       - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
+          # Stays audit on purpose: this job has never run its real path (its secrets are unset), so there is no list (adamsuk/software-factory#369).
           egress-policy: audit
       - name: Check required secret and variables
         run: |

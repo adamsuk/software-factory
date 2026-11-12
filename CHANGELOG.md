@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-12 (egress block)
+
+### Changed
+
+- Harden-Runner now blocks egress in `lint.yml` (`shellcheck`, `tests`) and `metrics.yml` (`metrics`), with exact-host allowlists taken from audited runs; `test-assertions`, `ruleset-drift` and `line-audit` stay in audit on purpose. `scripts/test-harden-runner.sh` checks each job's expected policy and rejects wildcards and non-443 ports (apt mirrors excepted) (#369).
+
 ## 2026-11-12 (canary rollback practised)
 
 ### Added
