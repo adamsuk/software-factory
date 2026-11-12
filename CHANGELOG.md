@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-12 (watcher fence)
+
+### Changed
+
+- `write_untrusted_block` and the triage prompt composer in `scripts/watcher/watch.sh` and `scripts/watcher/watch.new.sh` now pass untrusted text through `scripts/fence-untrusted.sh`, so the delimiter is random per call and a forged closer cannot end the fence. The #281/#320 triage interior is unchanged, and the older escaped fixed fence remains only as a fallback when the helper is absent (for example when a unit test extracts those two functions on their own). `scripts/test-watcher-fence.sh` covers both lanes in a checkout and in a flat `FACTORY_WATCH_ROOT` (#358), and `scripts/watcher/README.md` records that a flat deployment needs the helper beside the lane scripts for `write_untrusted_block`. `scripts/test-triage-ask.sh`'s fixed-marker checks now accept the random delimiter (one `<<<UNTRUSTED_DATA:<hex>` opener and its matching closer) and assert the fixed markers are absent; no containment check was removed (#358).
+
 ## 2026-11-12 (container bench)
 
 ### Added
