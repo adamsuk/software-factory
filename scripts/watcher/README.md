@@ -51,6 +51,8 @@ The ledger is a CSV at `FACTORY_LEDGER_FILE` with header `date_utc,kind,repo,iss
 
 `swap-early.sh` is the safe swap. For one lane it waits until that lane's log ends on the cycle sleep, stops that lane, clears its lock holder, copies the live script aside, moves the staged script (the live name with `.early`) into place, and starts it again. The build lane starts with `LANE=build`. The main lane starts with an empty environment list. Run it from `$FACTORY_WATCH_ROOT` after placing the staged script next to the live one.
 
+The lane scripts fence untrusted prompt text with `fence-untrusted.sh` (AGENTS.md section 1). They find it beside the live script, at `../fence-untrusted.sh` when run from a checkout, or in the fresh home-repo main clone `step_triage` already makes. A flat `FACTORY_WATCH_ROOT` deployment therefore needs a copy beside the live scripts for `write_untrusted_block` callers (review, plan, build); without one they keep the older escaped fixed fence, while triage still uses the clone's helper or writes no prompt at all (it fails closed).
+
 ## Board settings
 
 `board-sync.sh` copies factory labels onto a GitHub project board. The board is configuration, not committed constants. Set all five, or the script prints `board sync not configured` and exits 0:
