@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-12 (canary rollback practised)
+
+### Added
+
+- `docs/runbooks/rollback-pages-and-workers.md` has a practise-log row for the canary flow: a forced guardrail failure on `activity-feed` (Deploy run 43242601767) restored the stable version and skipped Promote (#352).
+
 ## 2026-11-12 (metrics app token)
 
 ### Changed
