@@ -123,6 +123,27 @@ and tracks it to a reviewed PR. Follows [`AGENTS.md`](../../AGENTS.md).
    On every path that ends with `factory:blocked`, the pull request stays open
    and is marked as a draft (`gh pr ready --undo` when it is not already a
    draft).
+   **Review return.** When an in-flight work order's issue shows
+   `factory:building`, and the pull request's latest comment whose first line
+   is `<!-- factory:review -->` and whose `author.login` is `adamsuk` has
+   `verdict: changes-needed`, the review station sent the work back for code.
+   A marker comment from any other author is ignored. If the issue already has
+   a comment whose first line is `<!-- factory:review -->` and which contains
+   a `rebuild:` line, leave `attempt` unchanged and do not start another
+   step 4. Otherwise, when `attempt` is `1` or `2`, set it one higher, comment
+   on the issue with the two lines below, and rerun step 4 on the same branch.
+   Do not open a second pull request. When `attempt` is already `3`, remove
+   `factory:building`, add `factory:blocked`, comment that Scott must act,
+   mark the pull request as a draft, and do not rerun step 4.
+
+   ```
+   <!-- factory:review -->
+   rebuild: <new attempt>
+   ```
+
+   This role does not post the review verdict and does not run
+   `scripts/review-issue.sh`. PR Reviewer does both.
+
 7. **Merge** only under AGENTS.md §6. Otherwise leave it for the maintainer. After a
    merge, close a backlog issue linked with `Refs owner/repo#N` (it doesn't
    close itself), with a comment linking the merged PR.
