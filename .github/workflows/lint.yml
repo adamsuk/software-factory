@@ -21,7 +21,11 @@ jobs:
     steps:
       - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
-          egress-policy: audit
+          # Hosts from the Harden-Runner insights of lint run 43247802965; no wildcards.
+          egress-policy: block
+          allowed-endpoints: >-
+            github.com:443
+            release-assets.githubusercontent.com:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install ShellCheck (pinned, checksum-verified)
         env:
@@ -56,6 +60,7 @@ jobs:
     steps:
       - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
+          # Stays audit on purpose: its step was skipped in the audited run, so there is no list (adamsuk/software-factory#369).
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -88,7 +93,15 @@ jobs:
     steps:
       - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
-          egress-policy: audit
+          # Hosts from the Harden-Runner insights of lint run 43247802965 (apt install step); exact hosts, no wildcards; port 80 only for the two ubuntu apt hosts.
+          egress-policy: block
+          allowed-endpoints: >-
+            azure.archive.ubuntu.com:80
+            security.ubuntu.com:80
+            security.ubuntu.com:443
+            esm.ubuntu.com:443
+            packages.microsoft.com:443
+            github.com:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
