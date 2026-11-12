@@ -3,6 +3,16 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-12 (container bench)
+
+### Added
+
+- `scripts/test-run-work-order-container.sh` drives the work-order bench's `grok` launch through a fake container runtime and proves the child gets only the clone and the fenced work order, no `--always-approve`, and no box `gh` config, App key, ssh-agent or cloud credentials (#221).
+
+### Changed
+
+- `scripts/run-work-order.sh` starts the `grok` child in a fresh, disposable container. The image is required (`FACTORY_CONTAINER_IMAGE`); the runtime is `FACTORY_CONTAINER_RUNTIME` or the first of podman, docker and nerdctl on `PATH`. Only the clone (read-write) and the fenced work order (read-only) are mounted, `HOME` and `TMPDIR` are empty tmpfs mounts, and `XAI_API_KEY` is forwarded by name only. `--always-approve` is gone, the `env -u` scrub and both `--deny` flags stay, and a missing runtime or image exits 9 with a message before `grok` starts (#221).
+
 ## 2026-11-11 (criteria resolve)
 
 ### Added

@@ -8,6 +8,7 @@
 # changed a tracked file or moved HEAD, 5 tests failed, 6 setup failed.
 # 7: gh issue view, the factory:gate label edit, or a pull request gh call failed.
 # 8: unusable clone root (FACTORY_WORKSPACE or fallback) and no temporary directory usable.
+# 9: no container runtime, or FACTORY_CONTAINER_IMAGE unset, for the grok child.
 # Before test_command, prepare the target environment: the work order's
 # setup_command, else agents.setup_command from origin/$base:.github/factory.yml
 # (never the working tree), else a Python venv (declared dev/test extras) or a
@@ -18,6 +19,10 @@
 set -euo pipefail
 
 setup_env=()
+# The container prefix for the grok child (sandbox-no-secrets, #221). Empty
+# means "run grok directly", which is what the extracted-command tests below
+# exercise; main fills it with build_container_command before launching.
+container_cmd=()
 die() { echo "run-work-order: $2" >&2; exit "$1"; }
 
 # Markers wrapping the untrusted issue-text section of the fenced prompt
@@ -653,6 +658,68 @@ resolve_llm_backend() {
   fi
 }
 
+# The container runtime for the grok child: FACTORY_CONTAINER_RUNTIME if set
+# (it must exist), else the first of podman, docker, nerdctl on PATH. Dies 9
+# rather than falling back to running on the shared box.
+container_runtime() {
+  local runtime=${FACTORY_CONTAINER_RUNTIME:-}
+  if [[ -n $runtime ]]; then
+    command -v "$runtime" > /dev/null \
+      || die 9 "cannot start a container: FACTORY_CONTAINER_RUNTIME=$runtime not found"
+    printf '%s\n' "$runtime"
+    return 0
+  fi
+  for runtime in podman docker nerdctl; do
+    if command -v "$runtime" > /dev/null; then
+      printf '%s\n' "$runtime"
+      return 0
+    fi
+  done
+  die 9 "cannot start a container: no podman, docker or nerdctl on PATH (set FACTORY_CONTAINER_RUNTIME)"
+}
+
+# The image for the grok child. There is no default: the image has to carry
+# the grok CLI and whatever the repo's tests need, so guessing one would fail
+# later and less clearly.
+container_image() {
+  [[ -n ${FACTORY_CONTAINER_IMAGE:-} ]] \
+    || die 9 "cannot start a container: FACTORY_CONTAINER_IMAGE is not set"
+  printf '%s\n' "$FACTORY_CONTAINER_IMAGE"
+}
+
+# Sets the global container_cmd array: the runtime invocation that starts the
+# grok child in a fresh, disposable container (sandbox-no-secrets, #221).
+# Only the clone (rw) and the fenced work order (ro) are mounted, at their
+# host paths so grok's --cwd and --prompt-file keep working. HOME and TMPDIR
+# are empty tmpfs mounts, and XAI_API_KEY is forwarded by name only, so its
+# value never appears on argv. The box's gh config, App key file, ssh-agent
+# and cloud credential files are never mounted; the env scrub and the deny
+# rules still apply to the child inside the container.
+build_container_command() {
+  local dir=$1 order=$2 runtime image
+  runtime=$(container_runtime) || exit 9
+  image=$(container_image) || exit 9
+  container_cmd=(
+    "$runtime" run --rm -i
+    --volume "$dir:$dir"
+    --volume "$order:$order:ro"
+    --env HOME=/factory-home
+    --env TMPDIR=/factory-tmp
+    --tmpfs /factory-home
+    --tmpfs /factory-tmp
+    --workdir "$dir"
+  )
+  # Rootless podman maps container root to the calling user, so files written
+  # in the clone stay ours. docker and nerdctl run as root by default and
+  # would leave root-owned files for the host to commit; run as us instead.
+  [[ "$runtime" == podman ]] || container_cmd+=(--user "$(id -u):$(id -g)")
+  if [[ -n ${XAI_API_KEY:-} ]]; then
+    # Name only: the runtime copies the value from this process's environment.
+    container_cmd+=(--env XAI_API_KEY)
+  fi
+  container_cmd+=("$image")
+}
+
 # Belt-and-suspenders on the box's secrets directory: if it is readable or
 # writable by anyone but its owner, tighten it to 0700 and warn. This narrows
 # an accidental misconfiguration, not a real boundary — the builder (grok or
@@ -718,6 +785,14 @@ main() {
   fenced_order="$dir.fenced-order.md"
   fence_issue_text > "$fenced_order"
 
+  # The grok child runs in a fresh container (#221). Build its prefix here,
+  # before the GH_CONFIG_DIR trap, so a missing runtime or image stops the run
+  # with a clear message instead of falling back to the shared box. claude
+  # keeps its existing host path (out of scope for #221).
+  if [[ "$llm_backend" == "grok" ]]; then
+    build_container_command "$dir" "$fenced_order"
+  fi
+
   status=0
   # An empty GH_CONFIG_DIR for the builder child, so even a bypassed/missing
   # deny can't read the box's real gh config (~/.config/gh, tokens included).
@@ -732,11 +807,13 @@ main() {
   if [[ "$llm_backend" != "claude" ]]; then
     # Scrub only this child. Clone, setup and --push keep their credentials, and
     # apply_factory_gh_app_token runs again before --push. The inner env is the
-    # call-site form scripts/test-gh-app-token.sh locks; it is what runs grok.
+    # call-site form scripts/test-gh-app-token.sh locks; it is what runs grok,
+    # inside the container built above.
     # GIT_TERMINAL_PROMPT=0 and unsetting GIT_ASKPASS/SSH_AUTH_SOCK match the
     # claude branch below: stops a stray `git` call from prompting for or
     # finding real credentials, or reaching the box's ssh-agent.
-    env -u GH_TOKEN -u GITHUB_TOKEN \
+    "${container_cmd[@]}" \
+      env -u GH_TOKEN -u GITHUB_TOKEN \
       -u GH_ENTERPRISE_TOKEN \
       -u GITHUB_ENTERPRISE_TOKEN \
       -u FACTORY_GH_APP_ID \
@@ -757,7 +834,7 @@ main() {
       --cwd "$dir" --trust \
       --prompt-file "$fenced_order" --rules "$(cat "$rules")" \
       --output-format json --max-turns "${GROK_MAX_TURNS:-60}" \
-      --always-approve --sandbox workspace \
+      --sandbox workspace \
       --deny 'Bash(git push*)' --deny 'Bash(gh *)' \
       --disable-web-search > "$dir.grok.json" || status=$?
   else
@@ -766,8 +843,9 @@ main() {
     # follows CLAUDE_MAX_TURNS, then GROK_MAX_TURNS, then 60. claude has no
     # --cwd, so cwd is set with `cd` in a dedicated subshell. The prompt is
     # the same rules-plus-order text grok gets via --rules/--prompt-file,
-    # read from a file over stdin. --permission-mode bypassPermissions
-    # mirrors grok's --always-approve; --setting-sources user stops a cloned
+    # read from a file over stdin. --permission-mode bypassPermissions keeps
+    # the headless run from stalling on approvals now that the grok branch has
+    # no --always-approve; --setting-sources user stops a cloned
     # repo's own .claude/settings.json (e.g. a SessionStart hook) from running,
     # since bypassPermissions does not gate hooks; --disallowedTools keeps the
     # host's secrets directory (FACTORY_SECRETS_DIR, default
