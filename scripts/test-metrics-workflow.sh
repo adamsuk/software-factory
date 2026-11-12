@@ -27,6 +27,23 @@ while IFS= read -r line; do
   [[ "$line" =~ uses:\ [^@]+@[0-9a-f]{40}\ #\ v[0-9] ]] || fail "action not pinned by SHA with version comment: $line"
 done < <(grep -E '^\s+- uses:' "$wf")
 
+# App token and ledger wiring (#355): a SHA-pinned token action fed by the two
+# secrets (names only), used for the push and gh pr create; the ledger limit is
+# documented in the header and in the generated snapshot.
+has 'FACTORY_GH_APP_ID' "workflow does not name FACTORY_GH_APP_ID"
+has 'FACTORY_GH_APP_PRIVATE_KEY' "workflow does not name FACTORY_GH_APP_PRIVATE_KEY"
+has 'uses: actions/create-github-app-token@[0-9a-f]{40} # v[0-9]' "no SHA-pinned create-github-app-token step"
+has 'app-id: \$\{\{ secrets\.FACTORY_GH_APP_ID \}\}' "token step does not read FACTORY_GH_APP_ID"
+has 'private-key: \$\{\{ secrets\.FACTORY_GH_APP_PRIVATE_KEY \}\}' "token step does not read FACTORY_GH_APP_PRIVATE_KEY"
+awk '/- name: Open the pull request/{f=1} f' "$wf" | grep -Eq 'GH_TOKEN: \$\{\{ steps\.app-token\.outputs\.token \}\}' \
+  || fail "the pull request step does not use the App token"
+if grep -Eq 'GH_TOKEN: \$\{\{ secrets\.GITHUB_TOKEN \}\}' <(awk '/- name: Open the pull request/{f=1} f' "$wf"); then
+  fail "the pull request step still uses GITHUB_TOKEN"
+fi
+has 'cost ledger lives on the factory host' "ledger limit is not documented"
+has '^            echo "## Ledger"' "snapshot does not state the ledger limit"
+if grep -Eq 'ghs_|-----BEGIN|private-key: [^$]' "$wf"; then fail "workflow contains a secret value"; fi
+
 # A snapshot with a Baseline section exists.
 grep -lq '^## Baseline$' "$snap_dir"/*.md || fail "no metrics snapshot has a '## Baseline' section"
 
