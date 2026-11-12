@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-12 (foreman rebuild attempt)
+
+### Added
+
+- `agents/roles/foreman.md` has a review-return paragraph between steps 6 and 7: a `verdict: changes-needed` review comment from `adamsuk` on a `factory:building` issue bumps `attempt` (1 or 2), records it in a `rebuild:` comment and reruns step 4 on the same branch; at attempt 3 the issue goes to `factory:blocked` and the pull request to draft. The two-PR cap in step 1 is unchanged (#98).
+
 ## 2026-11-12 (egress block)
 
 ### Changed
