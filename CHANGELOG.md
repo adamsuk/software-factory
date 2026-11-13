@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-13 (adversarial issue text replay)
+
+### Added
+
+- Recorded adversarial issue-text fixtures under `scripts/fixtures/untrusted-issue/` (fake fence closers, instruction lines, zero-width characters). `scripts/test-untrusted-issue.sh` replays them through the `station-run.sh --dry-run` bundle and fails if the fence is removed or a hostile closer ends the block early; `scripts/test-watcher-fence.sh` replays them through both watcher lanes, tree and flat. Tests only, no production change (#380).
+
 ## 2026-11-12 (foreman rebuild attempt)
 
 ### Added
