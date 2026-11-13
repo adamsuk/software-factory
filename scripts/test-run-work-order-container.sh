@@ -45,6 +45,27 @@ mkdir -p "$clone"
 fenced_order=$ROOT/fenced-order.md
 printf '%s\n' 'fenced order' > "$fenced_order"
 
+# Network restriction (#382). Every build below names a restricted network, and
+# the stub runtimes answer "network inspect" the way a real one does for an
+# internal network. STUB_NET_MODE=external or missing makes them answer for an
+# ordinary network, or for one that does not exist.
+FACTORY_CONTAINER_NETWORK=factory-egress-test
+export FACTORY_CONTAINER_NETWORK
+network_stub() { # path: replace a do-nothing runtime stub with a network-aware one
+  cat > "$1" << 'STUB'
+#!/usr/bin/env bash
+if [[ "${1:-}" == network && "${2:-}" == inspect ]]; then
+  case "${STUB_NET_MODE:-internal}" in
+    internal) printf '%s\n' '[{"name": "factory-egress-test", "internal": true}]' ;;
+    external) printf '%s\n' '[{"name": "factory-egress-test", "internal": false}]' ;;
+    *) exit 1 ;;
+  esac
+fi
+exit 0
+STUB
+  chmod +x "$1"
+}
+
 # --- runtime and image selection -------------------------------------------
 
 tname="no-runtime"
@@ -62,6 +83,7 @@ podman_bin=$ROOT/podman-bin
 mkdir -p "$podman_bin"
 printf '%s\n' '#!/usr/bin/env bash' 'exit 0' > "$podman_bin/podman"
 chmod +x "$podman_bin/podman"
+network_stub "$podman_bin/podman"
 code=0
 out=$(PATH="$podman_bin:$ORIG_PATH" FACTORY_CONTAINER_IMAGE='' \
   build_container_command "$clone" "$fenced_order" 2>&1) || code=$?
@@ -110,6 +132,7 @@ nerdctl_bin=$ROOT/nerdctl-bin
 mkdir -p "$nerdctl_bin"
 printf '%s\n' '#!/usr/bin/env bash' 'exit 0' > "$nerdctl_bin/nerdctl"
 chmod +x "$nerdctl_bin/nerdctl"
+network_stub "$nerdctl_bin/nerdctl"
 FACTORY_CONTAINER_RUNTIME=nerdctl
 export FACTORY_CONTAINER_RUNTIME
 PATH="$nerdctl_bin:$ORIG_PATH"
@@ -127,6 +150,7 @@ podman_bin=$ROOT/podman-bin
 mkdir -p "$podman_bin"
 printf '%s\n' '#!/usr/bin/env bash' 'exit 0' > "$podman_bin/podman"
 chmod +x "$podman_bin/podman"
+network_stub "$podman_bin/podman"
 FACTORY_CONTAINER_RUNTIME=$podman_bin/podman
 export FACTORY_CONTAINER_RUNTIME
 build_container_command "$clone" "$fenced_order"
@@ -147,6 +171,10 @@ cat > "$work/bin/podman" << 'MOCK'
 #!/usr/bin/env bash
 # Fake container runtime: record argv, then run the child command with a
 # container-like environment and fresh stand-ins for the two tmpfs mounts.
+if [[ "${1:-}" == network && "${2:-}" == inspect ]]; then
+  printf '%s\n' '[{"name": "factory-egress-test", "internal": true}]'
+  exit 0
+fi
 printf '%s\n' "$@" > "$FAKE_RUNTIME_ARGV"
 envs=()
 while [[ $# -gt 0 ]]; do
@@ -160,7 +188,7 @@ while [[ $# -gt 0 ]]; do
       envs+=("$2")
       shift 2
       ;;
-    --tmpfs | --workdir | --user) shift 2 ;;
+    --tmpfs | --workdir | --user | --network) shift 2 ;;
     *)
       shift
       break
@@ -299,5 +327,86 @@ assert_not_contains "$grok_env" "$sentinel_gh_config" "the box gh config reached
 assert_contains "$grok_env" "HOME=$work/container-home" "grok's HOME is not the container's fresh directory"
 assert_not_contains "$grok_env" "HOME=$HOME" "grok's HOME is the box HOME"
 assert_eq "$(cat "$work/grok-gh-config.txt")" "hidden"
+
+# --- network restriction (#382) ---------------------------------------------
+
+PATH="$podman_bin:$ORIG_PATH"
+export PATH
+FACTORY_CONTAINER_IMAGE=factory-bench:test
+unset FACTORY_CONTAINER_RUNTIME FACTORY_CONTAINER_PROXY
+
+tname="network-on-argv"
+build_container_command "$clone" "$fenced_order"
+argv=$(printf '%s ' "${container_cmd[@]}")
+assert_contains "$argv" " --network factory-egress-test " "the runtime argv does not carry the restricted network"
+assert_eq "${container_cmd[${#container_cmd[@]}-1]}" "factory-bench:test"
+assert_not_contains "$argv" "_PROXY=" "proxy variables were set with no FACTORY_CONTAINER_PROXY"
+
+tname="network-unset"
+code=0
+out=$(FACTORY_CONTAINER_NETWORK='' build_container_command "$clone" "$fenced_order" 2>&1) || code=$?
+assert_eq "$code" "9"
+assert_contains "$out" "cannot start a container" "unset-network error does not say it cannot start a container"
+assert_contains "$out" "FACTORY_CONTAINER_NETWORK" "unset-network error does not name FACTORY_CONTAINER_NETWORK"
+
+tname="network-unrestricted-names"
+for net in host bridge default private podman slirp4netns pasta; do
+  code=0
+  out=$(FACTORY_CONTAINER_NETWORK=$net build_container_command "$clone" "$fenced_order" 2>&1) || code=$?
+  assert_eq "$code" "9"
+  assert_contains "$out" "does not restrict egress" "network $net was not refused as unrestricted"
+done
+
+tname="network-not-a-name"
+for net in 'container:other' 'ns:/proc/1/ns/net' 'a b' '--privileged'; do
+  code=0
+  out=$(FACTORY_CONTAINER_NETWORK=$net build_container_command "$clone" "$fenced_order" 2>&1) || code=$?
+  assert_eq "$code" "9"
+  assert_contains "$out" "not a network name" "network value [$net] was not refused"
+done
+
+tname="network-missing"
+code=0
+out=$(STUB_NET_MODE=missing build_container_command "$clone" "$fenced_order" 2>&1) || code=$?
+assert_eq "$code" "9"
+assert_contains "$out" "was not found" "a missing network did not stop the run"
+
+tname="network-not-internal"
+code=0
+out=$(STUB_NET_MODE=external build_container_command "$clone" "$fenced_order" 2>&1) || code=$?
+assert_eq "$code" "9"
+assert_contains "$out" "is not internal" "a network with a route out did not stop the run"
+
+tname="network-none"
+FACTORY_CONTAINER_NETWORK=none
+build_container_command "$clone" "$fenced_order"
+argv=$(printf '%s ' "${container_cmd[@]}")
+assert_contains "$argv" " --network none " "network none is not passed to the runtime"
+FACTORY_CONTAINER_NETWORK=factory-egress-test
+
+tname="proxy-forwarded"
+FACTORY_CONTAINER_PROXY=http://factory-proxy:3128
+export FACTORY_CONTAINER_PROXY
+build_container_command "$clone" "$fenced_order"
+argv=$(printf '%s ' "${container_cmd[@]}")
+for name in HTTPS_PROXY HTTP_PROXY https_proxy http_proxy; do
+  assert_contains "$argv" " --env $name=http://factory-proxy:3128 " "$name is not set to the proxy"
+done
+assert_contains "$argv" " --network factory-egress-test " "the proxy case lost the restricted network"
+assert_eq "${container_cmd[${#container_cmd[@]}-1]}" "factory-bench:test"
+
+tname="proxy-refused"
+for proxy in 'http://user:secret@factory-proxy:3128' 'socks5://factory-proxy:1080' 'factory-proxy:3128'; do
+  code=0
+  out=$(FACTORY_CONTAINER_PROXY=$proxy build_container_command "$clone" "$fenced_order" 2>&1) || code=$?
+  assert_eq "$code" "9"
+  assert_contains "$out" "FACTORY_CONTAINER_PROXY must be" "proxy value was not refused"
+  assert_not_contains "$out" "secret" "the refused proxy value was printed"
+done
+unset FACTORY_CONTAINER_PROXY
+
+tname="launch-carries-network"
+grep -qx -- '--network' "$work/runtime-argv.txt" || fail "the real launch did not pass --network to the runtime"
+grep -qx -- 'factory-egress-test' "$work/runtime-argv.txt" || fail "the real launch did not name the restricted network"
 
 echo "ok: container bench tests passed"
