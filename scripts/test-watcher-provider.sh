@@ -52,7 +52,11 @@ echo ran >> "$CALLS_DIR/grok.calls"
 printf '%s\n' '{"stopReason":"end_turn","total_cost_usd":0}'
 ENDGROK
   chmod +x "$w/bin/gh" "$w/bin/claude"
-  [[ $with_grok == yes ]] && chmod +x "$w/bin/grok" || rm -f "$w/bin/grok"
+  if [[ $with_grok == yes ]]; then
+    chmod +x "$w/bin/grok"
+  else
+    rm -f "$w/bin/grok"
+  fi
   mkdir -p "$w/calls"
   printf '%s\n' '{"max_grok_build_runs_per_week":20,"max_grok_build_runs_per_day":20,"max_runs_per_loop":5}' > "$w/budget.json"
   printf '%s\n' '{"repo":"acme/software-factory","number":398,"title":"t","body":"b","createdAt":"2026-11-13T00:00:00Z","labels":[{"name":"factory:triage"}]}' > "$w/issues.jsonl"
