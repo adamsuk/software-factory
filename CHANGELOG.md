@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-13 (FACTORY_PROVIDER in the watcher env block)
+
+### Added
+
+- The factory env block in every `scripts/watcher/*.sh` has `factory_resolve_provider`, which reads `FACTORY_PROVIDER` (`grok`, `claudecode` or `opencode`; default `grok`). `watch.sh` and `watch.new.sh` exit 2 with a message on any other value. The value is validated but not used yet, and `run_grok` is unchanged. Documented in `scripts/watcher/README.md` (#387).
+
 ## 2026-11-13 (restricted network for the work-order container)
 
 ### Changed

@@ -398,4 +398,41 @@ assert_eq "$(cd "$work/not-a-clone" && approval_rc "$c")" 2
 grep -F -q 'no approver' "$work/pp.out" || fail "missing message: $(cat "$work/pp.out")"
 pass
 
+# --- FACTORY_PROVIDER ------------------------------------------------------------
+# Prints the resolved provider (and the function's exit status) from the block.
+provider_of() {
+  (
+    # shellcheck disable=SC1091
+    source "$work/block.sh"
+    rc=0
+    factory_resolve_provider 2> "$work/prov.err" || rc=$?
+    printf '%s %s\n' "$rc" "${FACTORY_PROVIDER:-}"
+  )
+}
+
+tname="FACTORY_PROVIDER defaults to grok"
+unset FACTORY_PROVIDER
+assert_eq "$(provider_of)" "0 grok"
+pass
+
+for p in grok claudecode opencode; do
+  tname="FACTORY_PROVIDER=$p is accepted"
+  assert_eq "$(FACTORY_PROVIDER=$p provider_of)" "0 $p"
+  pass
+done
+
+tname="an invalid FACTORY_PROVIDER is rejected with a clear message"
+assert_eq "$(FACTORY_PROVIDER=gemini provider_of)" "2 gemini"
+grep -F -q 'FACTORY_PROVIDER=gemini is not valid' "$work/prov.err" || fail "missing message: $(cat "$work/prov.err")"
+pass
+
+tname="the watcher lanes stop on an invalid FACTORY_PROVIDER"
+for s in watch.sh watch.new.sh; do
+  rc=0
+  FACTORY_PROVIDER=gemini timeout 20 bash "$watch/$s" > "$work/lane.out" 2>&1 || rc=$?
+  assert_eq "$rc" 2
+  grep -F -q 'is not valid' "$work/lane.out" || fail "$s: missing message: $(cat "$work/lane.out")"
+done
+pass
+
 echo "ok  watcher env tests"

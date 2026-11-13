@@ -174,6 +174,18 @@ factory_resolve_repos() {
   export FACTORY_HOME_REPO FACTORY_REPOS FACTORY_APPROVER_LOGIN FACTORY_BLOCKED_OWNERS
   [[ -n $FACTORY_HOME_REPO ]]
 }
+# Sets FACTORY_PROVIDER (default grok): grok, claudecode or opencode. Anything
+# else is an error. The value is read and validated only; nothing uses it yet.
+factory_resolve_provider() {
+  FACTORY_PROVIDER=${FACTORY_PROVIDER:-grok}
+  case $FACTORY_PROVIDER in
+    grok | claudecode | opencode) export FACTORY_PROVIDER ;;
+    *)
+      printf 'FACTORY_PROVIDER=%s is not valid: use grok, claudecode or opencode\n' "$FACTORY_PROVIDER" >&2
+      return 2
+      ;;
+  esac
+}
 # 0 when the owner of owner/repo $1 is in FACTORY_BLOCKED_OWNERS (any case).
 factory_owner_blocked() {
   local owner=${1%%/*} b
@@ -210,6 +222,7 @@ CR_LOG="${STATE}/cr-requests.log"
 # FACTORY_HOME_REPO holds work orders and epics. FACTORY_REPOS (space-separated
 # owner/repo) is the allowlist; it defaults to FACTORY_HOME_REPO. main() exits
 # when neither resolves.
+factory_resolve_provider || exit 2
 factory_resolve_repos || true
 read -r -a REPOS <<<"${FACTORY_REPOS:-}"
 HOME_REPO=$FACTORY_HOME_REPO
