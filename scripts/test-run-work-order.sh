@@ -1583,6 +1583,22 @@ fi
   || fail "a scrubbed GIT_ASKPASS/SSH_AUTH_SOCK value leaked into Grok's environment"
 unset GROK_ENV_DUMP
 
+# --- relative-path load (#375) ----------------------------------------------
+# scripts/run-work-order.sh started by a relative path from the repo root must
+# still find scripts/fence-untrusted.sh after main cds into a clone. Fails on the
+# old code, which resolved BASH_SOURCE[0] at call time, after the cd.
+tname="relative-path-fence"
+rel_order=$ROOT/rel-order.md
+printf '## Goal\nx\n\n## Issue text (untrusted)\n> body\n' > "$rel_order"
+rel_out=$(cd "$here/.." && bash -c '
+  source scripts/run-work-order.sh
+  order=$1
+  cd "$2"
+  fence_issue_text
+' _ "$rel_order" "$ROOT" 2>&1) || fail "fence_issue_text failed after cd with a relative load: $rel_out"
+[[ "$rel_out" == *"body"* ]] || fail "fenced output lost the issue text: $rel_out"
+[[ "$rel_out" != *"missing or unreadable"* ]] || fail "fence script not found: $rel_out"
+
 PATH=$ORIG_PATH
 # Read by finish_commit / prepare_env in the sourced runner.
 : "$title" "$issue" "$base" "$tests"
