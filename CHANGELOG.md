@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-13 (provider seam in the watcher's run_grok)
+
+### Added
+
+- `run_grok` in `scripts/watcher/watch.sh` and `watch.new.sh` picks the provider by `FACTORY_PROVIDER`. The triage call site runs `adapters/<provider>/run.sh` from the home-repo clone when the provider is `claudecode` or `opencode`; every other call site, and `FACTORY_PROVIDER` unset or `grok`, still runs grok unchanged. `scripts/test-watcher-provider.sh` covers it with no `grok` on PATH (#398, piece 1 of 4 of #397).
+
 ## 2026-11-13 (FACTORY_PROVIDER and one shared watcher env file)
 
 ### Added

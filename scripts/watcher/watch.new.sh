@@ -1607,7 +1607,20 @@ run_grok() {
     log "grok cwd missing: $cwd"
     return 1
   fi
-  if ! command -v grok >/dev/null 2>&1; then
+  # Provider seam (#398). Only the triage call site is moved: it runs the
+  # adapter for FACTORY_PROVIDER from the fresh home-repo clone (its cwd).
+  # Every other kind, and FACTORY_PROVIDER unset or grok, keeps calling grok.
+  local provider=grok adapter=""
+  if [[ $kind == triage ]]; then
+    provider=${FACTORY_PROVIDER:-grok}
+  fi
+  if [[ $provider != grok ]]; then
+    adapter="${cwd}/adapters/${provider}/run.sh"
+    if [[ ! -f $adapter ]]; then
+      log "${provider} adapter not found: $adapter"
+      return 1
+    fi
+  elif ! command -v grok >/dev/null 2>&1; then
     log "grok CLI not found"
     return 1
   fi
@@ -1621,11 +1634,17 @@ run_grok() {
   rc=0
   prompt_file=$(mktemp "${STATE}/grok-prompt.XXXXXX" 2>/dev/null || mktemp "${TMPDIR:-/tmp}/grok-prompt.XXXXXX") || return 1
   cp "$prompt" "$prompt_file" || { rm -f "$prompt_file"; return 1; }
-  grok_cmd=(grok --prompt-file "$prompt_file" --output-format json --max-turns "$turns" --always-approve --cwd "$cwd")
-  if [[ -n $schema ]]; then
-    grok_cmd+=(--json-schema "$schema")
+  if [[ $provider == grok ]]; then
+    grok_cmd=(grok --prompt-file "$prompt_file" --output-format json --max-turns "$turns" --always-approve --cwd "$cwd")
+    if [[ -n $schema ]]; then
+      grok_cmd+=(--json-schema "$schema")
+    fi
+  else
+    # The adapter reads the prompt from a file and prints plain text, so the
+    # cost and stopReason reads below find nothing and the run counts by exit code.
+    grok_cmd=(bash "$adapter" --role intake --prompt "$prompt_file" --workdir "$cwd" --repo "$repo" --issue "$ref")
   fi
-  log "grok start kind=${kind} repo=${repo} ref=${ref} turns=${turns} cwd=${cwd}"
+  log "grok start kind=${kind} provider=${provider} repo=${repo} ref=${ref} turns=${turns} cwd=${cwd}"
   timeout 40m env -u GH_TOKEN -u GITHUB_TOKEN "${grok_cmd[@]}" >"$out" 2>"$err" || rc=$?
   # Grok can run long enough for the installation token to expire. Refresh
   # before the caller pushes or comments. The grok process itself did not see it.
