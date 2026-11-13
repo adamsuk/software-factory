@@ -66,7 +66,16 @@ assert_fenced() {
 run_lane() {
   local script=$1 name=$2 layout=$3
   local lane workdir body prompt lane_script
-  lane=$scratch/$layout-$name
+  # HOSTILE_FIXTURE (#380): a recorded adversarial fixture replaces the body
+  # text between the #281 markers; the default run is unchanged.
+  local hostile=${HOSTILE_FIXTURE:-} hostile_token="" layout_tag
+  if [[ -n $hostile ]]; then
+    hostile_token=$(grep -o '^HOSTILE_PAYLOAD_[A-Z]*' "$hostile") || fail "$hostile has no HOSTILE_PAYLOAD line"
+    layout_tag=$layout-$(basename "$hostile" .md)
+  else
+    layout_tag=$layout
+  fi
+  lane=$scratch/$layout_tag-$name
   workdir=$lane/work
   mkdir -p "$lane/repo/scripts/watcher" "$workdir/bin" "$workdir/home" \
     "$workdir/tmp" "$workdir/cache" "$workdir/watch/state" "$workdir/watch/work"
@@ -145,6 +154,9 @@ EOF
     "$marker_close" \
     "$leak_after" \
     "$forged_fixed_close")
+  if [[ -n $hostile ]]; then
+    body=$(printf '%s\n' "$leak_before" "$marker_open"; cat "$hostile"; printf '%s\n' "$marker_close" "$leak_after")
+  fi
   jq -nc --arg repo "$repo" --arg body "$body" \
     '{repo:$repo,number:358,title:"fixture",body:$body,createdAt:"2026-11-12T00:00:00Z",labels:[{name:"factory:triage"}]}' \
     > "$workdir/issues.jsonl"
@@ -152,6 +164,9 @@ EOF
   local block_text
   block_text=$(printf '%s\n' 'before' "$forged_fixed_close" "$forged_random_close" \
     "$forged_fixed_open" "$payload")
+  if [[ -n $hostile ]]; then
+    block_text=$(cat "$hostile")
+  fi
 
   (
     cd "$workdir"
@@ -189,6 +204,22 @@ EOF
     step_triage
   )
 
+  if [[ -n $hostile ]]; then
+    prompt="$workdir/watch/state/prompt-triage-acme_software-factory-358.txt"
+    if [[ $layout == tree ]]; then
+      assert_fenced "$workdir/block.out" "$hostile_token"
+    fi
+    assert_fenced "$prompt" "$hostile_token"
+    if grep -Fq -e "$leak_before" -e "$leak_after" "$prompt"; then
+      fail "$name/$layout_tag: issue text outside the #281 markers reached the intake prompt"
+    fi
+    if LC_ALL=C grep -q -e $'\xe2\x80\x8b' -e $'\xe2\x80\xae' -e $'\xe2\x81\xa0' -e $'\xef\xbb\xbf' -e $'\xc2\xad' "$prompt"; then
+      fail "$name/$layout_tag: an invisible character reached the intake prompt"
+    fi
+    [[ ! -e /tmp/factory-380-must-not-exist ]] || fail "a fixture command ran"
+    echo "ok: $name/$layout_tag keeps the hostile fixture inside the fence"
+    return 0
+  fi
   if [[ $layout == tree ]]; then
     assert_fenced "$workdir/block.out" "$payload"
   fi
@@ -207,6 +238,16 @@ for lane in watch watch.new; do
   [[ -f "$root/scripts/watcher/${lane}.sh" ]] || fail "missing scripts/watcher/${lane}.sh"
   run_lane "$root/scripts/watcher/${lane}.sh" "$lane" tree
   run_lane "$root/scripts/watcher/${lane}.sh" "$lane" flat
+done
+
+# Hostile fence-closer case (#380) and the other recorded fixtures, replayed
+# through the same prompt composers.
+for fx in "$root"/scripts/fixtures/untrusted-issue/*.md; do
+  [[ "$(basename "$fx")" == README.md ]] && continue
+  for lane in watch watch.new; do
+    HOSTILE_FIXTURE=$fx run_lane "$root/scripts/watcher/${lane}.sh" "$lane" tree
+    HOSTILE_FIXTURE=$fx run_lane "$root/scripts/watcher/${lane}.sh" "$lane" flat
+  done
 done
 
 echo "all watcher fence tests passed"

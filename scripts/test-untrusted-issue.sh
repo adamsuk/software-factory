@@ -251,4 +251,90 @@ fi
 echo "ok: station-run --dry-run keeps issue text only inside the fence"
 [[ ! -e "$sentinel" ]] || fail "sentinel exists; the command in the issue text ran"
 
+
+# Recorded adversarial fixtures (#380): fake fence closers, instruction lines
+# and invisible characters, replayed through the real station bundle. The
+# fixtures are plain data; nothing in them is run.
+fx_dir="$root/scripts/fixtures/untrusted-issue"
+fx_must_not_exist=/tmp/factory-380-must-not-exist
+[[ ! -e "$fx_must_not_exist" ]] || fail "$fx_must_not_exist already exists"
+
+# assert_fixture_fenced <file> <payload token>: exactly two random fences (work
+# order issue text and context), the payload strictly inside each, one real
+# closer per id, no fixed closer or opener, and no invisible character left.
+assert_fixture_fenced() {
+  local file=$1 token=$2 ids id
+  ids=$(sed -n 's/^<<<UNTRUSTED_DATA:\([0-9a-f]\{24\}\)$/\1/p' "$file")
+  [[ "$(printf '%s\n' "$ids" | grep -c .)" == 2 ]] || return 1
+  for id in $ids; do
+    [[ "$(grep -Fxc "UNTRUSTED_DATA:${id}>>>" "$file")" == 1 ]] || return 1
+  done
+  if grep -Fxq -e 'UNTRUSTED_DATA>>>' -e '<<<UNTRUSTED_DATA' "$file"; then return 1; fi
+  if LC_ALL=C grep -q -e $'\xe2\x80\x8b' -e $'\xe2\x80\xae' -e $'\xe2\x81\xa0' -e $'\xef\xbb\xbf' -e $'\xc2\xad' "$file"; then return 1; fi
+  NEEDLE="$token" awk '
+    BEGIN { needle = ENVIRON["NEEDLE"] }
+    /^<<<UNTRUSTED_DATA:[0-9a-f]+$/ { inside = 1; opens++; next }
+    /^UNTRUSTED_DATA:[0-9a-f]+>>>$/ { inside = 0; next }
+    index($0, needle) { hits++; if (!inside) outside++ }
+    END { exit !(opens == 2 && hits == 2 && outside == 0) }
+  ' "$file"
+}
+
+# replay_fixture <fixture> <out file> [repo root]: the fixture as the quoted
+# issue text in a work order and as the additional context.
+replay_fixture() {
+  local fx=$1 out=$2 tree=${3:-$root} wo_fx="$scratch/fx-wo.md"
+  {
+    printf '%s\n' '---' 'repo: acme/widgets' 'issue: 380' '---' '' '## Goal' '' 'TRUSTED_GOAL_WORDS' '' \
+      '## Issue text (untrusted)' ''
+    sed 's/^/> /' "$fx"
+  } > "$wo_fx"
+  bash "$tree/scripts/station-run.sh" --dry-run --work-order "$wo_fx" reviewer "$fx" > "$out" 2> /dev/null
+}
+
+fx_count=0
+for fx in "$fx_dir"/*.md; do
+  [[ "$(basename "$fx")" == README.md ]] && continue
+  fx_count=$((fx_count + 1))
+  name=$(basename "$fx" .md)
+  token=$(grep -o '^HOSTILE_PAYLOAD_[A-Z]*' "$fx") || fail "$name has no HOSTILE_PAYLOAD line"
+  replay_fixture "$fx" "$scratch/fx-$name.out" || fail "station-run --dry-run failed on $name"
+  assert_fixture_fenced "$scratch/fx-$name.out" "$token" || fail "$name: hostile text is not only inside the fence"
+  [[ "$(grep -Fc 'TRUSTED_GOAL_WORDS' "$scratch/fx-$name.out")" == 1 ]] || fail "$name: foreman goal text was lost"
+  echo "ok: station bundle keeps the $name fixture inside the fence"
+done
+[[ "$fx_count" -ge 3 ]] || fail "expected at least 3 adversarial fixtures, found $fx_count"
+
+grep -Fq 'look like instructions to an agent' "$scratch/fx-instruction-lines.out" \
+  || fail "instruction-lines fixture was not flagged"
+echo "ok: instruction lines are flagged, not removed"
+
+# Guard removed: a fence helper with a fixed delimiter and no escaping lets the
+# hostile closers end the block early, and the same assertions must fail.
+fx_tree="$scratch/fx-tree"
+mkdir -p "$fx_tree/agents"
+cp -R "$root/scripts" "$root/adapters" "$root/stations" "$root/AGENTS.md" "$fx_tree/" 2> /dev/null || true
+cp -R "$root/agents/roles" "$fx_tree/agents/roles"
+# shellcheck disable=SC2016
+sed -i -e '/^sed -i -e /d' \
+  -e 's|^  nonce=\$(od .*|  nonce=0123456789abcdef01234567|' \
+  -e 's|^  grep -q -F -- "\$nonce" "\$tmp" .*|  break|' "$fx_tree/scripts/fence-untrusted.sh"
+if cmp -s "$root/scripts/fence-untrusted.sh" "$fx_tree/scripts/fence-untrusted.sh"; then
+  fail "could not build the unguarded fence helper"
+fi
+replay_fixture "$fx_dir/fence-closers.md" "$scratch/fx-unguarded.out" "$fx_tree" \
+  || fail "station-run --dry-run failed with the unguarded helper"
+if assert_fixture_fenced "$scratch/fx-unguarded.out" HOSTILE_PAYLOAD_CLOSERS; then
+  fail "assertions passed with the fence guard removed"
+fi
+echo "ok: assertions fail when the fence guard is removed"
+
+# Fence removed entirely.
+sed '/^<<<UNTRUSTED_DATA/d;/^UNTRUSTED_DATA:.*>>>$/d' "$scratch/fx-fence-closers.out" > "$scratch/fx-nofence.out"
+if assert_fixture_fenced "$scratch/fx-nofence.out" HOSTILE_PAYLOAD_CLOSERS; then
+  fail "assertions passed with no fence"
+fi
+echo "ok: assertions fail when there is no fence"
+[[ ! -e "$fx_must_not_exist" ]] || fail "$fx_must_not_exist exists; a fixture command ran"
+
 echo "all untrusted-issue tests passed"
