@@ -867,6 +867,109 @@ assert_empty "$stdout_file" stdout
 assert_empty "$stderr_file" stderr
 assert_no_writes
 
+# --- rework and recovery from pull request data (--pr-rework) ----------------
+
+# One fixture serves both pr list reads: the 40 factory PR went back twice for
+# review and took two fix commits; 41 merged clean. Rounds are 2 and 0.
+write_rework_prs() {
+  python3 - "$prs_json" "${1:-full}" << 'PY'
+import json
+import sys
+
+def commit(headline, when):
+    return {"oid": "a" * 40, "messageHeadline": headline, "committedDate": when}
+
+def review(state):
+    return {"state": state, "submittedAt": "2026-10-21T00:30:00Z", "author": {"login": "reviewer"}}
+
+prs = [
+    {
+        "number": 40,
+        "headRefName": "factory/40-rounds",
+        "mergedAt": "2026-10-22T00:00:00Z",
+        "title": "feat: change",
+        "body": "",
+        "reviews": [review("CHANGES_REQUESTED"), review("COMMENTED"), review("CHANGES_REQUESTED"), review("APPROVED")],
+        "commits": [
+            commit("feat: change", "2026-10-21T00:00:00Z"),
+            commit("fix: review round one", "2026-10-21T01:00:00Z"),
+            commit("fix: review round two", "2026-10-21T02:00:00Z"),
+        ],
+    },
+    {
+        "number": 41,
+        "headRefName": "factory/41-clean",
+        "mergedAt": "2026-10-22T01:00:00Z",
+        "title": "fix: clean from the start",
+        "body": "",
+        "reviews": [review("APPROVED")],
+        "commits": [commit("fix: clean from the start", "2026-10-21T00:00:00Z")],
+    },
+]
+if sys.argv[2] == "no-reviews":
+    del prs[0]["reviews"]
+with open(sys.argv[1], "w", encoding="utf-8") as handle:
+    json.dump(prs, handle)
+    handle.write("\n")
+PY
+}
+
+write_rework_recovery() {
+  printf '%s\n' '[]' > "$commits_json"
+  write_commit "$SHA_RED" "2026-10-21T01:00:00Z"
+  write_commit "$SHA_GREEN" "2026-10-21T04:00:00Z"
+  write_checks "$SHA_RED" tests failure "2026-10-21T01:00:00Z"
+  write_checks "$SHA_GREEN" tests success "2026-10-21T04:00:00Z"
+}
+
+tname="pr-rework-numeric-with-fix-round"
+prepare
+write_rework_prs
+write_rework_recovery
+run_script --repo "$default_repo" --since "$default_since" --until "$default_until" \
+  --ledger "$root/no-ledger.csv" --required-check tests --pr-rework
+assert_status 0
+assert_empty "$stderr_file" stderr
+write_report 0/2 1.0 3.0 no n/a
+assert_same "$stdout_file" "$expected_file" stdout
+[[ "$(grep -c -x -- '--json' "$log")" -eq 2 ]] || fail "expected two pr list reads"
+grep -F -x -q 'number,headRefName,mergedAt,reviews,commits' "$log" || fail "no reviews and commits read"
+assert_no_writes
+
+tname="pr-rework-off-by-default"
+prepare
+write_rework_prs
+write_rework_recovery
+run_script --repo "$default_repo" --since "$default_since" --until "$default_until" \
+  --ledger "$root/no-ledger.csv" --required-check tests
+assert_status 0
+write_report 0/2 n/a 3.0 no n/a
+assert_same "$stdout_file" "$expected_file" stdout
+if grep -F -q 'reviews' "$log"; then
+  fail "reviews were read without --pr-rework"
+fi
+
+tname="pr-rework-ledger-wins"
+prepare
+write_rework_prs
+write_rework_recovery
+printf '%s\n' "$ledger_header" > "$ledger"
+run_script --repo "$default_repo" --since "$default_since" --until "$default_until" \
+  --ledger "$ledger" --required-check tests --pr-rework
+assert_status 0
+write_report 0/2 0.0 3.0 no n/a
+assert_same "$stdout_file" "$expected_file" stdout
+
+tname="pr-rework-unusable-data"
+prepare
+write_rework_prs no-reviews
+write_rework_recovery
+run_script --repo "$default_repo" --since "$default_since" --until "$default_until" \
+  --ledger "$root/no-ledger.csv" --required-check tests --pr-rework
+assert_status 7
+assert_empty "$stdout_file" stdout
+assert_no_writes
+
 # --- monitor procedure ------------------------------------------------------
 
 tname="monitor-procedure"

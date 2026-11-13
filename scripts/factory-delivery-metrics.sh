@@ -3,7 +3,7 @@
 #
 # Usage: scripts/factory-delivery-metrics.sh --repo OWNER/NAME \
 #   --since YYYY-MM-DD --until YYYY-MM-DD --ledger PATH \
-#   --required-check NAME [--required-check NAME ...]
+#   --required-check NAME [--required-check NAME ...] [--pr-rework]
 #
 # --since is inclusive and --until is exclusive. Both dates are UTC midnights.
 # Exit 2: a flag is missing or an argument is invalid. No gh call and no stdout.
@@ -17,6 +17,14 @@
 # later and at most 7 times 24 hours after that merge. The read includes
 # merges up to 7 days after --until.
 # Rework and cost read the ledger. Rework does not filter on repo. Cost does.
+# --pr-rework (opt-in) makes rework readable without the ledger: one more gh
+# read (merged pull requests with reviews and commits) and, when no ledger file
+# exists, rework rounds per pr is the mean over the same factory/<digits>-
+# pull requests of that pull request's rounds. A round is a review-return (a
+# CHANGES_REQUESTED review) or a fix round (a commit after the first whose
+# headline starts "fix"); a pull request's rounds are the larger of the two
+# counts, so a return and the fix that answers it count once. An existing
+# ledger still wins, and cost stays n/a without it.
 # Recovery walks default-branch commits from 7 days before --since up to
 # --until. Each red commit is measured to the next green commit. Hours are
 # the sum of the intervals whose failing check completed in the window and
@@ -31,6 +39,7 @@ since=""
 until=""
 ledger=""
 required=()
+pr_rework=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -59,6 +68,10 @@ while [[ $# -gt 0 ]]; do
           ;;
       esac
       shift 2
+      ;;
+    --pr-rework)
+      pr_rework=1
+      shift
       ;;
     *)
       exit 2
@@ -115,6 +128,20 @@ except Exception:
 if not isinstance(data, list) or len(data) >= 200:
     raise SystemExit(7)
 PY
+
+rework_json=""
+if [[ "$pr_rework" == "1" ]]; then
+  rework_json="$work/rework.json"
+  if ! gh pr list \
+    --repo "$repo" \
+    --state merged \
+    --limit 200 \
+    --search "merged:${search_from}..${search_to}" \
+    --json number,headRefName,mergedAt,reviews,commits \
+    >"$rework_json" 2>/dev/null; then
+    exit 7
+  fi
+fi
 
 if ! gh api "repos/${repo}" --jq .default_branch >"$work/branch.txt" 2>/dev/null; then
   exit 7
@@ -182,7 +209,7 @@ for name in "${required[@]}"; do
 done
 
 python3 - "$work/prs.json" "$work/commits.json" "$work/checks" "$work/required.txt" \
-  "$ledger" "$repo" "$since" "$until" << 'PY' || exit 7
+  "$ledger" "$repo" "$since" "$until" "$rework_json" << 'PY' || exit 7
 import csv
 import json
 import os
@@ -191,7 +218,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 
-prs_path, commits_path, checks_dir, required_path, ledger_path, repo, since, until = sys.argv[1:9]
+prs_path, commits_path, checks_dir, required_path, ledger_path, repo, since, until, rework_path = sys.argv[1:10]
 
 HEADER = [
     "date_utc",
@@ -376,6 +403,53 @@ def count_fixes(rows, pr, issue):
     return count
 
 
+def pr_rounds(pr):
+    """Rounds on one pull request from its reviews and commits (--pr-rework)."""
+    reviews = pr.get("reviews")
+    commits = pr.get("commits")
+    if not isinstance(reviews, list) or not isinstance(commits, list):
+        raise SystemExit(7)
+    returns = 0
+    for review in reviews:
+        if not isinstance(review, dict):
+            raise SystemExit(7)
+        if review.get("state") == "CHANGES_REQUESTED":
+            returns += 1
+    dated = []
+    for commit in commits:
+        if not isinstance(commit, dict):
+            raise SystemExit(7)
+        when = parse_instant(commit.get("committedDate"))
+        if when is None:
+            raise SystemExit(7)
+        dated.append((when, text_of(commit.get("messageHeadline"))))
+    dated.sort(key=lambda row: row[0])
+    fixes = 0
+    for _when, headline in dated[1:]:
+        if headline.casefold().startswith("fix"):
+            fixes += 1
+    return max(returns, fixes)
+
+
+def pr_rework_mean(denominator):
+    """Mean rounds over the denominator pull requests, or None without data."""
+    data = load_json(rework_path)
+    if not isinstance(data, list) or len(data) >= 200:
+        raise SystemExit(7)
+    by_number = {}
+    for item in data:
+        if not isinstance(item, dict):
+            raise SystemExit(7)
+        by_number[item.get("number")] = item
+    rounds = []
+    for pr in denominator:
+        item = by_number.get(pr["number"])
+        if item is None:
+            raise SystemExit(7)
+        rounds.append(pr_rounds(item))
+    return format_decimal(Decimal(sum(rounds)) / Decimal(len(rounds)), 1)
+
+
 def parse_cost(raw):
     if raw is None:
         return None
@@ -553,6 +627,8 @@ def main():
     if ledger is None or not denominator:
         rework = "n/a"
         cost = "n/a"
+        if rework_path and denominator:
+            rework = pr_rework_mean(denominator)
     else:
         fix_counts = []
         cost_sums = []
