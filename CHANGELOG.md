@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-13 (rework rounds and recovery in the weekly metrics)
+
+### Added
+
+- `scripts/factory-delivery-metrics.sh --pr-rework` fills `rework rounds per pr` from pull request data when the cost ledger is not readable (CI). It makes one extra read of merged pull requests with reviews and commits. A pull request's rounds are the larger of its `CHANGES_REQUESTED` reviews and its later `fix` commits, averaged over the factory pull requests merged in the window. An existing ledger still wins and cost stays `n/a`. The flag is off by default, so existing output and reads are unchanged. Recovery time was already computed from main's required checks. `scripts/test-factory-delivery-metrics.sh` gains a fixture with a fix round that prints numeric rework and recovery. The `metrics` workflow still needs `--pr-rework` added by the maintainer (#381).
+
 ## 2026-11-13 (adversarial issue text replay)
 
 ### Added
