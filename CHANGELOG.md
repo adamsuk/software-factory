@@ -9,6 +9,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - `scripts/run-work-order.sh` starts the grok child's container on a restricted network only. `FACTORY_CONTAINER_NETWORK` is required: `none`, or a network the runtime reports as internal. Ordinary networks (`host`, `bridge` and the like) are refused, and an unset, missing or non-internal network exits 9. `FACTORY_CONTAINER_PROXY` (optional, no credentials) sets the proxy variables inside the container. **A host that runs the grok builder must set `FACTORY_CONTAINER_NETWORK` before its next build.** See `docs/runbooks/work-order-container.md` (#382).
 
+## 2026-11-13 (weekly metrics pass --pr-rework)
+
+### Changed
+
+- `.github/workflows/metrics.yml` passes `--pr-rework` to `scripts/factory-delivery-metrics.sh`, so the weekly snapshot fills `rework rounds per pr` from pull request data. The "## Ledger" note now says only cost per change is `n/a` (#392).
+
 ## 2026-11-13 (rework rounds and recovery in the weekly metrics)
 
 ### Added
