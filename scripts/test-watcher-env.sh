@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Offline tests for the portable watcher defaults: the shared factory env block
-# in every scripts/watcher/*.sh, path resolution from FACTORY_HOME and
+# Offline tests for the portable watcher defaults: the shared factory-env.sh
+# that every scripts/watcher/*.sh loads, path resolution from FACTORY_HOME and
 # XDG_DATA_HOME, FACTORY_HOME_REPO / FACTORY_REPOS / FACTORY_APPROVER_LOGIN
 # resolution, FACTORY_BLOCKED_OWNERS, board-sync configuration, and the
 # push-protected.sh approval check. A fake gh is first on PATH and HOME is a
@@ -83,22 +83,47 @@ block_of() {
 
 watcher_scripts=(autopush.sh board-sync.sh push-protected.sh swap-early.sh watch.new.sh watch.sh)
 
-# --- the block is the same everywhere ---------------------------------------
-tname="every watcher script inlines the same factory env block"
+# --- one shared file, loaded the same way everywhere --------------------------
+tname="every watcher script loads the one shared factory-env.sh"
+[[ -f $watch/factory-env.sh ]] || fail "scripts/watcher/factory-env.sh is missing"
 ref=$(block_of "$watch/watch.sh")
 [[ -n $ref ]] || fail "watch.sh has no factory env block"
+# shellcheck disable=SC2016 # literal source text, not expansion
+[[ $ref == *'source "$factory_env_file"'* ]] || fail "watch.sh does not source factory-env.sh"
 for s in "${watcher_scripts[@]}"; do
   got=$(block_of "$watch/$s")
   [[ -n $got ]] || fail "$s has no factory env block"
   [[ $got == "$ref" ]] || fail "$s factory env block differs from watch.sh"
-  # A shell `source` or `. file` (jq's `. as $x` is not one).
-  if grep -E -q '^[[:space:]]*(source[[:space:]]|\.[[:space:]]+["$/~])' "$watch/$s"; then
-    fail "$s sources another file"
+  # The loader's one source line is the only shell `source` or `. file` in the
+  # script (jq's `. as $x` is not one).
+  n=$(grep -E -c '^[[:space:]]*(source[[:space:]]|\.[[:space:]]+["$/~])' "$watch/$s" || true)
+  [[ $n -eq 1 ]] || fail "$s has $n source lines; only the factory-env.sh loader may source a file"
+  # The shared settings and helpers are defined once, in factory-env.sh.
+  if grep -E -q '^(factory_(resolve_repos|resolve_provider|owner_blocked)\(\)|FACTORY_HOME=)' "$watch/$s"; then
+    fail "$s defines a shared factory setting itself; it belongs in factory-env.sh"
   fi
+done
+for fn in factory_resolve_repos factory_resolve_provider factory_owner_blocked; do
+  [[ $(grep -c "^$fn() {" "$watch/factory-env.sh") -eq 1 ]] || fail "factory-env.sh does not define $fn exactly once"
 done
 pass
 
-printf '%s\n' "$ref" > "$work/block.sh"
+tname="a watcher script without factory-env.sh beside it stops with a clear message"
+mkdir -p "$work/flat-missing" "$work/flat-ok"
+for s in "${watcher_scripts[@]}"; do
+  cp "$watch/$s" "$work/flat-missing/$s"
+  rc=0
+  out=$(cd "$work/flat-missing" && FACTORY_HOME_REPO=acme/home bash "./$s" arg1 arg2 arg3 2>&1 < /dev/null) || rc=$?
+  assert_eq "$rc" "1"
+  [[ $out == *"factory-env.sh must sit beside the watcher scripts"* ]] || fail "$s: no clear message: $out"
+done
+pass
+
+tname="a flat copy with factory-env.sh beside it resolves the same paths"
+cp "$watch/watch.sh" "$watch/watch.new.sh" "$watch/factory-env.sh" "$work/flat-ok/"
+pass
+
+cp "$watch/factory-env.sh" "$work/block.sh"
 
 # Prints the resolved paths, one per line, from the block alone.
 resolve_paths() {
@@ -158,6 +183,14 @@ for lane in watch.sh watch.new.sh; do
   tname="$lane: FACTORY_HOME=D"
   got=$(FACTORY_HOME=$d FACTORY_HOME_REPO=acme/home lane_paths "$watch/$lane")
   assert_eq "$got" "$(printf '%s\n' "$d/factory-watch" "$d/factory-budget.json" "$d/factory-ledger.csv")"
+  pass
+done
+
+for lane in watch.sh watch.new.sh; do
+  tname="$lane: a flat copy beside factory-env.sh resolves the defaults"
+  base=$HOME/.local/share/software-factory
+  got=$(FACTORY_HOME_REPO=acme/home lane_paths "$work/flat-ok/$lane")
+  assert_eq "$got" "$(printf '%s\n' "$base/factory-watch" "$base/factory-budget.json" "$base/factory-ledger.csv")"
   pass
 done
 

@@ -23,6 +23,7 @@ expected=$(printf '%s\n' \
   README.md \
   autopush.sh \
   board-sync.sh \
+  factory-env.sh \
   push-protected.sh \
   swap-early.sh \
   watch.new.sh \

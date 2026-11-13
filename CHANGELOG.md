@@ -3,11 +3,15 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 2026-11-13 (FACTORY_PROVIDER in the watcher env block)
+## 2026-11-13 (FACTORY_PROVIDER and one shared watcher env file)
 
 ### Added
 
-- The factory env block in every `scripts/watcher/*.sh` has `factory_resolve_provider`, which reads `FACTORY_PROVIDER` (`grok`, `claudecode` or `opencode`; default `grok`). `watch.sh` and `watch.new.sh` exit 2 with a message on any other value. The value is validated but not used yet, and `run_grok` is unchanged. Documented in `scripts/watcher/README.md` (#387).
+- `scripts/watcher/factory-env.sh` has `factory_resolve_provider`, which reads `FACTORY_PROVIDER` (`grok`, `claudecode` or `opencode`; default `grok`). `watch.sh` and `watch.new.sh` exit 2 with a message on any other value. The value is validated but not used yet, and `run_grok` is unchanged. Documented in `scripts/watcher/README.md` (#387).
+
+### Changed
+
+- The shared factory settings and `factory_*` helpers move out of the six `scripts/watcher/*.sh` files into one sourced file, `scripts/watcher/factory-env.sh`. Each script keeps a short identical loader and stops with exit 1 when the file is not beside it. `swap-early.sh` moves a staged `factory-env.sh.early` into place and refuses to swap a lane when `$FACTORY_WATCH_ROOT` has no `factory-env.sh`. **A live watcher needs `factory-env.sh` staged beside its lane scripts at the next swap.** `scripts/test-watcher-env.sh` and `scripts/test-watcher-tree.sh` now expect the shared file (#387).
 
 ## 2026-11-13 (restricted network for the work-order container)
 
