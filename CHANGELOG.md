@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-13 (weekly metrics pass --pr-rework)
+
+### Changed
+
+- `.github/workflows/metrics.yml` passes `--pr-rework` to `scripts/factory-delivery-metrics.sh`, so the weekly snapshot fills `rework rounds per pr` from pull request data. The "## Ledger" note now says only cost per change is `n/a` (#392).
+
 ## 2026-11-13 (rework rounds and recovery in the weekly metrics)
 
 ### Added
