@@ -8,7 +8,9 @@
 # changed a tracked file or moved HEAD, 5 tests failed, 6 setup failed.
 # 7: gh issue view, the factory:gate label edit, or a pull request gh call failed.
 # 8: unusable clone root (FACTORY_WORKSPACE or fallback) and no temporary directory usable.
-# 9: no container runtime, or FACTORY_CONTAINER_IMAGE unset, for the grok child.
+# 9: no container runtime, FACTORY_CONTAINER_IMAGE unset, or no restricted
+# network (FACTORY_CONTAINER_NETWORK unset, not found, or not internal), for the
+# grok child. See docs/runbooks/work-order-container.md.
 # Before test_command, prepare the target environment: the work order's
 # setup_command, else agents.setup_command from origin/$base:.github/factory.yml
 # (never the working tree), else a Python venv (declared dev/test extras) or a
@@ -692,6 +694,45 @@ container_image() {
   printf '%s\n' "$FACTORY_CONTAINER_IMAGE"
 }
 
+# The network for the grok child (#382). There is no default, and the
+# runtime's ordinary networks are refused, because they can reach any host.
+# FACTORY_CONTAINER_NETWORK is either "none" or the name of a network the
+# runtime reports as internal: no route out, so the only way to another host
+# is whatever the operator attached to it (an allowlisting proxy for the model
+# API host). Dies 9 rather than starting a container that can reach anything.
+container_network() {
+  local runtime=$1 net=${FACTORY_CONTAINER_NETWORK:-} info
+  [[ -n $net ]] \
+    || die 9 "cannot start a container: FACTORY_CONTAINER_NETWORK is not set (an internal network name, or none)"
+  if [[ $net == none ]]; then
+    printf 'none\n'
+    return 0
+  fi
+  [[ $net =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] \
+    || die 9 "cannot start a container: FACTORY_CONTAINER_NETWORK is not a network name"
+  case "$net" in
+    host | bridge | default | private | podman | slirp4netns | pasta)
+      die 9 "cannot start a container: network $net does not restrict egress"
+      ;;
+  esac
+  info=$("$runtime" network inspect "$net" 2> /dev/null) \
+    || die 9 "cannot start a container: network $net was not found by $(basename -- "$runtime")"
+  printf '%s' "$info" | grep -Eiq '"internal"[[:space:]]*:[[:space:]]*true' \
+    || die 9 "cannot start a container: network $net is not internal, so it does not restrict egress"
+  printf '%s\n' "$net"
+}
+
+# The optional proxy for the grok child (#382): FACTORY_CONTAINER_PROXY, an
+# http(s)://host[:port] URL reachable on the restricted network. Credentials
+# in the URL are refused, because the value goes on the runtime argv.
+container_proxy() {
+  local proxy=${FACTORY_CONTAINER_PROXY:-}
+  [[ -n $proxy ]] || return 0
+  [[ $proxy =~ ^https?://[A-Za-z0-9.-]+(:[0-9]+)?/?$ ]] \
+    || die 9 "cannot start a container: FACTORY_CONTAINER_PROXY must be http(s)://host[:port] with no credentials"
+  printf '%s\n' "$proxy"
+}
+
 # Sets the global container_cmd array: the runtime invocation that starts the
 # grok child in a fresh, disposable container (sandbox-no-secrets, #221).
 # Only the clone (rw) and the fenced work order (ro) are mounted, at their
@@ -700,10 +741,14 @@ container_image() {
 # value never appears on argv. The box's gh config, App key file, ssh-agent
 # and cloud credential files are never mounted; the env scrub and the deny
 # rules still apply to the child inside the container.
+# The container joins only the restricted network from container_network
+# (#382), with the proxy variables set when FACTORY_CONTAINER_PROXY is given.
 build_container_command() {
-  local dir=$1 order=$2 runtime image
+  local dir=$1 order=$2 runtime image network proxy
   runtime=$(container_runtime) || exit 9
   image=$(container_image) || exit 9
+  network=$(container_network "$runtime") || exit 9
+  proxy=$(container_proxy) || exit 9
   container_cmd=(
     "$runtime" run --rm -i
     --volume "$dir:$dir"
@@ -713,7 +758,14 @@ build_container_command() {
     --tmpfs /factory-home
     --tmpfs /factory-tmp
     --workdir "$dir"
+    --network "$network"
   )
+  if [[ -n $proxy ]]; then
+    container_cmd+=(
+      --env "HTTPS_PROXY=$proxy" --env "HTTP_PROXY=$proxy"
+      --env "https_proxy=$proxy" --env "http_proxy=$proxy"
+    )
+  fi
   # Rootless podman maps container root to the calling user, so files written
   # in the clone stay ours. docker and nerdctl run as root by default and
   # would leave root-owned files for the host to commit; run as us instead.
