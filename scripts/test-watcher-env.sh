@@ -468,4 +468,100 @@ for s in watch.sh watch.new.sh; do
 done
 pass
 
+# --- swap-early.sh ships factory-env.sh with the lanes --------------------------
+# A stand-in FACTORY_WATCH_ROOT, the way a live watcher has it: flat lane
+# scripts, their logs ending on the cycle sleep, and staged .early files. The
+# staged lanes are the real loader plus one line that records what they
+# resolved, so "the lane started" means "it found factory-env.sh beside it".
+# pkill, fuser and sleep are stubs first on PATH: the swap must never signal a
+# real process from a test, and it does not need to wait.
+swap_bin=$work/swap-bin
+mkdir -p "$swap_bin"
+# shellcheck disable=SC2016 # written into the stub, expanded there
+printf '%s\n' '#!/usr/bin/env bash' 'printf "%s\n" "$*" >> "${SWAP_PKILL_LOG:?}"' 'exit 0' > "$swap_bin/pkill"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' > "$swap_bin/fuser"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' > "$swap_bin/sleep"
+chmod +x "$swap_bin/pkill" "$swap_bin/fuser" "$swap_bin/sleep"
+
+new_swap_root() { # dir: old self-contained lanes, logs on the cycle sleep, staged new lanes
+  local dir=$1 lane
+  mkdir -p "$dir"
+  for lane in watch.sh watch.new.sh; do
+    printf '%s\n' '#!/usr/bin/env bash' '# old self-contained lane' > "$dir/$lane"
+    {
+      printf '%s\n' '#!/usr/bin/env bash'
+      block_of "$watch/watch.sh"
+      # shellcheck disable=SC2016 # written into the staged lane, expanded there
+      printf '%s\n' 'factory_resolve_provider' 'printf "%s\n" "$FACTORY_PROVIDER" > "started-${0##*/}"'
+    } > "$dir/$lane.early"
+  done
+  printf '%s\n' 'cycle done; sleep 180' > "$dir/watch.log"
+  printf '%s\n' 'cycle done; sleep 180' > "$dir/watch-build.log"
+}
+run_swap() { # dir -> prints the exit code; output in $dir/swap.out
+  local dir=$1 rc=0
+  SWAP_PKILL_LOG=$dir/pkill.log PATH="$swap_bin:$PATH" FACTORY_WATCH_ROOT=$dir FACTORY_HOME_REPO=acme/home \
+    timeout 60 bash "$watch/swap-early.sh" > "$dir/swap.out" 2>&1 < /dev/null || rc=$?
+  printf '%s\n' "$rc"
+}
+wait_for() { # file: up to five seconds
+  local i
+  for i in $(seq 1 50); do
+    [[ -f $1 ]] && return 0
+    command sleep 0.1
+  done
+  return 1
+}
+
+tname="swap-early.sh: no factory-env.sh staged or present stops before any lane is touched"
+sr=$work/swap-none
+new_swap_root "$sr"
+assert_eq "$(run_swap "$sr")" "1"
+grep -F -q 'stage factory-env.sh.early first' "$sr/swap.out" || fail "no clear message: $(cat "$sr/swap.out")"
+[[ ! -e $sr/pkill.log ]] || fail "a lane was stopped although the swap could not finish"
+[[ -f $sr/watch.sh.early && -f $sr/watch.new.sh.early ]] || fail "a staged lane was consumed"
+grep -F -q 'old self-contained lane' "$sr/watch.sh" || fail "the live watch.sh was replaced"
+[[ ! -e $sr/watch.sh.pre-early && ! -e $sr/swap.log ]] || fail "the swap left traces after refusing"
+pass
+
+tname="swap-early.sh: first swap with factory-env.sh.early staged starts both new lanes"
+sr=$work/swap-first
+new_swap_root "$sr"
+cp "$watch/factory-env.sh" "$sr/factory-env.sh.early"
+assert_eq "$(run_swap "$sr")" "0"
+[[ -f $sr/factory-env.sh && ! -e $sr/factory-env.sh.early ]] || fail "factory-env.sh.early was not moved into place"
+[[ ! -e $sr/factory-env.sh.pre-early ]] || fail "a pre-early copy appeared with no previous factory-env.sh"
+for lane in watch.sh watch.new.sh; do
+  wait_for "$sr/started-$lane" || fail "$lane did not start: $(cat "$sr/nohup.out" 2> /dev/null)"
+  assert_eq "$(cat "$sr/started-$lane")" "grok"
+  grep -F -q 'old self-contained lane' "$sr/$lane.pre-early" || fail "$lane: the old lane was not kept as .pre-early"
+done
+assert_eq "$(wc -l < "$sr/swap.log" | tr -d ' ')" "2"
+assert_eq "$(wc -l < "$sr/pkill.log" | tr -d ' ')" "2"
+pass
+
+tname="swap-early.sh: a staged factory-env.sh replaces the old one and keeps it as .pre-early"
+sr=$work/swap-update
+new_swap_root "$sr"
+printf '%s\n' '# previous factory-env.sh' > "$sr/factory-env.sh"
+cp "$watch/factory-env.sh" "$sr/factory-env.sh.early"
+assert_eq "$(run_swap "$sr")" "0"
+assert_eq "$(cat "$sr/factory-env.sh.pre-early")" "# previous factory-env.sh"
+cmp -s "$watch/factory-env.sh" "$sr/factory-env.sh" || fail "the staged factory-env.sh is not the live one"
+for lane in watch.sh watch.new.sh; do
+  wait_for "$sr/started-$lane" || fail "$lane did not start: $(cat "$sr/nohup.out" 2> /dev/null)"
+done
+pass
+
+tname="swap-early.sh: with factory-env.sh already present and none staged, the lanes still swap"
+sr=$work/swap-present
+new_swap_root "$sr"
+cp "$watch/factory-env.sh" "$sr/factory-env.sh"
+assert_eq "$(run_swap "$sr")" "0"
+[[ ! -e $sr/factory-env.sh.pre-early ]] || fail "a pre-early copy appeared with nothing staged"
+for lane in watch.sh watch.new.sh; do
+  wait_for "$sr/started-$lane" || fail "$lane did not start: $(cat "$sr/nohup.out" 2> /dev/null)"
+done
+pass
+
 echo "ok  watcher env tests"
