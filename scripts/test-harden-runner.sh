@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Offline, read-only test: every job in lint.yml, metrics.yml, line-audit.yml and
 # ruleset-drift.yml starts with the pinned step-security/harden-runner step. The jobs
-# that block egress (lint.yml shellcheck and tests, metrics.yml metrics) must say
-# egress-policy: block with an allowed-endpoints list that has no wildcard and only
-# host:443 entries, except port 80 for azure.archive.ubuntu.com and security.ubuntu.com
-# (the apt mirrors). Three jobs stay in audit on purpose and are named below:
-# lint.yml test-assertions, ruleset-drift.yml ruleset-drift and line-audit.yml audit
-# (adamsuk/software-factory#369). Any other job must block. changelog.yml (a bare
+# that block egress (every lint.yml job, metrics.yml metrics and ruleset-drift.yml
+# ruleset-drift) must say egress-policy: block with an allowed-endpoints list that has
+# no wildcard and only host:443 entries, except port 80 for azure.archive.ubuntu.com
+# and security.ubuntu.com (the apt mirrors). One job stays in audit on purpose and is
+# named below: line-audit.yml audit, which has never run its real path, so it has no
+# list (adamsuk/software-factory#369, #379). Any other job must block. changelog.yml (a bare
 # reusable-workflow caller) still has no steps. ShellCheck covers this file.
 # WORKFLOWS_DIR overrides the directory, to check another checkout.
 set -euo pipefail
@@ -72,11 +72,11 @@ check_job() { # file job audit|block
 }
 
 check_job lint.yml shellcheck block
-check_job lint.yml test-assertions audit
+check_job lint.yml test-assertions block
 check_job lint.yml tests block
 check_job metrics.yml metrics block
 check_job line-audit.yml audit audit
-check_job ruleset-drift.yml ruleset-drift audit
+check_job ruleset-drift.yml ruleset-drift block
 
 tname="changelog.yml has no steps"
 if [[ ! -r "$dir/changelog.yml" ]]; then
@@ -102,10 +102,10 @@ if [[ -z "${HARDEN_RUNNER_SELFTEST:-}" ]]; then
   mkfixture() { # name: a fully passing set of workflows
     local d="$tmp/$1"
     mkdir -p "$d"
-    { echo 'jobs:'; good_job shellcheck block; good_job test-assertions; good_job tests block 'azure.archive.ubuntu.com:80 github.com:443'; } >"$d/lint.yml"
+    { echo 'jobs:'; good_job shellcheck block; good_job test-assertions block; good_job tests block 'azure.archive.ubuntu.com:80 github.com:443'; } >"$d/lint.yml"
     { echo 'jobs:'; good_job metrics block; } >"$d/metrics.yml"
     { echo 'jobs:'; good_job audit; } >"$d/line-audit.yml"
-    { echo 'jobs:'; good_job ruleset-drift; } >"$d/ruleset-drift.yml"
+    { echo 'jobs:'; good_job ruleset-drift block 'api.github.com:443 github.com:443'; } >"$d/ruleset-drift.yml"
     printf 'jobs:\n  changelog:\n    uses: o/r/.github/workflows/c.yml@main\n' >"$d/changelog.yml"
   }
   expect_fail() { # name fixture-dir expected-text
@@ -129,16 +129,24 @@ if [[ -z "${HARDEN_RUNNER_SELFTEST:-}" ]]; then
   expect_fail "commented-out Harden-Runner is not a pass" "$tmp/commented" "line-audit.yml / audit"
 
   mkfixture wildcard
-  { echo 'jobs:'; good_job shellcheck block 'github.com:443 *.github.com:443'; good_job test-assertions; good_job tests block; } >"$tmp/wildcard/lint.yml"
+  { echo 'jobs:'; good_job shellcheck block 'github.com:443 *.github.com:443'; good_job test-assertions block; good_job tests block; } >"$tmp/wildcard/lint.yml"
   expect_fail "wildcard endpoint fails" "$tmp/wildcard" "wildcard entry"
 
   mkfixture port80
-  { echo 'jobs:'; good_job shellcheck block 'github.com:80'; good_job test-assertions; good_job tests block; } >"$tmp/port80/lint.yml"
+  { echo 'jobs:'; good_job shellcheck block 'github.com:80'; good_job test-assertions block; good_job tests block; } >"$tmp/port80/lint.yml"
   expect_fail "port 80 on a non-apt host fails" "$tmp/port80" "port 80 is allowed only for"
 
   mkfixture audit-where-block
   { echo 'jobs:'; good_job metrics; } >"$tmp/audit-where-block/metrics.yml"
   expect_fail "audit where block is expected fails" "$tmp/audit-where-block" "lacks egress-policy: block"
+
+  mkfixture audit-test-assertions
+  { echo 'jobs:'; good_job shellcheck block; good_job test-assertions; good_job tests block; } >"$tmp/audit-test-assertions/lint.yml"
+  expect_fail "test-assertions left in audit fails" "$tmp/audit-test-assertions" "lint.yml / test-assertions"
+
+  mkfixture audit-ruleset-drift
+  { echo 'jobs:'; good_job ruleset-drift; } >"$tmp/audit-ruleset-drift/ruleset-drift.yml"
+  expect_fail "ruleset-drift left in audit fails" "$tmp/audit-ruleset-drift" "ruleset-drift.yml / ruleset-drift"
 
   mkfixture no-endpoints
   printf 'jobs:\n  metrics:\n    steps:\n      - uses: %s\n        with:\n          egress-policy: block\n' "$pin" >"$tmp/no-endpoints/metrics.yml"

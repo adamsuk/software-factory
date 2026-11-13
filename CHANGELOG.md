@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-13 (egress block on test-assertions and ruleset-drift)
+
+### Changed
+
+- The `test-assertions` job in `.github/workflows/lint.yml` and the `ruleset-drift` job in `.github/workflows/ruleset-drift.yml` run Harden-Runner with `egress-policy: block` and an `allowed-endpoints` list. Only the `audit` job in `line-audit.yml` stays on `audit`: it has never run its real path, so it has no list. `scripts/test-harden-runner.sh` now expects `block` for both jobs (#379).
+
 ## 2026-11-13 (weekly metrics pass --pr-rework)
 
 ### Changed
