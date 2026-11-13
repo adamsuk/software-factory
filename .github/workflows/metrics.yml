@@ -13,9 +13,9 @@ name: metrics
 # Contents and Pull requests write on this repo.
 #
 # LEDGER: the delivery script's cost ledger lives on the factory host and is not
-# readable from CI, so rework rounds and cost per change are n/a in each
-# snapshot. Each snapshot says so in its "## Ledger" note rather than inventing
-# numbers (#355).
+# readable from CI, so cost per change is n/a in each snapshot. Each snapshot
+# says so in its "## Ledger" note rather than inventing numbers (#355). Rework
+# rounds per pr are read from pull request data with --pr-rework (#381, #392).
 
 on:
   schedule:
@@ -71,6 +71,7 @@ jobs:
             echo
             scripts/factory-delivery-metrics.sh --repo "$GITHUB_REPOSITORY" --since "$since" --until "$until" \
               --ledger "$RUNNER_TEMP/no-ledger.csv" \
+              --pr-rework \
               --required-check ShellCheck --required-check "changelog / changelog" \
               --required-check tests --required-check "Test assertions"
           } > "$RUNNER_TEMP/metrics.md"
@@ -78,7 +79,7 @@ jobs:
             echo
             echo "## Ledger"
             echo
-            echo "The cost ledger lives on the factory host and is not readable from CI, so rework rounds per pr and cost per change usd are n/a in this snapshot (#355)."
+            echo "The cost ledger lives on the factory host and is not readable from CI, so cost per change usd is n/a in this snapshot (#355). Rework rounds per pr are read from pull request data (--pr-rework, #381)."
           } >> "$RUNNER_TEMP/metrics.md"
           echo "until=$until" >> "$GITHUB_ENV"
       - name: Open the pull request
