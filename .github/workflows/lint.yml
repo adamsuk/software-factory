@@ -60,8 +60,11 @@ jobs:
     steps:
       - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
-          # Stays audit on purpose: its step was skipped in the audited run, so there is no list (adamsuk/software-factory#369).
-          egress-policy: audit
+          # The job only checks out and fetches the base branch, both from github.com.
+          # Proven by this job running in block mode on the pull request that set it (adamsuk/software-factory#379).
+          egress-policy: block
+          allowed-endpoints: >-
+            github.com:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0

@@ -18,8 +18,12 @@ jobs:
     steps:
       - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
-          # Stays audit on purpose: the audited run did not generate its report, so there is no list (adamsuk/software-factory#369).
-          egress-policy: audit
+          # checkout and the gh extension clone reach github.com; gh and the extension call api.github.com.
+          # Proven by a workflow_dispatch run of this job in block mode on the branch that set it (adamsuk/software-factory#379).
+          egress-policy: block
+          allowed-endpoints: >-
+            api.github.com:443
+            github.com:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Check rulesets against factory.yml
         env:
