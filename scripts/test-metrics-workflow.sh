@@ -42,6 +42,11 @@ if grep -Eq 'GH_TOKEN: \$\{\{ secrets\.GITHUB_TOKEN \}\}' <(awk '/- name: Open t
 fi
 has 'cost ledger lives on the factory host' "ledger limit is not documented"
 has '^            echo "## Ledger"' "snapshot does not state the ledger limit"
+# Rework rounds come from pull request data when the ledger is not readable (#392).
+has '^ +--pr-rework \\$' "delivery metrics call does not pass --pr-rework"
+if grep -Eq 'rework rounds per pr and cost per change usd are n/a' "$wf"; then
+  fail "the ledger note still says rework rounds are n/a"
+fi
 if grep -Eq 'ghs_|-----BEGIN|private-key: [^$]' "$wf"; then fail "workflow contains a secret value"; fi
 
 # A snapshot with a Baseline section exists.
