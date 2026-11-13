@@ -18,6 +18,11 @@
 # On --push this script opens or updates the pull request and never merges.
 set -euo pipefail
 
+# This script's own directory, absolute, resolved once at load time before any
+# cd into a clone. A relative BASH_SOURCE[0] (scripts/run-work-order.sh run from
+# the repo root) stops resolving after a cd, so every helper lookup uses this (#375).
+RWO_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 setup_env=()
 # The container prefix for the grok child (sandbox-no-secrets, #221). Empty
 # means "run grok directly", which is what the extracted-command tests below
@@ -50,7 +55,7 @@ FENCE_CLOSE_MARKER='===== END UNTRUSTED ISSUE TEXT ====='
 # unchanged too. Both backends read the result, never the raw order.
 fence_issue_text() {
   local fence_script pre body fenced
-  fence_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fence-untrusted.sh"
+  fence_script="$RWO_SCRIPT_DIR/fence-untrusted.sh"
   # Fail closed (#346): no fence script, no run. Nothing is printed before this.
   [[ -f "$fence_script" && -r "$fence_script" ]] \
     || die 2 "missing or unreadable scripts/fence-untrusted.sh, refusing to run with unfenced issue text"
@@ -626,7 +631,7 @@ finish_commit() {
 # can still authenticate.
 apply_factory_gh_app_token() {
   local helper token
-  helper="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/gh-app-token.sh"
+  helper="$RWO_SCRIPT_DIR/gh-app-token.sh"
   token=""
   if [[ -f $helper ]]; then
     token=$(bash "$helper") || token=""
@@ -743,7 +748,7 @@ main() {
   if [[ "${1:-}" == "--push" ]]; then push=true; shift; fi
   [[ $# -eq 1 && -f "$1" ]] || die 2 "usage: $0 [--push] <work-order.md>"
   order="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
-  here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  here="$(cd "$RWO_SCRIPT_DIR/.." && pwd)"
   rules="$here/AGENTS.md"
   [[ -f "$rules" ]] || die 2 "missing $rules"
   protected_paths_sh="$here/scripts/protected-paths.sh"
