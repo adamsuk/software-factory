@@ -220,6 +220,9 @@ EOF
     echo "ok: $name/$layout_tag keeps the hostile fixture inside the fence"
     return 0
   fi
+  if [[ $layout == tree ]]; then
+    assert_fenced "$workdir/block.out" "$payload"
+  fi
   prompt="$workdir/watch/state/prompt-triage-acme_software-factory-358.txt"
   assert_fenced "$prompt" "$payload"
   grep -Fq -- "$inside_token" "$prompt" || fail "$name/$layout: the #281 fence interior was lost"
