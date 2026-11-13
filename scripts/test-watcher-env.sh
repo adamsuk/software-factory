@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Offline tests for the portable watcher defaults: the shared factory env block
-# in every scripts/watcher/*.sh, path resolution from FACTORY_HOME and
+# Offline tests for the portable watcher defaults: the shared factory-env.sh
+# that every scripts/watcher/*.sh loads, path resolution from FACTORY_HOME and
 # XDG_DATA_HOME, FACTORY_HOME_REPO / FACTORY_REPOS / FACTORY_APPROVER_LOGIN
 # resolution, FACTORY_BLOCKED_OWNERS, board-sync configuration, and the
 # push-protected.sh approval check. A fake gh is first on PATH and HOME is a
@@ -83,22 +83,47 @@ block_of() {
 
 watcher_scripts=(autopush.sh board-sync.sh push-protected.sh swap-early.sh watch.new.sh watch.sh)
 
-# --- the block is the same everywhere ---------------------------------------
-tname="every watcher script inlines the same factory env block"
+# --- one shared file, loaded the same way everywhere --------------------------
+tname="every watcher script loads the one shared factory-env.sh"
+[[ -f $watch/factory-env.sh ]] || fail "scripts/watcher/factory-env.sh is missing"
 ref=$(block_of "$watch/watch.sh")
 [[ -n $ref ]] || fail "watch.sh has no factory env block"
+# shellcheck disable=SC2016 # literal source text, not expansion
+[[ $ref == *'source "$factory_env_file"'* ]] || fail "watch.sh does not source factory-env.sh"
 for s in "${watcher_scripts[@]}"; do
   got=$(block_of "$watch/$s")
   [[ -n $got ]] || fail "$s has no factory env block"
   [[ $got == "$ref" ]] || fail "$s factory env block differs from watch.sh"
-  # A shell `source` or `. file` (jq's `. as $x` is not one).
-  if grep -E -q '^[[:space:]]*(source[[:space:]]|\.[[:space:]]+["$/~])' "$watch/$s"; then
-    fail "$s sources another file"
+  # The loader's one source line is the only shell `source` or `. file` in the
+  # script (jq's `. as $x` is not one).
+  n=$(grep -E -c '^[[:space:]]*(source[[:space:]]|\.[[:space:]]+["$/~])' "$watch/$s" || true)
+  [[ $n -eq 1 ]] || fail "$s has $n source lines; only the factory-env.sh loader may source a file"
+  # The shared settings and helpers are defined once, in factory-env.sh.
+  if grep -E -q '^(factory_(resolve_repos|resolve_provider|owner_blocked)\(\)|FACTORY_HOME=)' "$watch/$s"; then
+    fail "$s defines a shared factory setting itself; it belongs in factory-env.sh"
   fi
+done
+for fn in factory_resolve_repos factory_resolve_provider factory_owner_blocked; do
+  [[ $(grep -c "^$fn() {" "$watch/factory-env.sh") -eq 1 ]] || fail "factory-env.sh does not define $fn exactly once"
 done
 pass
 
-printf '%s\n' "$ref" > "$work/block.sh"
+tname="a watcher script without factory-env.sh beside it stops with a clear message"
+mkdir -p "$work/flat-missing" "$work/flat-ok"
+for s in "${watcher_scripts[@]}"; do
+  cp "$watch/$s" "$work/flat-missing/$s"
+  rc=0
+  out=$(cd "$work/flat-missing" && FACTORY_HOME_REPO=acme/home bash "./$s" arg1 arg2 arg3 2>&1 < /dev/null) || rc=$?
+  assert_eq "$rc" "1"
+  [[ $out == *"factory-env.sh must sit beside the watcher scripts"* ]] || fail "$s: no clear message: $out"
+done
+pass
+
+tname="a flat copy with factory-env.sh beside it resolves the same paths"
+cp "$watch/watch.sh" "$watch/watch.new.sh" "$watch/factory-env.sh" "$work/flat-ok/"
+pass
+
+cp "$watch/factory-env.sh" "$work/block.sh"
 
 # Prints the resolved paths, one per line, from the block alone.
 resolve_paths() {
@@ -158,6 +183,14 @@ for lane in watch.sh watch.new.sh; do
   tname="$lane: FACTORY_HOME=D"
   got=$(FACTORY_HOME=$d FACTORY_HOME_REPO=acme/home lane_paths "$watch/$lane")
   assert_eq "$got" "$(printf '%s\n' "$d/factory-watch" "$d/factory-budget.json" "$d/factory-ledger.csv")"
+  pass
+done
+
+for lane in watch.sh watch.new.sh; do
+  tname="$lane: a flat copy beside factory-env.sh resolves the defaults"
+  base=$HOME/.local/share/software-factory
+  got=$(FACTORY_HOME_REPO=acme/home lane_paths "$work/flat-ok/$lane")
+  assert_eq "$got" "$(printf '%s\n' "$base/factory-watch" "$base/factory-budget.json" "$base/factory-ledger.csv")"
   pass
 done
 
@@ -396,6 +429,139 @@ pass
 tname="push-protected.sh needs an approver"
 assert_eq "$(cd "$work/not-a-clone" && approval_rc "$c")" 2
 grep -F -q 'no approver' "$work/pp.out" || fail "missing message: $(cat "$work/pp.out")"
+pass
+
+# --- FACTORY_PROVIDER ------------------------------------------------------------
+# Prints the resolved provider (and the function's exit status) from the block.
+provider_of() {
+  (
+    # shellcheck disable=SC1091
+    source "$work/block.sh"
+    rc=0
+    factory_resolve_provider 2> "$work/prov.err" || rc=$?
+    printf '%s %s\n' "$rc" "${FACTORY_PROVIDER:-}"
+  )
+}
+
+tname="FACTORY_PROVIDER defaults to grok"
+unset FACTORY_PROVIDER
+assert_eq "$(provider_of)" "0 grok"
+pass
+
+for p in grok claudecode opencode; do
+  tname="FACTORY_PROVIDER=$p is accepted"
+  assert_eq "$(FACTORY_PROVIDER=$p provider_of)" "0 $p"
+  pass
+done
+
+tname="an invalid FACTORY_PROVIDER is rejected with a clear message"
+assert_eq "$(FACTORY_PROVIDER=gemini provider_of)" "2 gemini"
+grep -F -q 'FACTORY_PROVIDER=gemini is not valid' "$work/prov.err" || fail "missing message: $(cat "$work/prov.err")"
+pass
+
+tname="the watcher lanes stop on an invalid FACTORY_PROVIDER"
+for s in watch.sh watch.new.sh; do
+  rc=0
+  FACTORY_PROVIDER=gemini timeout 20 bash "$watch/$s" > "$work/lane.out" 2>&1 || rc=$?
+  assert_eq "$rc" 2
+  grep -F -q 'is not valid' "$work/lane.out" || fail "$s: missing message: $(cat "$work/lane.out")"
+done
+pass
+
+# --- swap-early.sh ships factory-env.sh with the lanes --------------------------
+# A stand-in FACTORY_WATCH_ROOT, the way a live watcher has it: flat lane
+# scripts, their logs ending on the cycle sleep, and staged .early files. The
+# staged lanes are the real loader plus one line that records what they
+# resolved, so "the lane started" means "it found factory-env.sh beside it".
+# pkill, fuser and sleep are stubs first on PATH: the swap must never signal a
+# real process from a test, and it does not need to wait.
+swap_bin=$work/swap-bin
+mkdir -p "$swap_bin"
+# shellcheck disable=SC2016 # written into the stub, expanded there
+printf '%s\n' '#!/usr/bin/env bash' 'printf "%s\n" "$*" >> "${SWAP_PKILL_LOG:?}"' 'exit 0' > "$swap_bin/pkill"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' > "$swap_bin/fuser"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' > "$swap_bin/sleep"
+chmod +x "$swap_bin/pkill" "$swap_bin/fuser" "$swap_bin/sleep"
+
+new_swap_root() { # dir: old self-contained lanes, logs on the cycle sleep, staged new lanes
+  local dir=$1 lane
+  mkdir -p "$dir"
+  for lane in watch.sh watch.new.sh; do
+    printf '%s\n' '#!/usr/bin/env bash' '# old self-contained lane' > "$dir/$lane"
+    {
+      printf '%s\n' '#!/usr/bin/env bash'
+      block_of "$watch/watch.sh"
+      # shellcheck disable=SC2016 # written into the staged lane, expanded there
+      printf '%s\n' 'factory_resolve_provider' 'printf "%s\n" "$FACTORY_PROVIDER" > "started-${0##*/}"'
+    } > "$dir/$lane.early"
+  done
+  printf '%s\n' 'cycle done; sleep 180' > "$dir/watch.log"
+  printf '%s\n' 'cycle done; sleep 180' > "$dir/watch-build.log"
+}
+run_swap() { # dir -> prints the exit code; output in $dir/swap.out
+  local dir=$1 rc=0
+  SWAP_PKILL_LOG=$dir/pkill.log PATH="$swap_bin:$PATH" FACTORY_WATCH_ROOT=$dir FACTORY_HOME_REPO=acme/home \
+    timeout 60 bash "$watch/swap-early.sh" > "$dir/swap.out" 2>&1 < /dev/null || rc=$?
+  printf '%s\n' "$rc"
+}
+wait_for() { # file: up to five seconds
+  local i
+  for i in $(seq 1 50); do
+    [[ -f $1 ]] && return 0
+    command sleep 0.1
+  done
+  return 1
+}
+
+tname="swap-early.sh: no factory-env.sh staged or present stops before any lane is touched"
+sr=$work/swap-none
+new_swap_root "$sr"
+assert_eq "$(run_swap "$sr")" "1"
+grep -F -q 'stage factory-env.sh.early first' "$sr/swap.out" || fail "no clear message: $(cat "$sr/swap.out")"
+[[ ! -e $sr/pkill.log ]] || fail "a lane was stopped although the swap could not finish"
+[[ -f $sr/watch.sh.early && -f $sr/watch.new.sh.early ]] || fail "a staged lane was consumed"
+grep -F -q 'old self-contained lane' "$sr/watch.sh" || fail "the live watch.sh was replaced"
+[[ ! -e $sr/watch.sh.pre-early && ! -e $sr/swap.log ]] || fail "the swap left traces after refusing"
+pass
+
+tname="swap-early.sh: first swap with factory-env.sh.early staged starts both new lanes"
+sr=$work/swap-first
+new_swap_root "$sr"
+cp "$watch/factory-env.sh" "$sr/factory-env.sh.early"
+assert_eq "$(run_swap "$sr")" "0"
+[[ -f $sr/factory-env.sh && ! -e $sr/factory-env.sh.early ]] || fail "factory-env.sh.early was not moved into place"
+[[ ! -e $sr/factory-env.sh.pre-early ]] || fail "a pre-early copy appeared with no previous factory-env.sh"
+for lane in watch.sh watch.new.sh; do
+  wait_for "$sr/started-$lane" || fail "$lane did not start: $(cat "$sr/nohup.out" 2> /dev/null)"
+  assert_eq "$(cat "$sr/started-$lane")" "grok"
+  grep -F -q 'old self-contained lane' "$sr/$lane.pre-early" || fail "$lane: the old lane was not kept as .pre-early"
+done
+assert_eq "$(wc -l < "$sr/swap.log" | tr -d ' ')" "2"
+assert_eq "$(wc -l < "$sr/pkill.log" | tr -d ' ')" "2"
+pass
+
+tname="swap-early.sh: a staged factory-env.sh replaces the old one and keeps it as .pre-early"
+sr=$work/swap-update
+new_swap_root "$sr"
+printf '%s\n' '# previous factory-env.sh' > "$sr/factory-env.sh"
+cp "$watch/factory-env.sh" "$sr/factory-env.sh.early"
+assert_eq "$(run_swap "$sr")" "0"
+assert_eq "$(cat "$sr/factory-env.sh.pre-early")" "# previous factory-env.sh"
+cmp -s "$watch/factory-env.sh" "$sr/factory-env.sh" || fail "the staged factory-env.sh is not the live one"
+for lane in watch.sh watch.new.sh; do
+  wait_for "$sr/started-$lane" || fail "$lane did not start: $(cat "$sr/nohup.out" 2> /dev/null)"
+done
+pass
+
+tname="swap-early.sh: with factory-env.sh already present and none staged, the lanes still swap"
+sr=$work/swap-present
+new_swap_root "$sr"
+cp "$watch/factory-env.sh" "$sr/factory-env.sh"
+assert_eq "$(run_swap "$sr")" "0"
+[[ ! -e $sr/factory-env.sh.pre-early ]] || fail "a pre-early copy appeared with nothing staged"
+for lane in watch.sh watch.new.sh; do
+  wait_for "$sr/started-$lane" || fail "$lane did not start: $(cat "$sr/nohup.out" 2> /dev/null)"
+done
 pass
 
 echo "ok  watcher env tests"

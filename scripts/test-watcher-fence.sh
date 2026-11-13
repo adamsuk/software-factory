@@ -84,12 +84,15 @@ run_lane() {
     lane_script=$lane/repo/scripts/watcher/${name}.sh
     cp "$script" "$lane_script"
     cp "$root/scripts/fence-untrusted.sh" "$lane/repo/scripts/fence-untrusted.sh"
+    cp "$root/scripts/watcher/factory-env.sh" "$lane/repo/scripts/watcher/factory-env.sh"
   else
     # The swap-early deployment: one lane script in FACTORY_WATCH_ROOT, with
     # no checkout and no local helper.
     mkdir -p "$lane/flat"
     lane_script=$lane/flat/${name}.sh
     cp "$script" "$lane_script"
+    # factory-env.sh ships beside the lane script (swap-early.sh stages it).
+    cp "$root/scripts/watcher/factory-env.sh" "$lane/flat/factory-env.sh"
   fi
   cat > "$lane/repo/scripts/triage-ask.sh" << 'ENDASK'
 #!/usr/bin/env bash

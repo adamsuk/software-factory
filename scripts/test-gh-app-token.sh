@@ -578,6 +578,8 @@ for rel in scripts/watcher/watch.sh scripts/watcher/watch.new.sh; do
   rm -rf "$deploy"
   mkdir -p "$deploy"
   cp "$root/$rel" "$deploy/$base"
+  # factory-env.sh ships beside the lane script (swap-early.sh stages it).
+  cp "$root/scripts/watcher/factory-env.sh" "$deploy/factory-env.sh"
   printf '%s\n' '#!/bin/bash' 'printf "beside-token\n"' > "$deploy/gh-app-token.sh"
   parent_helper=$tmpdir/gh-app-token.sh
   printf '%s\n' '#!/bin/bash' 'printf "parent-token\n"' > "$parent_helper"
