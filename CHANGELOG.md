@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-15 (review and dependabot-triage on the provider seam)
+
+### Changed
+
+- `run_grok` in `scripts/watcher/watch.sh` and `watch.new.sh` now also routes the `review` and `dependabot-triage` call sites through the provider seam, with the `reviewer` role. On a non-grok `FACTORY_PROVIDER` the adapter comes from the home-repo clone and runs in the target checkout, and the schema is appended to the prompt as a provider-neutral JSON Schema instruction instead of `--json-schema`. With `FACTORY_PROVIDER` unset or `grok`, both still run grok with `--json-schema`. New cases in `scripts/test-watcher-provider.sh` (#399, piece 2 of 4 of #397).
+
 ## 2026-11-13 (provider seam in the watcher's run_grok)
 
 ### Added

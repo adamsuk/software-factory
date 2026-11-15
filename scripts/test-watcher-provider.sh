@@ -101,4 +101,89 @@ for lane in watch watch.new; do
     echo "ok: $lane triage still calls grok with FACTORY_PROVIDER='${p:-unset}'"
   done
 done
+# Review and dependabot-triage call sites (#399). run_grok is called directly
+# with a schema and a target-repo checkout that has no adapters/ of its own, so
+# the adapter must come from the home-repo clone. $1 lane, $2 provider ("" =
+# unset), $3 kind, $4 case tag, $5 grok on PATH (yes|no)
+run_kind_case() {
+  local name=$1 provider=$2 kind=$3 tag=$4 with_grok=$5
+  local w=$scratch/$tag-$name
+  mkdir -p "$w/bin" "$w/home" "$w/tmp" "$w/cache" "$w/watch/state" "$w/watch/work" "$w/repo/scripts/watcher" "$w/target" "$w/calls"
+  cp "$root/scripts/watcher/${name}.sh" "$w/repo/scripts/watcher/${name}.sh"
+  cp "$root/scripts/watcher/factory-env.sh" "$w/repo/scripts/watcher/factory-env.sh"
+  cp "$root/scripts/fence-untrusted.sh" "$w/repo/scripts/fence-untrusted.sh"
+  cat > "$w/bin/gh" << 'ENDGH'
+#!/bin/bash
+set -u
+if [[ ${1:-} == repo && ${2:-} == clone ]]; then
+  dest=${4:-}
+  mkdir -p "$dest/agents/roles" "$dest/scripts"
+  cp -R "$REAL_ROOT/adapters" "$dest/adapters"
+  cp "$REAL_ROOT/AGENTS.md" "$dest/AGENTS.md"
+  git init -q -b main "$dest"
+  git -C "$dest" add -A
+  git -C "$dest" -c user.name=t -c user.email=t@example.com commit -q -m init
+  git -C "$dest" remote add origin "$dest"
+  exit 0
+fi
+exit 99
+ENDGH
+  cat > "$w/bin/claude" << 'ENDCL'
+#!/bin/bash
+if [[ ${1:-} == --help ]]; then echo "--print --model --append-system-prompt --permission-mode"; exit 0; fi
+cat > "$CALLS_DIR/claude.stdin"
+echo ran >> "$CALLS_DIR/claude.calls"
+echo "VERDICT: PASS"
+ENDCL
+  cat > "$w/bin/grok" << 'ENDGROK'
+#!/bin/bash
+printf '%s\n' "$*" > "$CALLS_DIR/grok.args"
+echo ran >> "$CALLS_DIR/grok.calls"
+printf '%s\n' '{"stopReason":"end_turn","total_cost_usd":0}'
+ENDGROK
+  chmod +x "$w/bin/gh" "$w/bin/claude"
+  if [[ $with_grok == yes ]]; then chmod +x "$w/bin/grok"; else rm -f "$w/bin/grok"; fi
+  printf '%s\n' '{"max_grok_build_runs_per_week":20,"max_grok_build_runs_per_day":20,"max_runs_per_loop":5}' > "$w/budget.json"
+  printf '%s\n' 'review this' > "$w/prompt.txt"
+  (
+    cd "$w"
+    export HOME="$w/home" TMPDIR="$w/tmp" XDG_CACHE_HOME="$w/cache" XDG_DATA_HOME="$w/xdg"
+    export FACTORY_HOME="$w/factory-home" FACTORY_WATCH_ROOT="$w/watch" FACTORY_BUDGET_FILE="$w/budget.json"
+    export FACTORY_LEDGER_FILE="$w/ledger.csv" FACTORY_CLONE_ROOT="$w/clones" FACTORY_WORKSPACE="$w/workspace"
+    export FACTORY_HOME_REPO=acme/software-factory FACTORY_REPOS=acme/software-factory
+    export GIT_TERMINAL_PROMPT=0 REAL_ROOT="$root" CALLS_DIR="$w/calls"
+    export PATH="$w/bin:/usr/bin:/bin"
+    unset FACTORY_APPROVER_LOGIN FACTORY_BLOCKED_OWNERS FACTORY_PROVIDER GH_TOKEN GITHUB_TOKEN \
+      FACTORY_GH_APP_ID FACTORY_GH_APP_INSTALLATION_ID FACTORY_GH_APP_KEY_FILE FACTORY_GH_APP_ENV_FILE \
+      FACTORY_GH_APP_PRIVATE_KEY FACTORY_GH_APP_SLUG GH_APP_SLUG
+    [[ -n $provider ]] && export FACTORY_PROVIDER=$provider
+    # shellcheck disable=SC1090
+    source "$w/repo/scripts/watcher/${name}.sh"
+    # shellcheck disable=SC2034
+    DRY=0
+    run_grok "$kind" acme/software-factory 77 25 "$w/target" "$w/prompt.txt" '{"type":"object","required":["verdict"]}' > "$w/out.log" 2>&1 || true
+  )
+  printf '%s' "$w"
+}
+
+for lane in watch watch.new; do
+  for kind in review dependabot-triage; do
+    w=$(run_kind_case "$lane" claudecode "$kind" "cc-$kind" no)
+    [[ -s $w/calls/claude.calls ]] || fail "$lane: $kind under claudecode did not run the adapter ($(tail -3 "$w/out.log" 2>/dev/null))"
+    [[ ! -e $w/calls/grok.calls ]] || fail "$lane: grok ran for $kind under claudecode"
+    grep -Fq 'You are the reviewer station' "$w/calls/claude.stdin" || fail "$lane: $kind did not use the reviewer role"
+    grep -Fq 'review this' "$w/calls/claude.stdin" || fail "$lane: $kind prompt did not reach the provider"
+    grep -Fq '"required":["verdict"]' "$w/calls/claude.stdin" || fail "$lane: $kind schema was not handed over in the prompt"
+    grep -Fq 'JSON Schema' "$w/calls/claude.stdin" || fail "$lane: $kind schema instruction missing"
+    echo "ok: $lane $kind runs the claudecode adapter and hands the schema over in the prompt"
+
+    for p in "" grok; do
+      w=$(run_kind_case "$lane" "$p" "$kind" "g${p:-unset}-$kind" yes)
+      [[ -s $w/calls/grok.calls ]] || fail "$lane: $kind with FACTORY_PROVIDER='${p}' did not call grok"
+      [[ ! -e $w/calls/claude.calls ]] || fail "$lane: claude ran for $kind with FACTORY_PROVIDER='${p}'"
+      grep -Fq -- '--json-schema' "$w/calls/grok.args" || fail "$lane: $kind lost --json-schema on grok"
+      echo "ok: $lane $kind still calls grok with --json-schema, FACTORY_PROVIDER='${p:-unset}'"
+    done
+  done
+done
 echo "all watcher provider tests passed"
