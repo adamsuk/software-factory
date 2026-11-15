@@ -1,0 +1,4 @@
+^api\.anthropic\.com$
+^api\.x\.ai$
+^api\.github\.com$
+^github\.com$
