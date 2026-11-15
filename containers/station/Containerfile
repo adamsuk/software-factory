@@ -1,0 +1,21 @@
+# Station image: what every factory station needs to run inside a container
+# (#418). The tools the station scripts call, plus the Claude Code CLI. Built
+# by scripts/build-station-image.sh, which pins the base image and the CLI.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+# gh, jq, PyYAML and shellcheck are what scripts/*.sh call; curl and
+# ca-certificates are for the CLI and git over HTTPS.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+    bash ca-certificates curl git gh jq python3 python3-yaml shellcheck \
+  && rm -rf /var/lib/apt/lists/*
+
+ARG CLAUDE_CODE_VERSION
+RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+  && npm cache clean --force
+
+# No credentials, no user config: the runner mounts a tmpfs HOME and forwards
+# the provider credential and a GitHub token by name at start.
+ENV CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
+    DISABLE_AUTOUPDATER=1

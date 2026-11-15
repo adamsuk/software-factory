@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-15 (station image and egress proxy)
+
+### Added
+
+- `containers/station/Containerfile` and `containers/egress-proxy/` define the two images a station host needs: one with bash, git, gh, jq, python3 with PyYAML, shellcheck and the Claude Code CLI, and an allow-listing forward proxy (deny by default, `CONNECT` to port 443 on `api.anthropic.com`, `api.x.ai`, `api.github.com` and `github.com` only). `scripts/build-station-image.sh` builds both with the base images pinned by digest and the CLI by version; `--print` shows the commands. `docs/runbooks/station-container.md` is the host setup, run end to end on rootless podman on 2026-11-15. Nothing uses the images yet: `scripts/station-run.sh` still runs stations on the host. Tests in `scripts/test-build-station-image.sh` (#423, part of #418).
+
 ## 2026-11-15 (recovery time in the weekly metrics)
 
 ### Fixed
