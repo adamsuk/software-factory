@@ -9,6 +9,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - All three jobs in `.github/workflows/line-audit.yml` run Harden-Runner with `egress-policy: block` and an `allowed-endpoints` list. `gate` and `triage` had no Harden-Runner step before. No job in this repo is left on `audit`. The `gate` list is proven by a run; the `audit` and `triage` lists are derived from their steps and are not proven until the workflow's secret and variables are set and it runs for real, when a missing host fails the run closed. `scripts/test-harden-runner.sh` now expects `block` for all three (#396).
 
+## 2026-11-15 (metrics rework read that GitHub accepts)
+
+### Fixed
+
+- `scripts/factory-delivery-metrics.sh --pr-rework` reads each factory pull request's reviews and commits over REST. The single `gh pr list` read with `reviews,commits` was refused by GitHub above about 30 pull requests (a GraphQL node limit), so the script exited 7 and the `metrics` workflow failed once it passed `--pr-rework`. A full page of 100 reviews or commits exits 7 so a total is never silently short (#410).
+
 ## 2026-11-15 (review and dependabot-triage on the provider seam)
 
 ### Changed
