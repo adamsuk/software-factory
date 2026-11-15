@@ -56,6 +56,20 @@ if grep -E -q '^FROM .*:latest|^FROM [a-z]' "$station_cf" "$proxy_dir/Containerf
 fi
 pass
 
+tname="gh is a pinned, digest-verified release, not the distribution's package"
+printf '%s\n' "$out" | grep -E -q 'GH_VERSION=[0-9]+\.[0-9]+\.[0-9]+ ' || fail "gh is not pinned to an exact version: $out"
+printf '%s\n' "$out" | grep -E -q 'GH_SHA256=[0-9a-f]{64} ' || fail "gh has no SHA-256 digest: $out"
+grep -F -q 'sha256sum -c' "$station_cf" || fail "the Containerfile does not verify the gh archive"
+verify_line=$(grep -n 'sha256sum -c' "$station_cf" | head -n 1 | cut -d: -f1)
+install_line=$(grep -n '/usr/local/bin/gh' "$station_cf" | head -n 1 | cut -d: -f1)
+[[ -n "$install_line" && "$verify_line" -lt "$install_line" ]] || fail "gh is installed before its digest is checked"
+if grep -v '^[[:space:]]*#' "$station_cf" | grep -E -q 'apt-get install.*[[:space:]]gh([[:space:]]|$)|^[[:space:]]+.*[[:space:]]git gh '; then
+  fail "gh still comes from the distribution's package"
+fi
+# The version in the tag, so a bump cannot reuse an old image under the same name.
+printf '%s\n' "$out" | grep -E -q -- '--tag [^ ]*-gh-[0-9]+\.[0-9]+\.[0-9]+ ' || fail "the station tag does not carry the gh version"
+pass
+
 tname="--print builds nothing"
 : > "$work/log"
 PATH="$BIN:$PATH" FAKE_RUNTIME_LOG="$work/log" bash "$build" --print > /dev/null

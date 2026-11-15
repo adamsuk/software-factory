@@ -8,8 +8,8 @@
 # With no image named, both are built.
 #
 # Everything that decides what goes into an image is pinned here: the base
-# images by digest and the Claude Code CLI by version. A bump is an edit to
-# this file, reviewed like any other change.
+# images by digest, the Claude Code CLI by version, and gh by version and
+# digest. A bump is an edit to this file, reviewed like any other change.
 #
 # Exit codes: 0 built (or printed), 2 usage, 9 no container runtime.
 set -euo pipefail
@@ -22,10 +22,14 @@ die() { echo "build-station-image: $2" >&2; exit "$1"; }
 STATION_BASE_IMAGE="docker.io/library/node@sha256:33d41cc7365593a3622f3f1ce1c6af788de32c0709016ec15685de7aaa681d97"
 PROXY_BASE_IMAGE="docker.io/library/alpine@sha256:0f49f331d9212aff11b932863be4eb01cdf962969aa86dab7d1ee21ac6f5f52b"
 CLAUDE_CODE_VERSION="2.1.322"
+# gh from github.com/cli/cli releases; the digest is the linux_amd64 archive's
+# line in that release's checksums file.
+GH_VERSION="2.103.3"
+GH_SHA256="4c806978ffce1cec70853302a56d70ac6da4f19bae7adca4e1a8ab00633dd91d"
 
-# The tags the runbook tells a host to export. The station tag carries the CLI
-# version, so a bump cannot silently reuse an old image.
-STATION_TAG="localhost/factory-station:claude-${CLAUDE_CODE_VERSION}"
+# The tags the runbook tells a host to export. The station tag carries both
+# pinned versions, so a bump cannot silently reuse an old image.
+STATION_TAG="localhost/factory-station:claude-${CLAUDE_CODE_VERSION}-gh-${GH_VERSION}"
 PROXY_TAG="localhost/factory-egress-proxy:1"
 
 print_only=false
@@ -67,6 +71,8 @@ for target in "${targets[@]}"; do
       build build --tag "$STATION_TAG" \
         --build-arg "BASE_IMAGE=$STATION_BASE_IMAGE" \
         --build-arg "CLAUDE_CODE_VERSION=$CLAUDE_CODE_VERSION" \
+        --build-arg "GH_VERSION=$GH_VERSION" \
+        --build-arg "GH_SHA256=$GH_SHA256" \
         --file "$here/containers/station/Containerfile" "$here/containers/station"
       ;;
     proxy)
