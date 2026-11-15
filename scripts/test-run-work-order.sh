@@ -1599,6 +1599,90 @@ rel_out=$(cd "$here/.." && bash -c '
 [[ "$rel_out" == *"body"* ]] || fail "fenced output lost the issue text: $rel_out"
 [[ "$rel_out" != *"missing or unreadable"* ]] || fail "fence script not found: $rel_out"
 
+# --- builder interface (#388): FACTORY_PROVIDER picks the back-end ----------
+tname="provider-interface"
+pbin=$ROOT/provider-bin
+mkdir -p "$pbin"
+for tool in claude grok opencode; do
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' > "$pbin/$tool"
+  chmod +x "$pbin/$tool"
+done
+# shellcheck disable=SC2030,SC2031  # subshell-local env on purpose
+resolve_with() { # env assignments as args; prints "<llm_backend>" or the error
+  (
+    unset FACTORY_PROVIDER FACTORY_LLM CLAUDE_BIN OPENCODE_BIN
+    PATH="$pbin:$ORIG_PATH"
+    export PATH
+    for kv in "$@"; do export "${kv?}"; done
+    resolve_llm_backend && printf '%s\n' "$llm_backend"
+  ) 2>&1
+}
+assert_eq "$(resolve_with)" "grok"
+assert_eq "$(resolve_with FACTORY_PROVIDER=grok)" "grok"
+assert_eq "$(resolve_with FACTORY_PROVIDER=claudecode)" "claude"
+assert_eq "$(resolve_with FACTORY_PROVIDER=opencode)" "opencode"
+assert_eq "$(resolve_with FACTORY_LLM=claude)" "claude"
+# FACTORY_PROVIDER wins over the FACTORY_LLM alias.
+assert_eq "$(resolve_with FACTORY_PROVIDER=opencode FACTORY_LLM=claude)" "opencode"
+assert_eq "$(resolve_with FACTORY_PROVIDER=grok FACTORY_LLM=claude)" "grok"
+out=$(resolve_with FACTORY_PROVIDER=chatgpt) && fail "unknown provider was accepted"
+[[ "$out" == *"FACTORY_PROVIDER must be grok, claudecode or opencode"* ]] || fail "missing provider message: $out"
+out=$(resolve_with FACTORY_PROVIDER=opencode OPENCODE_BIN=no-such-opencode-388) && fail "missing opencode was accepted"
+[[ "$out" == *"no-such-opencode-388 not found"* ]] || fail "missing opencode message: $out"
+out=$(resolve_with FACTORY_PROVIDER=claudecode CLAUDE_BIN=no-such-claude-388) && fail "missing claude was accepted"
+[[ "$out" == *"no-such-claude-388 not found"* ]] || fail "missing claude message: $out"
+
+# The opencode back-end, run for real against a mock opencode.
+tname="opencode-backend"
+ow=$ROOT/opencode-run
+mkdir -p "$ow/bin" "$ow/clone" "$ow/ghconfig"
+cat > "$ow/bin/opencode" << 'MOCK'
+#!/usr/bin/env bash
+env > "$OC_ENV_DUMP"
+printf '%s\n' "$*" > "$OC_ARGS_DUMP"
+pwd > "$OC_PWD_DUMP"
+printf '%s\n' '{"type":"step_start"}' '{"type":"step_finish","part":{"cost":0.25}}' '{"type":"step_finish","part":{"cost":0.5}}'
+MOCK
+chmod +x "$ow/bin/opencode"
+printf '%s\n' 'RULES_MARKER_OC' > "$ow/AGENTS.md"
+printf '%s\n' 'FENCED_ORDER_OC' > "$ow/fenced.md"
+OC_ENV_DUMP=$ow/env.txt OC_ARGS_DUMP=$ow/args.txt OC_PWD_DUMP=$ow/pwd.txt
+export OC_ENV_DUMP OC_ARGS_DUMP OC_PWD_DUMP
+# shellcheck disable=SC2030,SC2031  # subshell-local env on purpose
+(
+  for v in GH_TOKEN GITHUB_TOKEN AWS_SECRET_ACCESS_KEY FACTORY_GH_APP_PRIVATE_KEY GIT_ASKPASS SSH_AUTH_SOCK; do
+    export "$v=sentinel-oc-$v"
+  done
+  PATH="$ow/bin:$ORIG_PATH"
+  export PATH
+  dir=$ow/clone rules=$ow/AGENTS.md fenced_order=$ow/fenced.md
+  opencode_bin=opencode gh_config_dir=$ow/ghconfig
+  container_cmd=()
+  run_opencode_builder
+) || fail "run_opencode_builder failed"
+unset OC_ENV_DUMP OC_ARGS_DUMP OC_PWD_DUMP
+assert_eq "$(jq -r .stopReason "$ow/clone.grok.json")" "end_turn"
+assert_eq "$(jq -r .num_turns "$ow/clone.grok.json")" "2"
+assert_eq "$(jq -r .total_cost_usd "$ow/clone.grok.json")" "0.75"
+assert_eq "$(cat "$ow/pwd.txt")" "$ow/clone"
+grep -q 'RULES_MARKER_OC' "$ow/clone.opencode-prompt.txt" || fail "prompt lost the rules"
+grep -q 'FENCED_ORDER_OC' "$ow/clone.opencode-prompt.txt" || fail "prompt lost the fenced order"
+grep -q -- "--file $ow/clone.opencode-prompt.txt" "$ow/args.txt" || fail "prompt is not attached with --file"
+! grep -qE 'sentinel-oc-' <(grep -E '^(GH_TOKEN|GITHUB_TOKEN|AWS_SECRET_ACCESS_KEY|FACTORY_GH_APP_PRIVATE_KEY|GIT_ASKPASS|SSH_AUTH_SOCK)=' "$ow/env.txt") \
+  || fail "a scrubbed credential reached opencode"
+grep -qx "GH_CONFIG_DIR=$ow/ghconfig" "$ow/env.txt" || fail "opencode does not get the empty GH_CONFIG_DIR"
+cfg=$(grep '^OPENCODE_CONFIG_CONTENT=' "$ow/env.txt" | cut -d= -f2-)
+assert_eq "$(printf '%s' "$cfg" | jq -r '.permission.bash["git push*"]')" "deny"
+assert_eq "$(printf '%s' "$cfg" | jq -r '.permission.bash["gh *"]')" "deny"
+assert_eq "$(printf '%s' "$cfg" | jq -r '.permission.webfetch')" "deny"
+printf '%s' "$cfg" | jq -e '.permission.read | to_entries | any(.value == "deny" and (.key | endswith("/.factory-secrets")))' > /dev/null \
+  || fail "opencode config does not deny the secrets directory"
+# main wraps every back-end in the container and routes opencode to its own runner.
+main_src=$(declare -f main)
+# shellcheck disable=SC2016  # literal source text, not expansion
+[[ "$main_src" == *'build_container_command "$dir" "$fenced_order" "$llm_backend"'* ]] || fail "main does not build the container for every back-end"
+[[ "$main_src" == *'run_opencode_builder'* ]] || fail "main does not run the opencode back-end"
+
 PATH=$ORIG_PATH
 # Read by finish_commit / prepare_env in the sourced runner.
 : "$title" "$issue" "$base" "$tests"

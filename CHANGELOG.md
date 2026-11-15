@@ -9,6 +9,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - `.github/workflows/metrics.yml` names only the required checks that run on a push to main (`ShellCheck`, `tests`) when it measures recovery. It used to name `Test assertions` and `changelog / changelog` too, which never succeed on a main commit, so `recovery time hours` was always `n/a` and `recovery open` was always `yes` (#416).
 
+## 2026-11-15 (builder interface in run-work-order.sh)
+
+### Added
+
+- `scripts/run-work-order.sh` has one builder interface with Grok, Claude Code and opencode back-ends, selected by `FACTORY_PROVIDER` (`grok`, `claudecode`, `opencode`). Unset still runs Grok. `FACTORY_LLM` (`grok`, `claude`) stays as an alias, and `FACTORY_PROVIDER` wins when both are set. The opencode child gets the same env scrub, empty `GH_CONFIG_DIR`, and `git push` / `gh` / secrets-directory denies as the others. Every back-end now runs in the restricted-network container (#357, #382), each forwarding only its own model credential by name (`XAI_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, or the opencode provider keys). Claude Code previously ran on the host. New cases in `scripts/test-run-work-order.sh` and `scripts/test-run-work-order-container.sh` (#388, part of #386).
+
+## 2026-11-15 (size L goes back to be split)
+
+### Changed
+
+- `scripts/triage-ask.sh` withholds `factory:ready` when an issue's settled size is L and asks how to split it; an approver's `Size: M` or `Size: S` after that allows ready. `agents/roles/intake.md` says the same: size L is `factory:blocked` with a proposed split, and only S and M can be ready (#412).
+
 ## 2026-11-15 (egress block on every line-audit job)
 
 ### Changed
