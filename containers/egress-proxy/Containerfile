@@ -1,0 +1,16 @@
+# Allow-listing forward proxy for the factory's internal container network
+# (#382, #418). CONNECT to port 443 on the hosts in allowlist.txt and nothing
+# else. Built by scripts/build-station-image.sh.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+# Installed under another name: Ubuntu hosts ship an AppArmor profile attached
+# to /usr/bin/tinyproxy, and it applies inside a rootless container too, where
+# it stops the proxy reading its own filter file ("filter file: Permission
+# denied", seen on the first build of this image).
+RUN apk add --no-cache tinyproxy \
+  && mv /usr/bin/tinyproxy /usr/local/bin/egress-proxy
+COPY --chmod=644 tinyproxy.conf /etc/tinyproxy/tinyproxy.conf
+COPY --chmod=644 allowlist.txt /etc/tinyproxy/allowlist.txt
+USER tinyproxy
+EXPOSE 8888
+ENTRYPOINT ["/usr/local/bin/egress-proxy", "-d", "-c", "/etc/tinyproxy/tinyproxy.conf"]
