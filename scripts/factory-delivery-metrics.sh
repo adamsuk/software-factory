@@ -17,8 +17,8 @@
 # later and at most 7 times 24 hours after that merge. The read includes
 # merges up to 7 days after --until.
 # Rework and cost read the ledger. Rework does not filter on repo. Cost does.
-# --pr-rework (opt-in) makes rework readable without the ledger: one more gh
-# read (merged pull requests with reviews and commits) and, when no ledger file
+# --pr-rework (opt-in) makes rework readable without the ledger: two REST reads
+# per factory pull request (its reviews and its commits, #410) and, when no ledger file
 # exists, rework rounds per pr is the mean over the same factory/<digits>-
 # pull requests of that pull request's rounds. A round is a review-return (a
 # CHANGES_REQUESTED review) or a fix round (a commit after the first whose
@@ -131,16 +131,78 @@ PY
 
 rework_json=""
 if [[ "$pr_rework" == "1" ]]; then
+  # One gh pr list read with reviews and commits cannot do this: GitHub counts
+  # limit x 100 commits x 100 authors nodes and refuses the query above about
+  # 30 pull requests (#410). REST has no such limit, so read each factory pull
+  # request's reviews and commits on their own. A full page of 100 means there
+  # may be more, so the totals would be incomplete: exit 7.
   rework_json="$work/rework.json"
-  if ! gh pr list \
-    --repo "$repo" \
-    --state merged \
-    --limit 200 \
-    --search "merged:${search_from}..${search_to}" \
-    --json number,headRefName,mergedAt,reviews,commits \
-    >"$rework_json" 2>/dev/null; then
-    exit 7
-  fi
+  mkdir -p "$work/rework"
+  python3 - "$work/prs.json" << 'PY' > "$work/rework-numbers.txt" || exit 7
+import json
+import re
+import sys
+
+try:
+    data = json.load(open(sys.argv[1], encoding="utf-8"))
+except Exception:
+    raise SystemExit(7)
+for item in data:
+    if not isinstance(item, dict):
+        raise SystemExit(7)
+    number = item.get("number")
+    ref = item.get("headRefName")
+    if isinstance(number, int) and isinstance(ref, str) and re.match(r"^factory/[0-9]+-", ref):
+        print(number)
+PY
+  while IFS= read -r rework_number; do
+    [[ "$rework_number" =~ ^[1-9][0-9]*$ ]] || exit 7
+    for rework_kind in reviews commits; do
+      if ! gh api "repos/${repo}/pulls/${rework_number}/${rework_kind}?per_page=100" \
+        >"$work/rework/${rework_number}.${rework_kind}.json" 2>/dev/null; then
+        exit 7
+      fi
+    done
+  done < "$work/rework-numbers.txt"
+  python3 - "$work/rework-numbers.txt" "$work/rework" "$rework_json" << 'PY' || exit 7
+import json
+import sys
+
+numbers_path, rework_dir, out_path = sys.argv[1:4]
+
+
+def page(number, kind):
+    try:
+        data = json.load(open(f"{rework_dir}/{number}.{kind}.json", encoding="utf-8"))
+    except Exception:
+        raise SystemExit(7)
+    if not isinstance(data, list) or len(data) >= 100:
+        raise SystemExit(7)
+    return data
+
+
+out = []
+for line in open(numbers_path, encoding="utf-8"):
+    number = int(line)
+    reviews = []
+    for review in page(number, "reviews"):
+        if not isinstance(review, dict):
+            raise SystemExit(7)
+        reviews.append({"state": review.get("state")})
+    commits = []
+    for item in page(number, "commits"):
+        commit = item.get("commit") if isinstance(item, dict) else None
+        if not isinstance(commit, dict):
+            raise SystemExit(7)
+        message = commit.get("message")
+        committer = commit.get("committer")
+        if not isinstance(message, str) or not isinstance(committer, dict):
+            raise SystemExit(7)
+        commits.append({"messageHeadline": message.split("\n", 1)[0], "committedDate": committer.get("date")})
+    out.append({"number": number, "reviews": reviews, "commits": commits})
+with open(out_path, "w", encoding="utf-8") as handle:
+    json.dump(out, handle)
+PY
 fi
 
 if ! gh api "repos/${repo}" --jq .default_branch >"$work/branch.txt" 2>/dev/null; then
