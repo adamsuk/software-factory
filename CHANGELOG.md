@@ -9,6 +9,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - `scripts/triage-ask.sh` withholds `factory:ready` when an issue's settled size is L and asks how to split it; an approver's `Size: M` or `Size: S` after that allows ready. `agents/roles/intake.md` says the same: size L is `factory:blocked` with a proposed split, and only S and M can be ready (#412).
 
+## 2026-11-15 (metrics rework read that GitHub accepts)
+
+### Fixed
+
+- `scripts/factory-delivery-metrics.sh --pr-rework` reads each factory pull request's reviews and commits over REST. The single `gh pr list` read with `reviews,commits` was refused by GitHub above about 30 pull requests (a GraphQL node limit), so the script exited 7 and the `metrics` workflow failed once it passed `--pr-rework`. A full page of 100 reviews or commits exits 7 so a total is never silently short (#410).
+
 ## 2026-11-15 (review and dependabot-triage on the provider seam)
 
 ### Changed
