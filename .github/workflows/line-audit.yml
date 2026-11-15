@@ -84,7 +84,7 @@ jobs:
       INPUT_REPO: ${{ inputs.parent_repo }}
       INPUT_ISSUE: ${{ inputs.parent_issue }}
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           # checkout reaches github.com; gh (sub-issues-all-closed.sh) calls api.github.com.
           # Proven by a workflow_dispatch run of this job in block mode (adamsuk/software-factory#396).
@@ -142,7 +142,7 @@ jobs:
       CLI_VERSION: ${{ vars.AUDITOR_CLI_VERSION }}
       PARENT_ISSUE: ${{ needs.gate.outputs.parent_issue }}
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           # Block from the first real run (adamsuk/software-factory#396). This job has never run its
           # real path (its secret and variables are unset), so the list is derived from its steps and
@@ -289,7 +289,7 @@ jobs:
       AUDIT_PR: ${{ needs.audit.outputs.pr_url }}
       CANDIDATES: ${{ needs.audit.outputs.candidates }}
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           # Derived from this job's steps and NOT yet proven by a run (it only runs after a real
           # audit): checkout and gh, npm install of the CLI, and the model API for the matcher
