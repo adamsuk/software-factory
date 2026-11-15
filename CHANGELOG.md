@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-15 (size L goes back to be split)
+
+### Changed
+
+- `scripts/triage-ask.sh` withholds `factory:ready` when an issue's settled size is L and asks how to split it; an approver's `Size: M` or `Size: S` after that allows ready. `agents/roles/intake.md` says the same: size L is `factory:blocked` with a proposed split, and only S and M can be ready (#412).
+
 ## 2026-11-15 (review and dependabot-triage on the provider seam)
 
 ### Changed
