@@ -15,7 +15,7 @@ Ubuntu. docker and nerdctl have not been tried.
 scripts/build-station-image.sh
 ```
 
-This builds `localhost/factory-station:claude-<version>` and
+This builds `localhost/factory-station:claude-<version>-gh-<version>` and
 `localhost/factory-egress-proxy:1`. The base images are pinned by digest and
 the Claude Code CLI by version, all in that script. `--print` shows the build
 commands without running them.
@@ -58,15 +58,15 @@ A change to that list is a change to the file and a rebuild of the proxy image.
 Each of these should print what the comment says.
 
 ```bash
-podman run --rm --network factory-egress -e HTTPS_PROXY=http://factory-egress-proxy:8888 localhost/factory-station:claude-2.1.322 curl -sS -o /dev/null -m 15 -w '%{http_code}\n' https://api.github.com/   # 200
+podman run --rm --network factory-egress -e HTTPS_PROXY=http://factory-egress-proxy:8888 localhost/factory-station:claude-2.1.322-gh-2.103.3 curl -sS -o /dev/null -m 15 -w '%{http_code}\n' https://api.github.com/   # 200
 ```
 
 ```bash
-podman run --rm --network factory-egress -e HTTPS_PROXY=http://factory-egress-proxy:8888 localhost/factory-station:claude-2.1.322 curl -sS -o /dev/null -m 15 -w '%{http_code}\n' https://example.com/   # 000, CONNECT tunnel failed
+podman run --rm --network factory-egress -e HTTPS_PROXY=http://factory-egress-proxy:8888 localhost/factory-station:claude-2.1.322-gh-2.103.3 curl -sS -o /dev/null -m 15 -w '%{http_code}\n' https://example.com/   # 000, CONNECT tunnel failed
 ```
 
 ```bash
-podman run --rm --network factory-egress localhost/factory-station:claude-2.1.322 curl -sS -o /dev/null -m 8 -w '%{http_code}\n' https://api.github.com/   # 000, no route without the proxy
+podman run --rm --network factory-egress localhost/factory-station:claude-2.1.322-gh-2.103.3 curl -sS -o /dev/null -m 8 -w '%{http_code}\n' https://api.github.com/   # 000, no route without the proxy
 ```
 
 On 2026-11-15 the first printed 200, `api.anthropic.com` answered 404 at `/`
@@ -89,7 +89,7 @@ that starts stations. Never commit it, and never put it in an image. Grok takes
 ## 5. What to export
 
 ```bash
-export FACTORY_CONTAINER_IMAGE=localhost/factory-station:claude-2.1.322
+export FACTORY_CONTAINER_IMAGE=localhost/factory-station:claude-2.1.322-gh-2.103.3
 ```
 
 ```bash
@@ -143,6 +143,11 @@ Not covered: the Grok builder clones and pushes on the host through
 on the host.
 
 ## Known traps
+
+- **Debian's gh is too old.** The first image took `gh` from Debian (2.46.0),
+  which has no `gh pr checks --json`. `scripts/ready-gate.sh` then failed with
+  "could not read checks" inside the container, so a reviewer's PASS was posted
+  but the label did not move (#430). The image now installs a pinned release.
 
 - **AppArmor and tinyproxy.** Ubuntu ships an AppArmor profile attached to
   `/usr/bin/tinyproxy`. It applies inside a rootless container too and stops

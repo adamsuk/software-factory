@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-15 (current gh in the station image)
+
+### Fixed
+
+- The station image installs `gh` 2.103.3 from the official release, pinned and SHA-256 verified in `scripts/build-station-image.sh`. Debian's 2.46.0 has no `gh pr checks --json`, so `scripts/ready-gate.sh` could not read checks inside the container and a reviewer's PASS did not move the issue to `factory:merge`. The image tag now carries the gh version too: `localhost/factory-station:claude-2.1.322-gh-2.103.3`. **Hosts must rebuild and export the new tag as `FACTORY_CONTAINER_IMAGE`** (#430, part of #418).
+
 ## 2026-11-15 (builder container runs as the calling user under podman)
 
 ### Fixed
