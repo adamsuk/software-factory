@@ -97,6 +97,33 @@ if [[ "${1:-}" == "api" ]]; then
     printf '%s\n' "${GH_BRANCH:?}"
     exit 0
   fi
+  # --pr-rework reads (#410): one pull request's reviews or commits, in REST
+  # shape, taken from that pull request's entry in the pr list fixture.
+  if [[ "$path" =~ /pulls/([0-9]+)/(reviews|commits)\?per_page=100$ ]]; then
+    code=${GH_REWORK_STATUS:-0}
+    [[ "$code" == "0" ]] || exit "$code"
+    python3 - "${GH_PRS_JSON:?}" "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${GH_REWORK_PAD:-0}" << 'PY'
+import json
+import sys
+
+prs = json.load(open(sys.argv[1], encoding="utf-8"))
+number, kind, pad = int(sys.argv[2]), sys.argv[3], int(sys.argv[4])
+pr = next((item for item in prs if item.get("number") == number), None)
+if pr is None or kind not in pr:
+    print("{}")
+    raise SystemExit(0)
+if kind == "reviews":
+    out = [{"state": review["state"], "user": {"login": "reviewer"}} for review in pr["reviews"]]
+else:
+    out = [
+        {"sha": "a" * 40, "commit": {"message": c["messageHeadline"] + "\n\nbody", "committer": {"date": c["committedDate"]}}}
+        for c in pr["commits"]
+    ]
+out = out + out[:1] * pad
+print(json.dumps(out))
+PY
+    exit 0
+  fi
   if [[ "$path" == *"/commits?"* ]]; then
     code=${GH_COMMITS_STATUS:-0}
     [[ "$code" == "0" ]] || exit "$code"
@@ -932,8 +959,18 @@ assert_status 0
 assert_empty "$stderr_file" stderr
 write_report 0/2 1.0 3.0 no n/a
 assert_same "$stdout_file" "$expected_file" stdout
-[[ "$(grep -c -x -- '--json' "$log")" -eq 2 ]] || fail "expected two pr list reads"
-grep -F -x -q 'number,headRefName,mergedAt,reviews,commits' "$log" || fail "no reviews and commits read"
+# One pr list read, then reviews and commits per factory pull request over REST:
+# the single gh pr list read with reviews and commits is refused by GitHub above
+# about 30 pull requests (#410).
+[[ "$(grep -c -x -- '--json' "$log")" -eq 1 ]] || fail "expected one pr list read"
+if grep -F -x -q 'number,headRefName,mergedAt,reviews,commits' "$log"; then
+  fail "the refused gh pr list read with reviews and commits is back"
+fi
+for n in 40 41; do
+  for kind in reviews commits; do
+    grep -F -x -q "repos/${default_repo}/pulls/${n}/${kind}?per_page=100" "$log" || fail "no ${kind} read for pull request ${n}"
+  done
+done
 assert_no_writes
 
 tname="pr-rework-off-by-default"
@@ -968,6 +1005,32 @@ run_script --repo "$default_repo" --since "$default_since" --until "$default_unt
   --ledger "$root/no-ledger.csv" --required-check tests --pr-rework
 assert_status 7
 assert_empty "$stdout_file" stdout
+assert_no_writes
+
+tname="pr-rework-read-fails"
+prepare
+write_rework_prs
+write_rework_recovery
+GH_REWORK_STATUS=1
+export GH_REWORK_STATUS
+run_script --repo "$default_repo" --since "$default_since" --until "$default_until" \
+  --ledger "$root/no-ledger.csv" --required-check tests --pr-rework
+assert_status 7
+assert_empty "$stdout_file" stdout
+unset GH_REWORK_STATUS
+assert_no_writes
+
+tname="pr-rework-full-page-is-incomplete"
+prepare
+write_rework_prs
+write_rework_recovery
+GH_REWORK_PAD=100
+export GH_REWORK_PAD
+run_script --repo "$default_repo" --since "$default_since" --until "$default_until" \
+  --ledger "$root/no-ledger.csv" --required-check tests --pr-rework
+assert_status 7
+assert_empty "$stdout_file" stdout
+unset GH_REWORK_PAD
 assert_no_writes
 
 # --- monitor procedure ------------------------------------------------------
