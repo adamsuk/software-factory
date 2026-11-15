@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-15 (recovery time in the weekly metrics)
+
+### Fixed
+
+- `.github/workflows/metrics.yml` names only the required checks that run on a push to main (`ShellCheck`, `tests`) when it measures recovery. It used to name `Test assertions` and `changelog / changelog` too, which never succeed on a main commit, so `recovery time hours` was always `n/a` and `recovery open` was always `yes` (#416).
+
 ## 2026-11-15 (egress block on every line-audit job)
 
 ### Changed

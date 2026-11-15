@@ -57,6 +57,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           token: ${{ steps.app-token.outputs.token }}
+      # Recovery time is measured on main's commits, and a commit is green only
+      # when every required check named below succeeded on it. So name only the
+      # required checks that run on a push to main (ShellCheck, tests). Test
+      # assertions is skipped there and changelog does not run there; naming
+      # them made every commit "not green" and recovery time n/a for ever (#416).
       - name: Collect the metrics
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -72,8 +77,7 @@ jobs:
             scripts/factory-delivery-metrics.sh --repo "$GITHUB_REPOSITORY" --since "$since" --until "$until" \
               --ledger "$RUNNER_TEMP/no-ledger.csv" \
               --pr-rework \
-              --required-check ShellCheck --required-check "changelog / changelog" \
-              --required-check tests --required-check "Test assertions"
+              --required-check ShellCheck --required-check tests
           } > "$RUNNER_TEMP/metrics.md"
           {
             echo
