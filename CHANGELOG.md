@@ -3,6 +3,20 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-15 (the watcher's Grok calls run in the station container)
+
+### Changed
+
+- `run_grok` in `scripts/watcher/watch.sh` and `watch.new.sh` starts `grok` through `scripts/station-container.sh`, never on the host. **A watcher host needs the station container set up before it takes these scripts** (`docs/runbooks/station-container.md`), or every Grok job is refused. The launcher is read from the home repo's default branch, not from a pull request's checkout (#428, part of #418).
+- GitHub token for the watcher's Grok jobs: none, except foreman, dependabot-triage and plan, whose prompts call `gh`. Those get `GH_TOKEN` by name inside the container, and only when the App is configured, so it is the bot's installation token. On the host these jobs used whatever `gh` login the host had.
+- The watcher no longer checks for `grok` on the host's `PATH`: the CLI comes from the image or from `FACTORY_GROK_BIN`.
+- The egress proxy also allows `cli-chat-proxy.grok.com`, which a Grok subscription login uses.
+- `AGENTS.md` section 7 gains one exception, set by the maintainer: the operator may set `FACTORY_GROK_AUTH_FILE` so the container mounts the Grok login file read-only.
+
+### Added
+
+- `FACTORY_GROK_BIN` and `FACTORY_GROK_AUTH_FILE` in `scripts/container-env.sh`, for a host with a Grok subscription and no `XAI_API_KEY`. `scripts/station-container.sh` takes `--rw <dir>`. New cases in `scripts/test-station-run.sh` and `scripts/test-watcher-provider.sh`.
+
 ## 2026-11-15 (current gh in the station image)
 
 ### Fixed
