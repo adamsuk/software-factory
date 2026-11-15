@@ -79,23 +79,27 @@ blocked one — `pushurl` is multi-valued, so git would push to both. The statio
 checks the effective push URLs after setting the blocked one and refuses to run
 if any other remains, naming it.
 
-**What this does and does not stop.** It moves the working directory and breaks
-the clone's push URL, so an agent writing relative paths has its edits thrown
-away and a plain `git push` fails. It is not a guarantee that nothing can be
-pushed: an agent that supplies a URL, or that writes into the original checkout
-by absolute path and pushes from there, still can. It does **not** deny access to the original checkout: the
-providers run with blanket approval (`claude --permission-mode
-bypassPermissions`, `opencode --auto`), and `station-run.sh` puts the work
-order's absolute path in the prompt, so a determined or careless agent can still
-write to the real repository by absolute path. CodeRabbit raised this on PR #143
-and it is right.
+**What this does and does not stop.** On its own the clone only moves the
+working directory and breaks the push URL: an agent writing relative paths has
+its edits thrown away and a plain `git push` fails. It does not deny access to
+the original checkout by absolute path. CodeRabbit raised that on PR #143 and it
+was right.
 
-Calling it a boundary therefore overstates it. It is a default working directory
-plus a missing remote — enough for the failure actually seen (#141, an agent
-editing files under its cwd), not enough against an agent that addresses the
-checkout directly. A real boundary needs OS-level isolation: a container, or a
-filesystem namespace where the original tree is unreadable. That is the sandbox
-finding (#44), and it is not done.
+The boundary is the station container (#418, #424). `station-run.sh` starts
+every adapter in a fresh container on a restricted network, and for a read-only
+station it mounts only the throwaway clone, the start-of-run snapshot of the
+scripts and the prompt bundle. The original checkout, this host's home
+directory, its `gh` login and every other repository on the box are not in the
+container, so an absolute path has nothing to reach. With no image, no
+restricted network or no provider credential, `station-run.sh` exits 9 and
+starts nothing; each adapter also refuses to start its CLI outside the
+container. Host setup is in `docs/runbooks/station-container.md`.
+
+Two things are still outside it. The Grok builder goes to
+`scripts/run-work-order.sh`, which clones and pushes on the host and puts only
+the model child in a container. And the watcher's own Grok calls
+(`scripts/watcher/watch.sh`, `FACTORY_PROVIDER` unset or `grok`) still start
+`grok` on the host; only its non-Grok provider calls go through the container.
 
 A clone and not a linked worktree on purpose: a worktree shares `.git/config`
 with the real repository, so removing the worktree's `origin` removes the
@@ -107,10 +111,12 @@ feature has no key in CodeRabbit's config schema, and its Autofix checkbox
 still appeared on PR #143 after CodeRabbit had read the new config. Turning it
 off is a dashboard setting (#142).
 
-This is the filesystem half only. The agent still runs with the caller's `gh`
-credentials, so it could still write through the API — comment, label, or
-merge. Closing that needs a scoped token the agent owns (#7, #44). Until then
-the API side rests on the brief, not on a control.
+This is the filesystem and network half only. The station still holds a GitHub
+token (`GH_TOKEN`, forwarded into the container by name), so it could still
+write through the API: comment, label, or merge where the ruleset allows.
+`station-run.sh` mints an installation token when the App is configured, which
+is short-lived but not scoped per run. Closing that needs a per-run scoped
+token (#7, #213). Until then the API side rests on the brief and the ruleset.
 
 ## 05 Review waits for the review bot first
 

@@ -45,6 +45,12 @@ fi
 
 [[ -n "$prompt_file" && -f "$prompt_file" ]] || die 2 "missing prompt"
 
+# The model CLI runs with tool approval off, so it starts only where
+# scripts/station-run.sh put it: in the station container (#418, #424). Run
+# directly on a host, this adapter refuses.
+[[ "${FACTORY_STATION_CONTAINER:-}" == 1 ]] \
+  || die 9 "refusing to start the grok CLI outside the station container: run the station through scripts/station-run.sh"
+
 # Three distinct failures, three distinct messages. The old single message
 # ("not supported or grok CLI not available") could not tell a missing binary
 # from a CLI that lacks the flag, which cost a run on #140.

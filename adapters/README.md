@@ -18,10 +18,14 @@ Adapters translate provider-agnostic station execution into provider-specific in
 ```bash
 # Via station-runner (preferred)
 ./scripts/station-run.sh --provider opencode foreman /path/to/context
-
-# Or directly
-./adapters/opencode/run.sh --role foreman --prompt /tmp/prompt.md
 ```
+
+An adapter is not run directly. It starts a model CLI with tool approval off, so
+it refuses (exit 9) unless `scripts/station-run.sh` started it in the station
+container, which is where `FACTORY_STATION_CONTAINER=1` is set. A caller that
+cannot go through `station-run.sh` uses `scripts/station-container.sh`, as the
+watcher does. The Grok builder is the exception: its adapter hands over to
+`scripts/run-work-order.sh`, which starts its own container.
 
 OpenCode attaches the prompt with `opencode run --file`. It does not take
 `--prompt-file`. The station prompt includes `stations/github-writes.md`:

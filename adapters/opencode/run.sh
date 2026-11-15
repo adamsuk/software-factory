@@ -35,6 +35,12 @@ done
 
 [[ -n "$role" && -n "$prompt_file" && -f "$prompt_file" ]] || die 2 "missing role or prompt"
 [[ "$prompt_file" == /* ]] || prompt_file="$PWD/$prompt_file"
+# The model CLI runs with tool approval off, so it starts only where
+# scripts/station-run.sh put it: in the station container (#418, #424). Run
+# directly on a host, this adapter refuses.
+[[ "${FACTORY_STATION_CONTAINER:-}" == 1 ]] \
+  || die 9 "refusing to start the opencode CLI outside the station container: run the station through scripts/station-run.sh"
+
 command -v opencode >/dev/null 2>&1 || die 2 "opencode CLI not found in PATH"
 
 title="factory:${role}"
