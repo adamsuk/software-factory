@@ -1607,16 +1607,24 @@ run_grok() {
     log "grok cwd missing: $cwd"
     return 1
   fi
-  # Provider seam (#398). Only the triage call site is moved: it runs the
-  # adapter for FACTORY_PROVIDER from the fresh home-repo clone (its cwd).
-  # Every other kind, and FACTORY_PROVIDER unset or grok, keeps calling grok.
-  local provider=grok adapter=""
-  if [[ $kind == triage ]]; then
-    provider=${FACTORY_PROVIDER:-grok}
-  fi
+  # Provider seam (#398, #399). The triage, review and dependabot-triage call
+  # sites run the adapter for FACTORY_PROVIDER. Triage runs from the fresh
+  # home-repo clone (its cwd); the other two have a target-repo checkout as
+  # cwd, so the adapter comes from the home-repo clone and the checkout is
+  # passed as --workdir. Every other kind, and FACTORY_PROVIDER unset or grok,
+  # keeps calling grok.
+  local provider=grok adapter="" role=intake adapter_root=$cwd
+  case $kind in
+    triage) provider=${FACTORY_PROVIDER:-grok} ;;
+    review|dependabot-triage) provider=${FACTORY_PROVIDER:-grok}; role=reviewer ;;
+  esac
   if [[ $provider != grok ]]; then
-    adapter="${cwd}/adapters/${provider}/run.sh"
-    if [[ ! -f $adapter ]]; then
+    adapter="${adapter_root}/adapters/${provider}/run.sh"
+    if [[ ! -f $adapter && $kind != triage ]]; then
+      adapter_root=$(ensure_work_clone "$HOME_REPO" 2>/dev/null) || adapter_root=""
+      adapter="${adapter_root}/adapters/${provider}/run.sh"
+    fi
+    if [[ -z $adapter_root || ! -f $adapter ]]; then
       log "${provider} adapter not found: $adapter"
       return 1
     fi
@@ -1640,9 +1648,18 @@ run_grok() {
       grok_cmd+=(--json-schema "$schema")
     fi
   else
+    # The adapter has no --json-schema. The schema goes into the prompt as a
+    # provider-neutral instruction, and the callers' existing parsers find the
+    # JSON object or the final VERDICT line in the plain-text reply.
+    if [[ -n $schema ]]; then
+      {
+        printf '\n%s\n' 'Output format: reply with a single JSON object that validates against this JSON Schema, and nothing else before the closing VERDICT line the task asks for.'
+        printf '%s\n' "$schema"
+      } >> "$prompt_file"
+    fi
     # The adapter reads the prompt from a file and prints plain text, so the
     # cost and stopReason reads below find nothing and the run counts by exit code.
-    grok_cmd=(bash "$adapter" --role intake --prompt "$prompt_file" --workdir "$cwd" --repo "$repo" --issue "$ref")
+    grok_cmd=(bash "$adapter" --role "$role" --prompt "$prompt_file" --workdir "$cwd" --repo "$repo" --issue "$ref")
   fi
   log "grok start kind=${kind} provider=${provider} repo=${repo} ref=${ref} turns=${turns} cwd=${cwd}"
   timeout 40m env -u GH_TOKEN -u GITHUB_TOKEN "${grok_cmd[@]}" >"$out" 2>"$err" || rc=$?
