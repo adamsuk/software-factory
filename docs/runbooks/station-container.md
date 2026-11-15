@@ -1,6 +1,6 @@
 # Station container: preparing a host
 
-Stations (intake, foreman, reviewer and the rest) are meant to run in a
+Stations (intake, foreman, reviewer and the rest) run in a
 container on a network with one way out: an allow-listing proxy (#418). This
 page is the host side: two images, one internal network, one proxy container
 and one credential. `docs/runbooks/work-order-container.md` covers the same
@@ -105,6 +105,42 @@ Checking a host, names only:
 ```bash
 echo "${FACTORY_CONTAINER_IMAGE:-unset}" "${FACTORY_CONTAINER_NETWORK:-unset}" "${FACTORY_CONTAINER_PROXY:-unset}" "${CLAUDE_CODE_OAUTH_TOKEN:+token set}"
 ```
+
+## What starts in the container
+
+`scripts/station-run.sh` starts every provider adapter in it, and the watcher's
+non-Grok provider calls go through `scripts/station-container.sh`, which builds
+the same container. Both exit 9 and start nothing when the runtime, the image,
+the restricted network or the provider credential is missing. `--dry-run` needs
+none of it.
+
+| In the container | Not in the container |
+| --- | --- |
+| The working tree, read-write: the real checkout for a writing role (foreman, builder), a throwaway clone for a reading one | The original checkout, for a reading role |
+| The start-of-run snapshot of `scripts/`, `adapters/` and the prompts, read-only | This host's home directory, `gh` login and ssh agent |
+| The prompt bundle, and the work order file, read-only | The App key file and every other repository on the box |
+| The provider's own credential and `GH_TOKEN`, forwarded by name | Every other environment variable, other providers' credentials included |
+
+`GH_TOKEN` has to be in the environment, or `FACTORY_GH_APP_ID` and its two
+companions set so `station-run.sh` mints an installation token. The watcher
+forwards no GitHub token: it does the GitHub writes itself.
+
+The container runs as the calling user, with all capabilities dropped. It must
+not be root: Claude Code refuses to run with approval off as root, and rootless
+podman maps the caller to root unless `--userns keep-id` is passed, which the
+scripts do.
+
+Checked on 2026-11-15 from a real container on this setup: `gh api` and
+`git ls-remote` worked through the proxy, `example.com` was refused, `/home`
+held nothing of the host, the App key file and the real checkout were not
+there, a file written in the working tree was owned by the calling user, and a
+read-only mount could not be written. A reviewer station run with a
+deliberately invalid token reached the model API and was answered `401 Invalid
+bearer token`. A run with a valid token has not been done yet.
+
+Not covered: the Grok builder clones and pushes on the host through
+`scripts/run-work-order.sh`, and the watcher's Grok calls still start `grok`
+on the host.
 
 ## Known traps
 

@@ -3,6 +3,19 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-15 (stations run in the station container)
+
+### Changed
+
+- `scripts/station-run.sh` starts every provider adapter in a fresh container on the restricted network, never on the host. It needs `FACTORY_CONTAINER_IMAGE`, `FACTORY_CONTAINER_NETWORK` (and usually `FACTORY_CONTAINER_PROXY`), the provider's own credential (`CLAUDE_CODE_OAUTH_TOKEN`, `XAI_API_KEY` or an opencode key) and `GH_TOKEN` (minted when `FACTORY_GH_APP_ID` is set). Without them it exits 9 and starts nothing. **A host that runs stations must be set up first: `docs/runbooks/station-container.md`.** `--dry-run` is unaffected. Only the working tree, the start-of-run snapshot and the prompt bundle are mounted, so a read-only station can no longer reach the real checkout by absolute path. The container runs as the calling user with capabilities dropped (#424, part of #418).
+- Each adapter in `adapters/*/run.sh` refuses to start its CLI (exit 9) outside the station container. The Grok builder still hands over to `scripts/run-work-order.sh`, which starts its own container.
+- The watcher's non-Grok provider calls in `scripts/watcher/watch.sh` and `watch.new.sh` go through the new `scripts/station-container.sh`, which builds the same container. Its Grok calls are unchanged and still start `grok` on the host.
+- The runtime, image, network and proxy checks moved from `scripts/run-work-order.sh` to `scripts/container-env.sh`, shared by the builder and the stations.
+
+### Added
+
+- `scripts/station-container.sh`, `scripts/container-env.sh` and the test fixture `scripts/fixtures/fake-container-runtime.sh`. New cases in `scripts/test-station-run.sh`, `scripts/test-adapters.sh` and `scripts/test-watcher-provider.sh`.
+
 ## 2026-11-15 (station image and egress proxy)
 
 ### Added
