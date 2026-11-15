@@ -4,9 +4,9 @@
 # that block egress (every lint.yml job, metrics.yml metrics and ruleset-drift.yml
 # ruleset-drift) must say egress-policy: block with an allowed-endpoints list that has
 # no wildcard and only host:443 entries, except port 80 for azure.archive.ubuntu.com
-# and security.ubuntu.com (the apt mirrors). One job stays in audit on purpose and is
-# named below: line-audit.yml audit, which has never run its real path, so it has no
-# list (adamsuk/software-factory#369, #379). Any other job must block. changelog.yml (a bare
+# and security.ubuntu.com (the apt mirrors). No job stays in audit: the three
+# line-audit.yml jobs (gate, audit, triage) block too, the last two on a list derived
+# from their steps until a real run proves it (adamsuk/software-factory#396). changelog.yml (a bare
 # reusable-workflow caller) still has no steps. ShellCheck covers this file.
 # WORKFLOWS_DIR overrides the directory, to check another checkout.
 set -euo pipefail
@@ -75,7 +75,9 @@ check_job lint.yml shellcheck block
 check_job lint.yml test-assertions block
 check_job lint.yml tests block
 check_job metrics.yml metrics block
-check_job line-audit.yml audit audit
+check_job line-audit.yml gate block
+check_job line-audit.yml audit block
+check_job line-audit.yml triage block
 check_job ruleset-drift.yml ruleset-drift block
 
 tname="changelog.yml has no steps"
@@ -104,7 +106,7 @@ if [[ -z "${HARDEN_RUNNER_SELFTEST:-}" ]]; then
     mkdir -p "$d"
     { echo 'jobs:'; good_job shellcheck block; good_job test-assertions block; good_job tests block 'azure.archive.ubuntu.com:80 github.com:443'; } >"$d/lint.yml"
     { echo 'jobs:'; good_job metrics block; } >"$d/metrics.yml"
-    { echo 'jobs:'; good_job audit; } >"$d/line-audit.yml"
+    { echo 'jobs:'; good_job gate block; good_job audit block; good_job triage block; } >"$d/line-audit.yml"
     { echo 'jobs:'; good_job ruleset-drift block 'api.github.com:443 github.com:443'; } >"$d/ruleset-drift.yml"
     printf 'jobs:\n  changelog:\n    uses: o/r/.github/workflows/c.yml@main\n' >"$d/changelog.yml"
   }
@@ -147,6 +149,15 @@ if [[ -z "${HARDEN_RUNNER_SELFTEST:-}" ]]; then
   mkfixture audit-ruleset-drift
   { echo 'jobs:'; good_job ruleset-drift; } >"$tmp/audit-ruleset-drift/ruleset-drift.yml"
   expect_fail "ruleset-drift left in audit fails" "$tmp/audit-ruleset-drift" "ruleset-drift.yml / ruleset-drift"
+
+  mkfixture audit-line-audit
+  { echo 'jobs:'; good_job gate block; good_job audit; good_job triage block; } >"$tmp/audit-line-audit/line-audit.yml"
+  expect_fail "line-audit audit job left in audit fails" "$tmp/audit-line-audit" "line-audit.yml / audit"
+
+  mkfixture bare-gate
+  printf 'jobs:\n  gate:\n    steps:\n      - name: other\n        run: echo hi\n' >"$tmp/bare-gate/line-audit.yml"
+  { good_job audit block; good_job triage block; } >>"$tmp/bare-gate/line-audit.yml"
+  expect_fail "line-audit gate job without Harden-Runner fails" "$tmp/bare-gate" "line-audit.yml / gate"
 
   mkfixture no-endpoints
   printf 'jobs:\n  metrics:\n    steps:\n      - uses: %s\n        with:\n          egress-policy: block\n' "$pin" >"$tmp/no-endpoints/metrics.yml"
