@@ -126,6 +126,8 @@ assert_not_contains "$argv" "$HOME" "the runtime argv names the box HOME"
 assert_not_contains "$argv" "--always-approve" "the runtime argv still carries --always-approve"
 [[ $(printf '%s\n' "${container_cmd[@]}" | grep -c -x -- '--volume') -eq 2 ]] \
   || fail "the runtime is given something other than exactly two bind mounts"
+assert_contains "$argv" "--user $(id -u):$(id -g) " "podman does not run the child as the calling user"
+assert_contains "$argv" "--userns keep-id " "podman would map the calling user to container root"
 
 tname="runtime-override"
 nerdctl_bin=$ROOT/nerdctl-bin
@@ -141,6 +143,7 @@ build_container_command "$clone" "$fenced_order"
 assert_eq "${container_cmd[0]}" "nerdctl"
 argv=$(printf '%s ' "${container_cmd[@]}")
 assert_contains "$argv" "--user $(id -u):$(id -g) " "docker/nerdctl does not run as the calling user"
+assert_not_contains "$argv" "--userns" "docker/nerdctl was given podman's --userns"
 unset FACTORY_CONTAINER_RUNTIME
 PATH=$ORIG_PATH
 export PATH
@@ -155,7 +158,10 @@ FACTORY_CONTAINER_RUNTIME=$podman_bin/podman
 export FACTORY_CONTAINER_RUNTIME
 build_container_command "$clone" "$fenced_order"
 argv=$(printf '%s ' "${container_cmd[@]}")
-assert_not_contains "$argv" "--user" "an absolute podman path still gets --user"
+# Podman runs as the calling user too, with keep-id so that user is not mapped
+# to container root: Claude Code refuses to run with approval off as root (#427).
+assert_contains "$argv" "--user $(id -u):$(id -g) " "an absolute podman path does not run as the calling user"
+assert_contains "$argv" "--userns keep-id " "an absolute podman path would map the calling user to container root"
 unset FACTORY_CONTAINER_RUNTIME
 
 # --- the real launch, through a fake runtime -------------------------------
@@ -188,7 +194,7 @@ while [[ $# -gt 0 ]]; do
       envs+=("$2")
       shift 2
       ;;
-    --tmpfs | --workdir | --user | --network) shift 2 ;;
+    --tmpfs | --workdir | --user | --userns | --network) shift 2 ;;
     *)
       shift
       break

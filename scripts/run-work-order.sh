@@ -723,10 +723,13 @@ build_container_command() {
       --env "https_proxy=$proxy" --env "http_proxy=$proxy"
     )
   fi
-  # Rootless podman maps container root to the calling user, so files written
-  # in the clone stay ours. docker and nerdctl run as root by default and
-  # would leave root-owned files for the host to commit; run as us instead.
-  [[ "$(basename -- "$runtime")" == podman ]] || container_cmd+=(--user "$(id -u):$(id -g)")
+  # Run as the calling user, never as root: files written in the clone stay
+  # ours, and Claude Code refuses to run with approval off as root (#427, seen
+  # on the first real station run). Rootless podman would otherwise map the
+  # caller to container root, so it also needs keep-id. Same as
+  # station_container_command in scripts/container-env.sh.
+  container_cmd+=(--user "$(id -u):$(id -g)")
+  [[ "$(basename -- "$runtime")" != podman ]] || container_cmd+=(--userns keep-id)
   # Each back-end gets only its own model credential, by name only: the runtime
   # copies the value from this process's environment, so it never reaches argv.
   case "$backend" in
