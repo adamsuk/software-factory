@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-15 (builder container runs as the calling user under podman)
+
+### Fixed
+
+- `scripts/run-work-order.sh` starts the model child as the calling user under podman too (`--user <uid>:<gid> --userns keep-id`). It used to pass no `--user` there, so the child was root inside the container and Claude Code refused to run with approval off (`--dangerously-skip-permissions cannot be used with root/sudo privileges`). docker and nerdctl are unchanged. One existing assertion in `scripts/test-run-work-order-container.sh` changed with it: podman is now expected to get `--user` (#427, part of #418).
+
 ## 2026-11-15 (stations run in the station container)
 
 ### Changed
