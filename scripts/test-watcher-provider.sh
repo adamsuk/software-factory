@@ -3,6 +3,9 @@
 # (#398). Offline: a fake gh and a fake claude CLI, and NO grok on PATH.
 # Covered for both lane scripts, plus the unchanged grok path when
 # FACTORY_PROVIDER is unset or grok.
+# Each case exports its environment inside a subshell on purpose, so nothing
+# leaks into the next case.
+# shellcheck disable=SC2030,SC2031
 set -euo pipefail
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
