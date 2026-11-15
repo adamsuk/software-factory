@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-15 (builder interface in run-work-order.sh)
+
+### Added
+
+- `scripts/run-work-order.sh` has one builder interface with Grok, Claude Code and opencode back-ends, selected by `FACTORY_PROVIDER` (`grok`, `claudecode`, `opencode`). Unset still runs Grok. `FACTORY_LLM` (`grok`, `claude`) stays as an alias, and `FACTORY_PROVIDER` wins when both are set. The opencode child gets the same env scrub, empty `GH_CONFIG_DIR`, and `git push` / `gh` / secrets-directory denies as the others. Every back-end now runs in the restricted-network container (#357, #382), each forwarding only its own model credential by name (`XAI_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, or the opencode provider keys). Claude Code previously ran on the host. New cases in `scripts/test-run-work-order.sh` and `scripts/test-run-work-order-container.sh` (#388, part of #386).
+
 ## 2026-11-15 (size L goes back to be split)
 
 ### Changed
