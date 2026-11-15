@@ -283,11 +283,10 @@ fi
 # edit it makes under its working directory is thrown away and it has nothing to
 # push to.
 #
-# This is weaker than a boundary, and stations/README.md says so. It does not
-# deny access to the original checkout: the providers run with blanket approval,
-# and the work order's absolute path is in the prompt, so an agent can still
-# write to the real tree by absolute path. Real isolation is #44. API writes are
-# not blocked either, since the agent holds the caller's gh credentials (#7).
+# On its own this is weaker than a boundary: an absolute path would still reach
+# the original checkout. The container below is the boundary (#424): only this
+# clone is mounted for a read-only station. API writes are not blocked by
+# either, since the station holds a GitHub token (#7, #213).
 # Read-only is the default for every role that is not the builder. CodeRabbit
 # found this on PR #143: with read_only defaulting to false, a direct
 # `station-run.sh reviewer /dev/null` handed the real repository to the adapter,
@@ -415,9 +414,59 @@ if [[ -n "${repo_ctx:-}" ]]; then
   export GH_REPO="$repo_ctx"
 fi
 
+# Every station runs in a fresh container on the restricted network (#418,
+# #424), never on this host: the adapters switch tool approval off, and a
+# station reads untrusted issue text. What the container can see is exactly
+# what is mounted and forwarded below.
+#
+#   mounted   the working tree (rw: the real checkout for a writing role, the
+#             throwaway clone for a reading one), the start-of-run snapshot of
+#             scripts, adapters and prompts (ro), the prompt bundle (ro), and
+#             the work order file when it is outside the working tree (ro).
+#             HOME and TMPDIR are empty tmpfs mounts.
+#   forwarded the provider's own model credential and GH_TOKEN, by name, so
+#             neither value reaches argv; plus the plain settings the station
+#             scripts read.
+#   not there this host's home directory, gh login, App key file, ssh agent,
+#             cloud credentials, and every other checkout on the box.
+#
+# This is what makes a read-only station read-only: the real checkout is not
+# mounted for it, so an absolute path cannot reach it.
+#
+# The one exception is the Grok builder: adapters/grok/run.sh hands it to
+# scripts/run-work-order.sh, which clones, starts its own container for the
+# model child, tests and pushes. Wrapping that in a second container would
+# leave it with no runtime to start the first.
+# shellcheck source=scripts/container-env.sh
+source "$script_root/scripts/container-env.sh"
+
+station_cmd=()
+build_station_container() {
+  # gh inside the container has no host login. An installation token is minted
+  # here when the App is configured; otherwise the caller exports one.
+  if [[ -z ${GH_TOKEN:-} && -n ${FACTORY_GH_APP_ID:-} ]]; then
+    GH_TOKEN=$(bash "$script_root/scripts/gh-app-token.sh") \
+      || die 9 "cannot start a container: could not mint a GitHub App installation token"
+    export GH_TOKEN
+  fi
+  [[ -n ${GH_TOKEN:-} ]] \
+    || die 9 "cannot start a container: GH_TOKEN is not set (export a short-lived installation token, or set FACTORY_GH_APP_ID so one is minted)"
+  # The plain settings the station scripts read, and the GitHub token.
+  station_container_command "$provider" "$workdir" \
+    "GH_REPO FACTORY_MODEL FACTORY_HOME_REPO FACTORY_REPOS FACTORY_LOGIN FACTORY_APPROVER_LOGIN FACTORY_BLOCKED_OWNERS FACTORY_CRITERIA_RESOLVE FACTORY_TRIAGE_APPLY GH_TOKEN" \
+    "$script_root" "$bundle_dir" "$work_order" || exit 9
+}
+
+if [[ "$role" == "builder" && "$provider" == "grok" ]]; then
+  echo "station-run: the grok builder starts its own container (scripts/run-work-order.sh)" >&2
+else
+  build_station_container
+  echo "station-run: $role runs in a container on network ${FACTORY_CONTAINER_NETWORK}" >&2
+fi
+
 # Not exec: the read-only sandbox has to be cleaned up after the adapter
 # returns. The trap is already installed above.
-"$adapter" --role "$role" --prompt "$prompt_bundle" --work-order "${work_order:-}" \
+"${station_cmd[@]}" "$adapter" --role "$role" --prompt "$prompt_bundle" --work-order "${work_order:-}" \
   --issue "${issue:-}" --repo "${repo_ctx:-}" --workdir "$workdir" "$@" || exit $?
 if [[ -n "$xr_sandbox" ]]; then
   # Deliberately not deleted by station-run.sh on any path: whoever reads this

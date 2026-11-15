@@ -1659,7 +1659,21 @@ run_grok() {
     fi
     # The adapter reads the prompt from a file and prints plain text, so the
     # cost and stopReason reads below find nothing and the run counts by exit code.
-    grok_cmd=(bash "$adapter" --role "$role" --prompt "$prompt_file" --workdir "$cwd" --repo "$repo" --issue "$ref")
+    # The adapter starts a model CLI with tool approval off, so it runs in the
+    # station container, never on this host (#418, #424): only the checkout
+    # (rw), the home-repo clone that holds the adapter (ro) and the prompt (ro)
+    # are mounted, and only the provider's own credential is forwarded. No
+    # GitHub token: this watcher does the GitHub writes itself. On a host with
+    # no image, restricted network or credential the run exits 9 and starts nothing.
+    local in_container="${adapter_root}/scripts/station-container.sh"
+    if [[ ! -f $in_container ]]; then
+      log "${provider} adapter not started: $in_container not found"
+      rm -f "$prompt_file"
+      return 1
+    fi
+    grok_cmd=(bash "$in_container" --provider "$provider" --workdir "$cwd" --forward FACTORY_MODEL
+      --ro "$adapter_root" --ro "$prompt_file" --
+      bash "$adapter" --role "$role" --prompt "$prompt_file" --workdir "$cwd" --repo "$repo" --issue "$ref")
   fi
   log "grok start kind=${kind} provider=${provider} repo=${repo} ref=${ref} turns=${turns} cwd=${cwd}"
   timeout 40m env -u GH_TOKEN -u GITHUB_TOKEN "${grok_cmd[@]}" >"$out" 2>"$err" || rc=$?

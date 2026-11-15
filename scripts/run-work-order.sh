@@ -684,73 +684,11 @@ resolve_llm_backend() {
   esac
 }
 
-# The container runtime for the grok child: FACTORY_CONTAINER_RUNTIME if set
-# (it must exist), else the first of podman, docker, nerdctl on PATH. Dies 9
-# rather than falling back to running on the shared box.
-container_runtime() {
-  local runtime=${FACTORY_CONTAINER_RUNTIME:-}
-  if [[ -n $runtime ]]; then
-    command -v "$runtime" > /dev/null \
-      || die 9 "cannot start a container: FACTORY_CONTAINER_RUNTIME=$runtime not found"
-    printf '%s\n' "$runtime"
-    return 0
-  fi
-  for runtime in podman docker nerdctl; do
-    if command -v "$runtime" > /dev/null; then
-      printf '%s\n' "$runtime"
-      return 0
-    fi
-  done
-  die 9 "cannot start a container: no podman, docker or nerdctl on PATH (set FACTORY_CONTAINER_RUNTIME)"
-}
-
-# The image for the grok child. There is no default: the image has to carry
-# the grok CLI and whatever the repo's tests need, so guessing one would fail
-# later and less clearly.
-container_image() {
-  [[ -n ${FACTORY_CONTAINER_IMAGE:-} ]] \
-    || die 9 "cannot start a container: FACTORY_CONTAINER_IMAGE is not set"
-  printf '%s\n' "$FACTORY_CONTAINER_IMAGE"
-}
-
-# The network for the grok child (#382). There is no default, and the
-# runtime's ordinary networks are refused, because they can reach any host.
-# FACTORY_CONTAINER_NETWORK is either "none" or the name of a network the
-# runtime reports as internal: no route out, so the only way to another host
-# is whatever the operator attached to it (an allowlisting proxy for the model
-# API host). Dies 9 rather than starting a container that can reach anything.
-container_network() {
-  local runtime=$1 net=${FACTORY_CONTAINER_NETWORK:-} info
-  [[ -n $net ]] \
-    || die 9 "cannot start a container: FACTORY_CONTAINER_NETWORK is not set (an internal network name, or none)"
-  if [[ $net == none ]]; then
-    printf 'none\n'
-    return 0
-  fi
-  [[ $net =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] \
-    || die 9 "cannot start a container: FACTORY_CONTAINER_NETWORK is not a network name"
-  case "$net" in
-    host | bridge | default | private | podman | slirp4netns | pasta)
-      die 9 "cannot start a container: network $net does not restrict egress"
-      ;;
-  esac
-  info=$("$runtime" network inspect "$net" 2> /dev/null) \
-    || die 9 "cannot start a container: network $net was not found by $(basename -- "$runtime")"
-  printf '%s' "$info" | grep -Eiq '"internal"[[:space:]]*:[[:space:]]*true' \
-    || die 9 "cannot start a container: network $net is not internal, so it does not restrict egress"
-  printf '%s\n' "$net"
-}
-
-# The optional proxy for the grok child (#382): FACTORY_CONTAINER_PROXY, an
-# http(s)://host[:port] URL reachable on the restricted network. Credentials
-# in the URL are refused, because the value goes on the runtime argv.
-container_proxy() {
-  local proxy=${FACTORY_CONTAINER_PROXY:-}
-  [[ -n $proxy ]] || return 0
-  [[ $proxy =~ ^https?://[A-Za-z0-9.-]+(:[0-9]+)?/?$ ]] \
-    || die 9 "cannot start a container: FACTORY_CONTAINER_PROXY must be http(s)://host[:port] with no credentials"
-  printf '%s\n' "$proxy"
-}
+# container_runtime, container_image, container_network and container_proxy:
+# the runtime, image, restricted network and optional proxy, each exit 9 when
+# missing. Shared with scripts/station-run.sh (#424).
+# shellcheck source=scripts/container-env.sh
+source "$RWO_SCRIPT_DIR/container-env.sh"
 
 # Sets the global container_cmd array: the runtime invocation that starts the
 # builder child (any back-end, #388) in a fresh, disposable container (sandbox-no-secrets, #221).

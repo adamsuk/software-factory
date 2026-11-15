@@ -32,6 +32,7 @@ if [[ ${1:-} == repo && ${2:-} == clone ]]; then
   printf '%s\n' '# intake fixture' > "$dest/agents/roles/intake.md"
   printf '%s\n' '#!/usr/bin/env bash' 'exit 0' > "$dest/scripts/triage-ask.sh"
   cp "$REAL_ROOT/scripts/fence-untrusted.sh" "$dest/scripts/"
+  cp "$REAL_ROOT/scripts/container-env.sh" "$REAL_ROOT/scripts/station-container.sh" "$dest/scripts/"
   cp -R "$REAL_ROOT/adapters" "$dest/adapters"
   cp "$REAL_ROOT/AGENTS.md" "$dest/AGENTS.md"
   git init -q -b main "$dest"
@@ -71,6 +72,12 @@ ENDGROK
     export FACTORY_LEDGER_FILE="$w/ledger.csv" FACTORY_CLONE_ROOT="$w/clones" FACTORY_WORKSPACE="$w/workspace"
     export FACTORY_HOME_REPO=acme/software-factory FACTORY_REPOS=acme/software-factory
     export GIT_TERMINAL_PROMPT=0 REAL_ROOT="$root" CALLS_DIR="$w/calls"
+    # The adapter runs in the station container (#424). The fake runtime starts
+    # none: it runs the adapter with only the environment a container would get.
+    cp "$root/scripts/fixtures/fake-container-runtime.sh" "$w/bin/podman" && chmod +x "$w/bin/podman"
+    export FACTORY_CONTAINER_IMAGE=factory-station:test FACTORY_CONTAINER_NETWORK=factory-egress-test
+    export FAKE_RUNTIME_LOG="$w/calls/runtime.log" FAKE_RUNTIME_PASS=CALLS_DIR CLAUDE_CODE_OAUTH_TOKEN=test-claude-token
+    unset FACTORY_CONTAINER_RUNTIME FACTORY_CONTAINER_PROXY
     # Only the fakes and the system tools: no grok anywhere unless the case adds it.
     export PATH="$w/bin:/usr/bin:/bin"
     unset FACTORY_APPROVER_LOGIN FACTORY_BLOCKED_OWNERS FACTORY_PROVIDER GH_TOKEN GITHUB_TOKEN \
@@ -95,6 +102,10 @@ for lane in watch watch.new; do
   [[ ! -e $w/calls/grok.calls ]] || fail "$lane: grok ran under claudecode"
   grep -Fq 'intake fixture' "$w/calls/claude.stdin" || fail "$lane: the intake brief did not reach the provider"
   grep -Fq 'You are the intake station for issue #398' "$w/calls/claude.stdin" || fail "$lane: adapter role/issue not passed"
+  # Through the station container, never straight on the host (#424).
+  [[ $(wc -l < "$w/calls/runtime.log") -eq 1 ]] || fail "$lane: the adapter was not started through the container runtime"
+  grep -Fq -- '--network factory-egress-test' "$w/calls/runtime.log" || fail "$lane: the adapter's container is not on the restricted network"
+  if grep -Fq -e GH_TOKEN -e test-claude-token "$w/calls/runtime.log"; then fail "$lane: a GitHub token or a credential value is on the runtime argv"; fi
   echo "ok: $lane triage runs the claudecode adapter with no grok on PATH"
 
   for p in "" grok; do
@@ -121,6 +132,7 @@ set -u
 if [[ ${1:-} == repo && ${2:-} == clone ]]; then
   dest=${4:-}
   mkdir -p "$dest/agents/roles" "$dest/scripts"
+  cp "$REAL_ROOT/scripts/container-env.sh" "$REAL_ROOT/scripts/station-container.sh" "$dest/scripts/"
   cp -R "$REAL_ROOT/adapters" "$dest/adapters"
   cp "$REAL_ROOT/AGENTS.md" "$dest/AGENTS.md"
   git init -q -b main "$dest"
@@ -155,6 +167,12 @@ ENDGROK
     export FACTORY_LEDGER_FILE="$w/ledger.csv" FACTORY_CLONE_ROOT="$w/clones" FACTORY_WORKSPACE="$w/workspace"
     export FACTORY_HOME_REPO=acme/software-factory FACTORY_REPOS=acme/software-factory
     export GIT_TERMINAL_PROMPT=0 REAL_ROOT="$root" CALLS_DIR="$w/calls"
+    # The adapter runs in the station container (#424). The fake runtime starts
+    # none: it runs the adapter with only the environment a container would get.
+    cp "$root/scripts/fixtures/fake-container-runtime.sh" "$w/bin/podman" && chmod +x "$w/bin/podman"
+    export FACTORY_CONTAINER_IMAGE=factory-station:test FACTORY_CONTAINER_NETWORK=factory-egress-test
+    export FAKE_RUNTIME_LOG="$w/calls/runtime.log" FAKE_RUNTIME_PASS=CALLS_DIR CLAUDE_CODE_OAUTH_TOKEN=test-claude-token
+    unset FACTORY_CONTAINER_RUNTIME FACTORY_CONTAINER_PROXY
     export PATH="$w/bin:/usr/bin:/bin"
     unset FACTORY_APPROVER_LOGIN FACTORY_BLOCKED_OWNERS FACTORY_PROVIDER GH_TOKEN GITHUB_TOKEN \
       FACTORY_GH_APP_ID FACTORY_GH_APP_INSTALLATION_ID FACTORY_GH_APP_KEY_FILE FACTORY_GH_APP_ENV_FILE \
@@ -178,6 +196,8 @@ for lane in watch watch.new; do
     grep -Fq 'review this' "$w/calls/claude.stdin" || fail "$lane: $kind prompt did not reach the provider"
     grep -Fq '"required":["verdict"]' "$w/calls/claude.stdin" || fail "$lane: $kind schema was not handed over in the prompt"
     grep -Fq 'JSON Schema' "$w/calls/claude.stdin" || fail "$lane: $kind schema instruction missing"
+    [[ $(wc -l < "$w/calls/runtime.log") -eq 1 ]] || fail "$lane: $kind did not start the adapter through the container runtime"
+    grep -Fq -- "--volume $w/target:$w/target " "$w/calls/runtime.log" || fail "$lane: $kind did not mount the target checkout"
     echo "ok: $lane $kind runs the claudecode adapter and hands the schema over in the prompt"
 
     for p in "" grok; do

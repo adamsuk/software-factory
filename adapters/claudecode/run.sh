@@ -53,6 +53,12 @@ done
 # builder clones, tests, squash-commits, pushes and opens the pull request, while
 # this one only runs the prompt and leaves its edits in the tree.
 
+# The model CLI runs with tool approval off, so it starts only where
+# scripts/station-run.sh put it: in the station container (#418, #424). Run
+# directly on a host, this adapter refuses.
+[[ "${FACTORY_STATION_CONTAINER:-}" == 1 ]] \
+  || die 9 "refusing to start the claude CLI outside the station container: run the station through scripts/station-run.sh"
+
 command -v claude >/dev/null 2>&1 || die 2 "claude CLI not found in PATH"
 
 claude_supports() {
@@ -81,8 +87,8 @@ fi
 
 # Stations run unattended and must be able to execute scripts/station-post.sh.
 # This is the same standing auto-approval the other two adapters use (opencode
-# --auto, grok --always-approve), and it carries the same open risk recorded in
-# the sandbox finding (#44): approval is removed, isolation is not yet in place.
+# --auto, grok --always-approve). Approval is removed; the isolation is the
+# station container this adapter refuses to run outside of (#44, #418).
 if claude_supports --permission-mode; then
   args+=(--permission-mode bypassPermissions)
 elif claude_supports --dangerously-skip-permissions; then

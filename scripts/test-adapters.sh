@@ -25,6 +25,11 @@ assert_not_contains() {
 prompt=$work/PROMPT.md
 printf 'station prompt body\n' > "$prompt"
 
+# The adapters start a model CLI only inside the station container (#424).
+# scripts/station-run.sh sets this marker there; the cases below stand in for
+# it, and the last section checks the refusal without it.
+export FACTORY_STATION_CONTAINER=1
+
 # A fake CLI that advertises the flags named in FAKE_HELP and logs its argv.
 make_fake() {
   local name=$1 help=$2
@@ -225,6 +230,30 @@ rm -f "$MOCK/opencode.argv"
 make_fake opencode "--auto --title --file --model"
 FACTORY_MODEL="anthropic/claude-sonnet-5" run_adapter opencode --role reviewer --prompt "$prompt" >/dev/null
 assert_contains "$(argv_of opencode)" "--model anthropic/claude-sonnet-5"
+pass
+
+# --- outside the station container an adapter starts no model CLI (#424) -----
+for provider in opencode grok claudecode; do
+  cli=$provider
+  [[ $provider != claudecode ]] || cli=claude
+  tname="$provider refuses to start its CLI outside the station container"
+  make_fake "$cli" "--prompt-file --print --dir --auto --title --file --permission-mode --model"
+  rm -f "$MOCK/$cli.argv"
+  code=0
+  out=$(env -u FACTORY_STATION_CONTAINER PATH="$BIN:$PATH" \
+    bash "$root_dir/adapters/$provider/run.sh" --role reviewer --prompt "$prompt" 2>&1) || code=$?
+  [[ $code -eq 9 ]] || fail "exited $code, want 9: $out"
+  assert_contains "$out" "outside the station container"
+  [[ ! -e "$MOCK/$cli.argv" ]] || fail "the $cli CLI was started on the host"
+  pass
+done
+
+tname="the grok builder is not refused: run-work-order.sh starts its own container"
+grep -n -q 'FACTORY_STATION_CONTAINER' "$root_dir/adapters/grok/run.sh" || fail "the grok adapter has no container check"
+# shellcheck disable=SC2016  # the adapter's literal text
+builder_line=$(grep -n 'run-work-order.sh" "\$work_order"' "$root_dir/adapters/grok/run.sh" | head -n 1 | cut -d: -f1)
+guard_line=$(grep -n 'FACTORY_STATION_CONTAINER' "$root_dir/adapters/grok/run.sh" | head -n 1 | cut -d: -f1)
+[[ -n "$builder_line" && "$builder_line" -lt "$guard_line" ]] || fail "the container check comes before the builder hand-over"
 pass
 
 echo "all adapter tests passed"

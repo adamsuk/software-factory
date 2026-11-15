@@ -17,6 +17,21 @@ BIN=$work/bin
 mkdir -p "$BIN"
 OUT=$work/out
 
+# Every run that reaches a provider starts a container (#424). The fake runtime
+# starts none: it records its argv and runs the adapter with only the
+# environment a container would get. FAKE_RUNTIME_PASS names this harness's own
+# recording paths, which a real container would not see.
+cp "$here/fixtures/fake-container-runtime.sh" "$BIN/podman"
+chmod +x "$BIN/podman"
+RUNTIME_LOG=$work/runtime.log
+export FACTORY_CONTAINER_RUNTIME="$BIN/podman" FACTORY_CONTAINER_IMAGE=factory-station:test \
+  FACTORY_CONTAINER_NETWORK=factory-egress-test FAKE_RUNTIME_LOG="$RUNTIME_LOG" \
+  FAKE_RUNTIME_PASS="FAKE_OUT FIXTURE FAKE_SANDBOX"
+# Stand-ins, never real credentials: station-run refuses to start without them.
+export GH_TOKEN=test-gh-token OPENCODE_API_KEY=test-opencode-key
+unset FACTORY_CONTAINER_PROXY FACTORY_GH_APP_ID FACTORY_GH_APP_INSTALLATION_ID FACTORY_GH_APP_KEY_FILE \
+  CLAUDE_CODE_OAUTH_TOKEN XAI_API_KEY OPENROUTER_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY GH_REPO
+
 # Behaves like the reviewer did on #141: edits a test, stages it, commits it,
 # then tries to push.
 cat > "$BIN/opencode" << 'FAKE'
@@ -362,3 +377,182 @@ snap=$(sed -n 's/^station-run: running from snapshot //p' <<< "$out")
 pass
 
 echo "all station-run snapshot tests passed"
+
+# --- every station runs in the container, or not at all (#424) ---------------
+cat > "$BIN/opencode" << 'FAKE'
+#!/usr/bin/env bash
+if [[ "$*" == *--help* ]]; then printf '%s\n' "--auto --title --file"; exit 0; fi
+{
+  echo "cwd=$PWD"
+  echo "marker=${FACTORY_STATION_CONTAINER:-}"
+  echo "host_only=${HOST_ONLY_SENTINEL:-}"
+  echo "key_file=${FACTORY_GH_APP_KEY_FILE:-}"
+  echo "gh_token=${GH_TOKEN:+set}"
+  echo "opencode_key=${OPENCODE_API_KEY:+set}"
+  echo "claude_token=${CLAUDE_CODE_OAUTH_TOKEN:+set}"
+  echo "xai_key=${XAI_API_KEY:+set}"
+  echo "proxy=${HTTPS_PROXY:-}"
+  echo "model=${FACTORY_MODEL:-}"
+} > "$FAKE_OUT"
+exit 0
+FAKE
+chmod +x "$BIN/opencode"
+run_c() {
+  PATH="$BIN:$PATH" FACTORY_PROVIDER=opencode FAKE_OUT="$OUT" \
+    bash "$root_dir/scripts/station-run.sh" "$@" 2>&1
+}
+last_run() { tail -n 1 "$RUNTIME_LOG"; }
+
+tname="a station is started through the runtime, on the restricted network"
+rm -f "$OUT"; : > "$RUNTIME_LOG"
+HOST_ONLY_SENTINEL=must-not-arrive FACTORY_GH_APP_KEY_FILE=/nonexistent/app-key.pem \
+  CLAUDE_CODE_OAUTH_TOKEN=other-provider XAI_API_KEY=other-provider FACTORY_MODEL=test-model \
+  FACTORY_CONTAINER_PROXY=http://egress-proxy:8888 run_c reviewer /dev/null > /dev/null
+[[ $(wc -l < "$RUNTIME_LOG") -eq 1 ]] || fail "expected one container start, got $(wc -l < "$RUNTIME_LOG")"
+argv=" $(last_run) "
+[[ "$argv" == " run --rm "* ]] || fail "the container is not disposable: $argv"
+[[ "$argv" == *" --network factory-egress-test "* ]] || fail "the container is not on the restricted network"
+[[ "$argv" == *" --cap-drop ALL "* ]] || fail "capabilities were not dropped"
+[[ "$argv" == *" --tmpfs /factory-home "* && "$argv" == *" --env HOME=/factory-home "* ]] \
+  || fail "HOME is not an empty tmpfs"
+[[ "$argv" == *" factory-station:test "* ]] || fail "the image is not FACTORY_CONTAINER_IMAGE"
+# Never root: Claude Code refuses to run with approval off as root, and rootless
+# podman maps the caller to root unless told to keep the id.
+[[ "$argv" == *" --user $(id -u):$(id -g) "* ]] || fail "the container does not run as the calling user"
+[[ "$argv" == *" --userns keep-id "* ]] || fail "podman would map the calling user to container root"
+pass
+
+tname="the container gets the marker, the proxy and its own credentials, and nothing else of the host"
+grep -qx "marker=1" "$OUT" || fail "the adapter was not told it is in the container"
+grep -qx "proxy=http://egress-proxy:8888" "$OUT" || fail "the proxy was not set"
+grep -qx "model=test-model" "$OUT" || fail "FACTORY_MODEL was not forwarded"
+grep -qx "gh_token=set" "$OUT" || fail "GH_TOKEN was not forwarded"
+grep -qx "opencode_key=set" "$OUT" || fail "the provider's own credential was not forwarded"
+grep -qx "host_only=" "$OUT" || fail "a host-only variable reached the adapter"
+grep -qx "key_file=" "$OUT" || fail "the App key file path reached the adapter"
+grep -qx "claude_token=" "$OUT" || fail "another provider's credential was forwarded"
+grep -qx "xai_key=" "$OUT" || fail "another provider's credential was forwarded"
+pass
+
+tname="no credential value is on the runtime's argv"
+if grep -q -e test-gh-token -e test-opencode-key -e other-provider "$RUNTIME_LOG"; then
+  fail "a credential value was passed on argv"
+fi
+pass
+
+tname="a read-only station's container cannot see the real checkout"
+cwd=$(grep '^cwd=' "$OUT" | cut -d= -f2-)
+[[ "$argv" == *" --volume $cwd:$cwd "* ]] || fail "the throwaway clone is not mounted"
+[[ "$argv" != *" --volume $root_dir:"* ]] || fail "the real checkout is mounted for a read-only station"
+[[ $(grep -o -- ' --volume [^ ]*:ro' <<< "$argv" | wc -l) -eq 2 ]] \
+  || fail "expected exactly the snapshot and the bundle read-only: $argv"
+pass
+
+tname="a writing station gets the real checkout"
+rm -f "$OUT"; : > "$RUNTIME_LOG"
+run_c foreman /dev/null > /dev/null
+argv=" $(last_run) "
+[[ "$argv" == *" --volume $root_dir:$root_dir "* ]] || fail "the foreman's container does not mount the checkout"
+pass
+
+expect_9() { # label, then the environment for the run
+  local label=$1; shift
+  local code=0 out
+  rm -f "$OUT"; : > "$RUNTIME_LOG"
+  out=$(env "$@" PATH="$BIN:$PATH" FACTORY_PROVIDER=opencode FAKE_OUT="$OUT" \
+    bash "$root_dir/scripts/station-run.sh" reviewer /dev/null 2>&1) || code=$?
+  [[ $code -eq 9 ]] || fail "$label exited $code, want 9: $out"
+  [[ "$out" == *"cannot start a container"* ]] || fail "$label did not say it cannot start a container: $out"
+  [[ ! -e "$OUT" ]] || fail "$label still ran the provider"
+  [[ ! -s "$RUNTIME_LOG" ]] || fail "$label still started a container"
+}
+
+tname="no image, no network, an ordinary network or a missing one is exit 9"
+expect_9 "no image" FACTORY_CONTAINER_IMAGE=
+expect_9 "no network" FACTORY_CONTAINER_NETWORK=
+expect_9 "bridge network" FACTORY_CONTAINER_NETWORK=bridge
+expect_9 "host network" FACTORY_CONTAINER_NETWORK=host
+expect_9 "a network that is not internal" FAKE_RUNTIME_NET=external
+expect_9 "a network that does not exist" FAKE_RUNTIME_NET=missing
+expect_9 "a runtime that is not installed" FACTORY_CONTAINER_RUNTIME=no-such-runtime
+expect_9 "a proxy URL with credentials" FACTORY_CONTAINER_PROXY=http://user:pass@proxy:8888
+pass
+
+tname="no provider credential or no GitHub token is exit 9"
+expect_9 "no provider credential" OPENCODE_API_KEY=
+expect_9 "no GitHub token" GH_TOKEN=
+pass
+
+tname="--dry-run needs no container"
+: > "$RUNTIME_LOG"
+out=$(env FACTORY_CONTAINER_IMAGE= FACTORY_CONTAINER_NETWORK= GH_TOKEN= OPENCODE_API_KEY= \
+  PATH="$BIN:$PATH" FACTORY_PROVIDER=opencode bash "$root_dir/scripts/station-run.sh" --dry-run reviewer /dev/null 2>&1) \
+  || fail "--dry-run failed without container settings: $out"
+[[ "$out" == *"=== PROMPT BUNDLE ==="* ]] || fail "--dry-run printed no bundle"
+[[ ! -s "$RUNTIME_LOG" ]] || fail "--dry-run started a container"
+pass
+
+tname="the grok builder is handed over unwrapped: run-work-order.sh starts its own container"
+: > "$RUNTIME_LOG"
+gfx=$work/grok-fixture
+mkdir -p "$gfx/agents" "$gfx/stations"
+cp -R "$root_dir/scripts" "$root_dir/adapters" "$gfx/"
+cp "$root_dir/AGENTS.md" "$gfx/AGENTS.md"
+cp -R "$root_dir/agents/roles" "$gfx/agents/roles"
+cp "$root_dir/stations/github-writes.md" "$gfx/stations/"
+# shellcheck disable=SC2016  # the stub's literal text
+printf '#!/usr/bin/env bash\necho "run-work-order marker=${FACTORY_STATION_CONTAINER:-none} args=$*"\n' > "$gfx/scripts/run-work-order.sh"
+git -C "$gfx" init -q
+git -C "$gfx" add -A > /dev/null
+git -C "$gfx" -c user.email=t@e.com -c user.name=t commit -q -m fixture
+mkwo acme/software-factory grok
+out=$(cd "$gfx" && env XAI_API_KEY= GH_TOKEN= FACTORY_CONTAINER_IMAGE= PATH="$BIN:$PATH" \
+  bash "$gfx/scripts/station-run.sh" --provider grok --work-order "$work/wo-grok.md" builder /dev/null 2>&1) \
+  || fail "the grok builder hand-over failed: $out"
+[[ "$out" == *"run-work-order marker=none args=$work/wo-grok.md"* ]] || fail "run-work-order.sh was not called directly: $out"
+[[ ! -s "$RUNTIME_LOG" ]] || fail "station-run wrapped the grok builder in a container"
+pass
+
+# --- scripts/station-container.sh: the same container for other callers ------
+wrap="$root_dir/scripts/station-container.sh"
+probe=$work/probe
+mkdir -p "$probe"
+printf 'x\n' > "$work/ro-file"
+
+tname="station-container.sh runs the command in the container"
+: > "$RUNTIME_LOG"
+out=$(HOST_ONLY_SENTINEL=must-not-arrive FACTORY_MODEL=test-model PATH="$BIN:$PATH" bash "$wrap" \
+  --provider opencode --workdir "$probe" --forward FACTORY_MODEL --ro "$work/ro-file" --ro "$probe" -- \
+  bash -c 'echo "cwd=$PWD marker=${FACTORY_STATION_CONTAINER:-} model=${FACTORY_MODEL:-} host=${HOST_ONLY_SENTINEL:-} gh=${GH_TOKEN:-}"')
+[[ "$out" == "cwd=$probe marker=1 model=test-model host= gh=" ]] || fail "unexpected view from inside: $out"
+argv=" $(last_run) "
+[[ "$argv" == *" --volume $work/ro-file:$work/ro-file:ro "* ]] || fail "the read-only path is not mounted read-only"
+[[ $(grep -o -- " --volume $probe:" <<< "$argv" | wc -l) -eq 1 ]] || fail "the workdir was mounted twice"
+[[ "$argv" == *" --network factory-egress-test "* ]] || fail "not on the restricted network"
+pass
+
+tname="station-container.sh keeps the command's exit code and starts nothing on exit 9"
+code=0
+PATH="$BIN:$PATH" bash "$wrap" --provider opencode --workdir "$probe" -- bash -c 'exit 7' || code=$?
+[[ $code -eq 7 ]] || fail "exit code was $code, want 7"
+for setting in FACTORY_CONTAINER_IMAGE= FACTORY_CONTAINER_NETWORK= FACTORY_CONTAINER_NETWORK=bridge OPENCODE_API_KEY=; do
+  code=0; : > "$RUNTIME_LOG"
+  env "$setting" PATH="$BIN:$PATH" bash "$wrap" --provider opencode --workdir "$probe" -- true > /dev/null 2>&1 || code=$?
+  [[ $code -eq 9 ]] || fail "$setting exited $code, want 9"
+  [[ ! -s "$RUNTIME_LOG" ]] || fail "$setting still started a container"
+done
+pass
+
+tname="station-container.sh rejects bad arguments"
+for bad in "--workdir relative/dir" "--workdir $work/no-such-dir" "--workdir $probe --forward BAD=NAME" "--workdir $probe --ro $work/no-such-file"; do
+  code=0
+  # shellcheck disable=SC2086  # $bad is a list of arguments, split on purpose
+  PATH="$BIN:$PATH" bash "$wrap" --provider opencode $bad -- true > /dev/null 2>&1 || code=$?
+  [[ $code -eq 2 ]] || fail "[$bad] exited $code, want 2"
+done
+code=0
+PATH="$BIN:$PATH" bash "$wrap" --provider opencode --workdir "$probe" > /dev/null 2>&1 || code=$?
+[[ $code -eq 2 ]] || fail "no command exited $code, want 2"
+pass
+
+echo "all station-run container tests passed"
