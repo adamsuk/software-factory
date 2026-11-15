@@ -84,6 +84,14 @@ jobs:
       INPUT_REPO: ${{ inputs.parent_repo }}
       INPUT_ISSUE: ${{ inputs.parent_issue }}
     steps:
+      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          # checkout reaches github.com; gh (sub-issues-all-closed.sh) calls api.github.com.
+          # Proven by a workflow_dispatch run of this job in block mode (adamsuk/software-factory#396).
+          egress-policy: block
+          allowed-endpoints: >-
+            api.github.com:443
+            github.com:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Decide
         id: decide
@@ -136,8 +144,19 @@ jobs:
     steps:
       - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
-          # Stays audit on purpose: this job has never run its real path (its secrets are unset), so there is no list (adamsuk/software-factory#369).
-          egress-policy: audit
+          # Block from the first real run (adamsuk/software-factory#396). This job has never run its
+          # real path (its secret and variables are unset), so the list is derived from its steps and
+          # NOT yet proven by a run: checkout and gh (github.com, api.github.com), npm install of the
+          # CLI (registry.npmjs.org), the model API (api.anthropic.com) and the Line guide
+          # (adamsuk.github.io; AUDITOR_GUIDE_URL must point there or this list changes with it).
+          # A missing host fails the run closed; add it here from that run's Harden-Runner insights.
+          egress-policy: block
+          allowed-endpoints: >-
+            adamsuk.github.io:443
+            api.anthropic.com:443
+            api.github.com:443
+            github.com:443
+            registry.npmjs.org:443
       - name: Check required secret and variables
         run: |
           missing=()
@@ -270,6 +289,17 @@ jobs:
       AUDIT_PR: ${{ needs.audit.outputs.pr_url }}
       CANDIDATES: ${{ needs.audit.outputs.candidates }}
     steps:
+      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          # Derived from this job's steps and NOT yet proven by a run (it only runs after a real
+          # audit): checkout and gh, npm install of the CLI, and the model API for the matcher
+          # (adamsuk/software-factory#396). A missing host fails the run closed.
+          egress-policy: block
+          allowed-endpoints: >-
+            api.anthropic.com:443
+            api.github.com:443
+            github.com:443
+            registry.npmjs.org:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install the Claude Code CLI
         run: npm install -g "@anthropic-ai/claude-code@${CLI_VERSION}"

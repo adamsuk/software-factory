@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-15 (egress block on every line-audit job)
+
+### Changed
+
+- All three jobs in `.github/workflows/line-audit.yml` run Harden-Runner with `egress-policy: block` and an `allowed-endpoints` list. `gate` and `triage` had no Harden-Runner step before. No job in this repo is left on `audit`. The `gate` list is proven by a run; the `audit` and `triage` lists are derived from their steps and are not proven until the workflow's secret and variables are set and it runs for real, when a missing host fails the run closed. `scripts/test-harden-runner.sh` now expects `block` for all three (#396).
+
 ## 2026-11-15 (metrics rework read that GitHub accepts)
 
 ### Fixed
