@@ -47,6 +47,25 @@ has '^ +--pr-rework \\$' "delivery metrics call does not pass --pr-rework"
 if grep -Eq 'rework rounds per pr and cost per change usd are n/a' "$wf"; then
   fail "the ledger note still says rework rounds are n/a"
 fi
+# Recovery is measured on main, so the delivery call names only the required
+# checks that run on a push to main (#416). lint.yml is where they are defined.
+lint=$here/../.github/workflows/lint.yml
+while IFS= read -r name; do
+  [[ -n "$name" ]] || continue
+  job=$(awk -v want="$name" '
+    /^  [A-Za-z0-9_-]+:$/ { job = $1; sub(/:$/, "", job) }
+    $1 == "name:" { n = $0; sub(/^[ ]+name:[ ]+/, "", n); if (n == want) print job }
+  ' "$lint" | head -n 1)
+  [[ -n "$job" ]] || fail "metrics names required check '$name', which lint.yml does not define"
+  if awk -v job="$job" '
+    /^  [A-Za-z0-9_-]+:$/ { cur = $1; sub(/:$/, "", cur) }
+    cur == job && /^    if:.*pull_request/ { found = 1 }
+    END { exit found ? 0 : 1 }
+  ' "$lint"; then
+    fail "metrics names required check '$name', which only runs on pull requests, so recovery time can never be measured"
+  fi
+done < <(grep -oE -- '--required-check ("[^"]+"|[A-Za-z0-9_-]+)' "$wf" | sed -E 's/^--required-check //; s/^"//; s/"$//')
+grep -Eq -- '--required-check ' "$wf" || fail "metrics names no required check"
 if grep -Eq 'ghs_|-----BEGIN|private-key: [^$]' "$wf"; then fail "workflow contains a secret value"; fi
 
 # A snapshot with a Baseline section exists.
