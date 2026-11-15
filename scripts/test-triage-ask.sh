@@ -126,7 +126,7 @@ cat > "$ROOT/ambiguous.txt" << 'EOF'
 fix the bug
 
 Target repo: adamsuk/activity-feed
-Size: L
+Size: M
 
 - [ ] `bash scripts/test-colour.sh` fails while the button stays grey and passes once it enables
 EOF
@@ -916,13 +916,65 @@ asked = comment("software-factory-line", "marker-only.txt")
 PY
 # The body says Size: M and the approver then says Size: L. The question is
 # already on the issue, so without this rule the issue waits for ever.
-for answers in size-answer size-twice; do
-  reset_gh
-  write_issue "Colour is wrong" "$ROOT/complete.txt" "$ROOT/$answers.json"
-  run adamsuk/software-factory 310
-  [[ "$status" -eq 0 ]] || fail "approver size in ${answers} did not settle the size, got $status"
-  [[ ! -s "$OUT" ]] || fail "allow path printed a comment for ${answers}"
-done
+# An approver's Size: S after it settles the size and allows ready.
+reset_gh
+write_issue "Colour is wrong" "$ROOT/complete.txt" "$ROOT/size-twice.json"
+run adamsuk/software-factory 310
+[[ "$status" -eq 0 ]] || fail "approver size in size-twice did not settle the size, got $status"
+[[ ! -s "$OUT" ]] || fail "allow path printed a comment for size-twice"
+# The approver's Size: L settles the size too, but size L is sent back to be
+# split (#412): ready is withheld with the split question, not the size one.
+reset_gh
+write_issue "Colour is wrong" "$ROOT/complete.txt" "$ROOT/size-answer.json"
+run adamsuk/software-factory 310
+[[ "$status" -eq 2 ]] || fail "an approver's Size: L was allowed as ready, got $status"
+grep -F -q 'too large for one work order' "$OUT" || fail "size L did not get the split question"
+if grep -F -q 'What size is this change' "$OUT"; then fail "a settled size L was asked for its size again"; fi
+# Once the split question is on the issue it is not posted again.
+python3 - "$ROOT" << 'PY'
+import json, pathlib, sys
+root = pathlib.Path(sys.argv[1])
+marker = (root / "marker-only.txt").read_text()
+asked = {"author": {"login": "software-factory-line"}, "body": marker}
+answer = {"author": {"login": "adamsuk"}, "body": (root / "size-l.txt").read_text()}
+split = {"author": {"login": "software-factory-line"}, "body": marker + "\n1. This is size L, which is too large for one work order. How should it be split?"}
+(root / "size-split-asked.json").write_text(json.dumps([asked, answer, split]))
+PY
+reset_gh
+write_issue "Colour is wrong" "$ROOT/complete.txt" "$ROOT/size-split-asked.json"
+run adamsuk/software-factory 310
+[[ "$status" -eq 2 ]] || fail "size L was allowed once the split question was asked, got $status"
+[[ ! -s "$OUT" ]] || fail "the split question was posted a second time"
+# Size L in the issue body is sent back the same way, and an approver's
+# smaller size after that allows ready.
+cat > "$ROOT/body-l.txt" << 'EOF'
+The save button stays grey after the form becomes valid.
+
+Target repo: adamsuk/activity-feed
+Size: L
+
+- [ ] `bash scripts/test-colour.sh` fails while the button stays grey and passes once it enables
+EOF
+cat > "$ROOT/size-m.txt" << 'EOF'
+Size: M
+EOF
+python3 - "$ROOT" << 'PY'
+import json, pathlib, sys
+root = pathlib.Path(sys.argv[1])
+asked = {"author": {"login": "software-factory-line"}, "body": (root / "marker-only.txt").read_text()}
+answer = {"author": {"login": "adamsuk"}, "body": (root / "size-m.txt").read_text()}
+(root / "size-m-answer.json").write_text(json.dumps([asked, answer]))
+PY
+reset_gh
+write_issue "Colour is wrong" "$ROOT/body-l.txt" "$EMPTY"
+run adamsuk/software-factory 310
+[[ "$status" -eq 2 ]] || fail "Size: L in the body was allowed as ready, got $status"
+grep -F -q 'too large for one work order' "$OUT" || fail "body size L did not get the split question"
+[[ "$(grep -c -E '^[0-9]+[.] ' "$OUT")" -eq 1 ]] || fail "size L asked more than the split question"
+reset_gh
+write_issue "Colour is wrong" "$ROOT/body-l.txt" "$ROOT/size-m-answer.json"
+run adamsuk/software-factory 310
+[[ "$status" -eq 0 ]] || fail "an approver's Size: M after size L did not allow ready, got $status"
 # The body names two repos and the approver then names one.
 reset_gh
 write_issue "Colour is wrong" "$ROOT/two-repos.txt" "$ROOT/repo-answer.json"

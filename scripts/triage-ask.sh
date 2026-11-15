@@ -9,7 +9,7 @@
 #
 # Exit 0: ready is allowed. Prints nothing. Does not edit the issue, set a
 # label, or write acceptance criteria. The owner already supplied one target
-# repo from the closed set, one size (S, M or L), checkable done-checks, and
+# repo from the closed set, one size (S or M; L is sent back to be split), checkable done-checks, and
 # a problem statement that is not a placeholder.
 # Exit 2: withhold factory:ready. Prints a numbered comment for the caller
 # to post, or prints nothing when that comment is already on the issue.
@@ -63,6 +63,7 @@ DEFAULT_REPOS = (
 REPO_TOKEN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 SIZES = ("S", "M", "L")
 MARKER = "<!-- factory:triage-ask -->"
+SPLIT_PHRASE = "too large for one work order"
 # Documented app slug. gh issue comment from the app shows this login, with
 # or without a trailing [bot]. FACTORY_LOGIN, when set, is accepted as well.
 DEFAULT_APP_LOGIN = "software-factory-line"
@@ -313,6 +314,10 @@ def questions_for(owner, answers=()):
         missing.append("repo")
     if len(unique(sizes)) != 1:
         missing.append("size")
+    elif unique(sizes) == ["L"]:
+        # One work order is one small change. A size L issue goes back to its
+        # owner to split; it is never ready as it stands.
+        missing.append("split")
     if not tasks:
         missing.append("ac-missing")
     elif not all(checkable(item) for item in tasks):
@@ -357,6 +362,13 @@ def render(missing):
                 "Reply with your own checklist. Each item should name a test, "
                 "a command, or a file to look at in the diff."
             )
+        elif key == "split":
+            lines.append(
+                f"{number}. This is size L, which is {SPLIT_PHRASE}. "
+                "How should it be split? File each piece as its own issue with its own "
+                "done-checks, or reply with a line of the form `Size: M` or `Size: S` "
+                "if it fits one small change after all."
+            )
         elif key == "problem":
             lines.append(
                 f"{number}. What should this change do? Reply in one or two sentences."
@@ -384,6 +396,10 @@ def main():
     if not isinstance(raw_comments, list):
         raw_comments = []
     asked = False
+    # The split question is asked once too, but an earlier question about
+    # something else must not silence it: an owner who answers "Size: L" to
+    # the size question would otherwise wait for ever with no reply (#412).
+    split_asked = False
     parts = [norm(body)]
     answers = []
     for item in raw_comments:
@@ -391,6 +407,7 @@ def main():
         if approver_comment(item):
             if MARKER in text:
                 asked = True
+                split_asked = split_asked or SPLIT_PHRASE in text
                 continue
             parts.append(text)
             answers.append(text)
@@ -400,6 +417,7 @@ def main():
         if app_comment(item):
             if MARKER in text:
                 asked = True
+                split_asked = split_asked or SPLIT_PHRASE in text
             continue
     missing = questions_for("\n".join(parts), answers)
     if not missing:
@@ -414,7 +432,7 @@ def main():
             with open(out + "/asked", "w") as fh:
                 fh.write("1\n" if asked else "")
         sys.exit(0)
-    if not asked:
+    if not asked or (missing == ["split"] and not split_asked):
         sys.stdout.write(render(missing))
     sys.exit(2)
 

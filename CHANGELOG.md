@@ -9,6 +9,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - `scripts/run-work-order.sh` has one builder interface with Grok, Claude Code and opencode back-ends, selected by `FACTORY_PROVIDER` (`grok`, `claudecode`, `opencode`). Unset still runs Grok. `FACTORY_LLM` (`grok`, `claude`) stays as an alias, and `FACTORY_PROVIDER` wins when both are set. The opencode child gets the same env scrub, empty `GH_CONFIG_DIR`, and `git push` / `gh` / secrets-directory denies as the others. Every back-end now runs in the restricted-network container (#357, #382), each forwarding only its own model credential by name (`XAI_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, or the opencode provider keys). Claude Code previously ran on the host. New cases in `scripts/test-run-work-order.sh` and `scripts/test-run-work-order-container.sh` (#388, part of #386).
 
+## 2026-11-15 (size L goes back to be split)
+
+### Changed
+
+- `scripts/triage-ask.sh` withholds `factory:ready` when an issue's settled size is L and asks how to split it; an approver's `Size: M` or `Size: S` after that allows ready. `agents/roles/intake.md` says the same: size L is `factory:blocked` with a proposed split, and only S and M can be ready (#412).
+
+## 2026-11-15 (egress block on every line-audit job)
+
+### Changed
+
+- All three jobs in `.github/workflows/line-audit.yml` run Harden-Runner with `egress-policy: block` and an `allowed-endpoints` list. `gate` and `triage` had no Harden-Runner step before. No job in this repo is left on `audit`. The `gate` list is proven by a run; the `audit` and `triage` lists are derived from their steps and are not proven until the workflow's secret and variables are set and it runs for real, when a missing host fails the run closed. `scripts/test-harden-runner.sh` now expects `block` for all three (#396).
+
+## 2026-11-15 (metrics rework read that GitHub accepts)
+
+### Fixed
+
+- `scripts/factory-delivery-metrics.sh --pr-rework` reads each factory pull request's reviews and commits over REST. The single `gh pr list` read with `reviews,commits` was refused by GitHub above about 30 pull requests (a GraphQL node limit), so the script exited 7 and the `metrics` workflow failed once it passed `--pr-rework`. A full page of 100 reviews or commits exits 7 so a total is never silently short (#410).
+
 ## 2026-11-15 (review and dependabot-triage on the provider seam)
 
 ### Changed
