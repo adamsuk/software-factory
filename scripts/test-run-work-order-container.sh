@@ -409,4 +409,43 @@ tname="launch-carries-network"
 grep -qx -- '--network' "$work/runtime-argv.txt" || fail "the real launch did not pass --network to the runtime"
 grep -qx -- 'factory-egress-test' "$work/runtime-argv.txt" || fail "the real launch did not name the restricted network"
 
+# --- every back-end is wrapped (#388) ---------------------------------------
+tname="backend-credentials"
+unset FACTORY_CONTAINER_RUNTIME
+PATH="$podman_bin:$ORIG_PATH"
+export PATH
+FACTORY_CONTAINER_NETWORK=factory-egress-test
+CLAUDE_CODE_OAUTH_TOKEN=sentinel-388-claude OPENCODE_API_KEY=sentinel-388-opencode
+export CLAUDE_CODE_OAUTH_TOKEN OPENCODE_API_KEY
+build_container_command "$clone" "$fenced_order" claude
+argv=$(printf '%s ' "${container_cmd[@]}")
+assert_contains "$argv" " --env CLAUDE_CODE_OAUTH_TOKEN " "claude's credential is not forwarded by name"
+assert_not_contains "$argv" "XAI_API_KEY" "claude's container gets the grok key"
+assert_not_contains "$argv" "OPENCODE_API_KEY" "claude's container gets the opencode key"
+assert_not_contains "$argv" "sentinel-388" "a credential value is on the runtime argv"
+assert_contains "$argv" " --network factory-egress-test " "claude's container lost the restricted network"
+build_container_command "$clone" "$fenced_order" opencode
+argv=$(printf '%s ' "${container_cmd[@]}")
+assert_contains "$argv" " --env OPENCODE_API_KEY " "opencode's credential is not forwarded by name"
+assert_not_contains "$argv" "CLAUDE_CODE_OAUTH_TOKEN" "opencode's container gets the claude token"
+assert_not_contains "$argv" "XAI_API_KEY" "opencode's container gets the grok key"
+assert_not_contains "$argv" "sentinel-388" "a credential value is on the runtime argv"
+assert_contains "$argv" " --network factory-egress-test " "opencode's container lost the restricted network"
+assert_eq "${container_cmd[${#container_cmd[@]}-1]}" "factory-bench:test"
+unset CLAUDE_CODE_OAUTH_TOKEN OPENCODE_API_KEY
+
+tname="every-backend-wrapped"
+main_src=$(declare -f main)
+# shellcheck disable=SC2016  # literal source text, not expansion
+[[ "$main_src" == *'build_container_command "$dir" "$fenced_order" "$llm_backend"'* ]] \
+  || fail "main does not build the container for every back-end"
+# shellcheck disable=SC2016  # literal source text, not expansion
+[[ "$main_src" != *'if [[ "$llm_backend" == "grok" ]]; then
+    build_container_command'* ]] || fail "the container is still grok-only"
+opencode_src=$(declare -f run_opencode_builder)
+claude_start=$(printf '%s\n' "$main_src" | grep -c 'container_cmd\[@\]') || true
+[[ "$claude_start" -ge 2 ]] || fail "main does not prefix both the grok and claude children with the container"
+# shellcheck disable=SC2016  # literal source text, not expansion
+[[ "$opencode_src" == *'"${container_cmd[@]}"'* ]] || fail "the opencode child is not prefixed with the container"
+
 echo "ok: container bench tests passed"

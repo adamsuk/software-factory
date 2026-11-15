@@ -647,22 +647,41 @@ apply_factory_gh_app_token() {
   fi
 }
 
-# The headless coding backend: grok (default, unchanged behaviour) or claude,
-# chosen by FACTORY_LLM. The factory stays tool-agnostic: this is a setting,
-# not a label on the work. Sets the global llm_backend, and for claude,
-# claude_bin (CLAUDE_BIN override). Requires the matching CLI on PATH.
+# The builder interface (#388): one function per back-end, selected by
+# FACTORY_PROVIDER (grok | claudecode | opencode). Grok stays the default.
+# FACTORY_LLM (grok | claude) is kept as an alias for existing set-ups:
+# FACTORY_PROVIDER wins when both are set, and claude is claudecode. The factory
+# stays tool-agnostic: this is a setting, not a label on the work. Sets the
+# global llm_backend (grok | claude | opencode), and claude_bin (CLAUDE_BIN
+# override) or opencode_bin (OPENCODE_BIN override). Requires the matching CLI
+# on PATH. Every back-end then runs inside the same container, with the same
+# env scrub and git push / gh denies.
 resolve_llm_backend() {
-  llm_backend=${FACTORY_LLM:-grok}
-  case "$llm_backend" in
-    grok | claude) ;;
-    *) die 2 "FACTORY_LLM must be grok or claude, got '$llm_backend'" ;;
-  esac
-  if [[ "$llm_backend" == "claude" ]]; then
-    claude_bin=${CLAUDE_BIN:-claude}
-    command -v "$claude_bin" > /dev/null || die 2 "$claude_bin not found"
+  if [[ -n ${FACTORY_PROVIDER:-} ]]; then
+    case "$FACTORY_PROVIDER" in
+      grok) llm_backend=grok ;;
+      claudecode) llm_backend=claude ;;
+      opencode) llm_backend=opencode ;;
+      *) die 2 "FACTORY_PROVIDER must be grok, claudecode or opencode, got '$FACTORY_PROVIDER'" ;;
+    esac
   else
-    command -v grok > /dev/null || die 2 "grok not found"
+    llm_backend=${FACTORY_LLM:-grok}
+    case "$llm_backend" in
+      grok | claude) ;;
+      *) die 2 "FACTORY_LLM must be grok or claude, got '$llm_backend'" ;;
+    esac
   fi
+  case "$llm_backend" in
+    claude)
+      claude_bin=${CLAUDE_BIN:-claude}
+      command -v "$claude_bin" > /dev/null || die 2 "$claude_bin not found"
+      ;;
+    opencode)
+      opencode_bin=${OPENCODE_BIN:-opencode}
+      command -v "$opencode_bin" > /dev/null || die 2 "$opencode_bin not found"
+      ;;
+    *) command -v grok > /dev/null || die 2 "grok not found" ;;
+  esac
 }
 
 # The container runtime for the grok child: FACTORY_CONTAINER_RUNTIME if set
@@ -734,7 +753,7 @@ container_proxy() {
 }
 
 # Sets the global container_cmd array: the runtime invocation that starts the
-# grok child in a fresh, disposable container (sandbox-no-secrets, #221).
+# builder child (any back-end, #388) in a fresh, disposable container (sandbox-no-secrets, #221).
 # Only the clone (rw) and the fenced work order (ro) are mounted, at their
 # host paths so grok's --cwd and --prompt-file keep working. HOME and TMPDIR
 # are empty tmpfs mounts, and XAI_API_KEY is forwarded by name only, so its
@@ -744,7 +763,7 @@ container_proxy() {
 # The container joins only the restricted network from container_network
 # (#382), with the proxy variables set when FACTORY_CONTAINER_PROXY is given.
 build_container_command() {
-  local dir=$1 order=$2 runtime image network proxy
+  local dir=$1 order=$2 backend=${3:-grok} runtime image network proxy name
   runtime=$(container_runtime) || exit 9
   image=$(container_image) || exit 9
   network=$(container_network "$runtime") || exit 9
@@ -770,11 +789,73 @@ build_container_command() {
   # in the clone stay ours. docker and nerdctl run as root by default and
   # would leave root-owned files for the host to commit; run as us instead.
   [[ "$(basename -- "$runtime")" == podman ]] || container_cmd+=(--user "$(id -u):$(id -g)")
-  if [[ -n ${XAI_API_KEY:-} ]]; then
-    # Name only: the runtime copies the value from this process's environment.
-    container_cmd+=(--env XAI_API_KEY)
-  fi
+  # Each back-end gets only its own model credential, by name only: the runtime
+  # copies the value from this process's environment, so it never reaches argv.
+  case "$backend" in
+    claude) set -- CLAUDE_CODE_OAUTH_TOKEN ;;
+    opencode) set -- OPENCODE_API_KEY OPENROUTER_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY ;;
+    *) set -- XAI_API_KEY ;;
+  esac
+  for name in "$@"; do
+    [[ -z ${!name:-} ]] || container_cmd+=(--env "$name")
+  done
   container_cmd+=("$image")
+}
+
+# The opencode back-end (#388). Same shape as the claude branch in main: the
+# rules-plus-order prompt is a file attached with --file, the env is scrubbed of
+# the box's credentials (the model key it needs is forwarded into the container
+# by name only), and OPENCODE_CONFIG_CONTENT denies `git push`, `gh`, web
+# fetches and reads of the secrets directory. The raw event stream is kept and a
+# normalised {stopReason,num_turns,total_cost_usd} lands in $dir.grok.json, so
+# callers that read that file need no change. Uses the globals dir, rules,
+# fenced_order, opencode_bin, gh_config_dir and container_cmd; a non-zero exit
+# is returned for the caller's `|| status=$?`.
+run_opencode_builder() {
+  local prompt="$dir.opencode-prompt.txt" secrets_dir perm rc=0
+  secrets_dir=$(secrets_deny_rule) || die 2 "could not resolve the secrets directory"
+  secrets_dir=${secrets_dir#Read(/}
+  secrets_dir=${secrets_dir%/**)}
+  { cat "$rules"; printf '\n\n'; cat "$fenced_order"; } > "$prompt"
+  perm=$(jq -nc --arg s "$secrets_dir" '{
+    autoupdate: false,
+    permission: {
+      edit: "allow",
+      webfetch: "deny",
+      read: {"*": "allow", ($s): "deny", ($s + "/**"): "deny"},
+      bash: {"*": "allow", "git push*": "deny", "gh": "deny", "gh *": "deny", "*factory-secrets*": "deny"}
+    }}')
+  # shellcheck disable=SC2016  # $1.."$3" below expand in the inner bash -c, not this script
+  "${container_cmd[@]}" \
+    env -u GH_TOKEN -u GITHUB_TOKEN \
+    -u GH_ENTERPRISE_TOKEN \
+    -u GITHUB_ENTERPRISE_TOKEN \
+    -u FACTORY_GH_APP_ID \
+    -u FACTORY_GH_APP_INSTALLATION_ID \
+    -u FACTORY_GH_APP_KEY_FILE \
+    -u FACTORY_GH_APP_ENV_FILE \
+    -u FACTORY_GH_APP_PRIVATE_KEY \
+    -u AWS_ACCESS_KEY_ID \
+    -u AWS_SECRET_ACCESS_KEY \
+    -u AWS_SESSION_TOKEN \
+    -u AWS_SECURITY_TOKEN \
+    -u GOOGLE_APPLICATION_CREDENTIALS \
+    -u CLOUDSDK_AUTH_ACCESS_TOKEN \
+    -u AZURE_CLIENT_SECRET \
+    -u GIT_ASKPASS -u SSH_AUTH_SOCK \
+    env -u GH_TOKEN -u GITHUB_TOKEN \
+    GH_CONFIG_DIR="$gh_config_dir" GIT_TERMINAL_PROMPT=0 \
+    OPENCODE_CONFIG_CONTENT="$perm" \
+    bash -c 'cd "$1" && exec "$2" run --format json --file "$3" \
+      "Carry out the attached rules and work order. Do not push or call gh."' \
+      _ "$dir" "$opencode_bin" "$prompt" \
+    > "$dir.opencode-raw.json" || rc=$?
+  jq -s '{stopReason: "end_turn",
+          num_turns: ([.[] | select(.type == "step_finish")] | length),
+          total_cost_usd: ([.[] | select(.type == "step_finish") | .part.cost // 0] | add // 0)}' \
+    "$dir.opencode-raw.json" > "$dir.grok.json" 2> /dev/null \
+    || printf '%s\n' '{"stopReason":"error"}' > "$dir.grok.json"
+  return "$rc"
 }
 
 # Belt-and-suspenders on the box's secrets directory: if it is readable or
@@ -844,11 +925,9 @@ main() {
 
   # The grok child runs in a fresh container (#221). Build its prefix here,
   # before the GH_CONFIG_DIR trap, so a missing runtime or image stops the run
-  # with a clear message instead of falling back to the shared box. claude
-  # keeps its existing host path (out of scope for #221).
-  if [[ "$llm_backend" == "grok" ]]; then
-    build_container_command "$dir" "$fenced_order"
-  fi
+  # with a clear message instead of falling back to the shared box. Every
+  # back-end (grok, claude, opencode) is wrapped (#388).
+  build_container_command "$dir" "$fenced_order" "$llm_backend"
 
   status=0
   # An empty GH_CONFIG_DIR for the builder child, so even a bypassed/missing
@@ -861,97 +940,102 @@ main() {
   trap 'rm -rf "$gh_config_dir"' EXIT
   trap 'rm -rf "$gh_config_dir"; exit 130' INT
   trap 'rm -rf "$gh_config_dir"; exit 143' TERM
-  if [[ "$llm_backend" != "claude" ]]; then
-    # Scrub only this child. Clone, setup and --push keep their credentials, and
-    # apply_factory_gh_app_token runs again before --push. The inner env is the
-    # call-site form scripts/test-gh-app-token.sh locks; it is what runs grok,
-    # inside the container built above.
-    # GIT_TERMINAL_PROMPT=0 and unsetting GIT_ASKPASS/SSH_AUTH_SOCK match the
-    # claude branch below: stops a stray `git` call from prompting for or
-    # finding real credentials, or reaching the box's ssh-agent.
-    "${container_cmd[@]}" \
-      env -u GH_TOKEN -u GITHUB_TOKEN \
-      -u GH_ENTERPRISE_TOKEN \
-      -u GITHUB_ENTERPRISE_TOKEN \
-      -u FACTORY_GH_APP_ID \
-      -u FACTORY_GH_APP_INSTALLATION_ID \
-      -u FACTORY_GH_APP_KEY_FILE \
-      -u FACTORY_GH_APP_ENV_FILE \
-      -u FACTORY_GH_APP_PRIVATE_KEY \
-      -u AWS_ACCESS_KEY_ID \
-      -u AWS_SECRET_ACCESS_KEY \
-      -u AWS_SESSION_TOKEN \
-      -u AWS_SECURITY_TOKEN \
-      -u GOOGLE_APPLICATION_CREDENTIALS \
-      -u CLOUDSDK_AUTH_ACCESS_TOKEN \
-      -u AZURE_CLIENT_SECRET \
-      -u GIT_ASKPASS -u SSH_AUTH_SOCK \
-      GH_CONFIG_DIR="$gh_config_dir" GIT_TERMINAL_PROMPT=0 \
-      env -u GH_TOKEN -u GITHUB_TOKEN grok --no-auto-update \
-      --cwd "$dir" --trust \
-      --prompt-file "$fenced_order" --rules "$(cat "$rules")" \
-      --output-format json --max-turns "${GROK_MAX_TURNS:-60}" \
-      --sandbox workspace \
-      --deny 'Bash(git push*)' --deny 'Bash(gh *)' \
-      --disable-web-search > "$dir.grok.json" || status=$?
+  if [[ "$llm_backend" == "opencode" ]]; then
+    run_opencode_builder || status=$?
   else
-    # Claude Build headless: the same scrub plus ANTHROPIC_API_KEY, so the
-    # box's existing Claude login is used, never a billed key. --max-turns
-    # follows CLAUDE_MAX_TURNS, then GROK_MAX_TURNS, then 60. claude has no
-    # --cwd, so cwd is set with `cd` in a dedicated subshell. The prompt is
-    # the same rules-plus-order text grok gets via --rules/--prompt-file,
-    # read from a file over stdin. --permission-mode bypassPermissions keeps
-    # the headless run from stalling on approvals now that the grok branch has
-    # no --always-approve; --setting-sources user stops a cloned
-    # repo's own .claude/settings.json (e.g. a SessionStart hook) from running,
-    # since bypassPermissions does not gate hooks; --disallowedTools keeps the
-    # host's secrets directory (FACTORY_SECRETS_DIR, default
-    # $HOME/.factory-secrets, made absolute) out of reach (the leading `//`
-    # anchors an absolute path for Claude Code, a single `/` would anchor at
-    # the project dir instead), blocks `git push`/`gh` the same way grok's --deny
-    # does (bypassPermissions alone would let either run), and drops
-    # WebSearch/WebFetch, the parity for grok's --disable-web-search.
-    # GH_CONFIG_DIR and GIT_TERMINAL_PROMPT=0 (with GIT_ASKPASS/SSH_AUTH_SOCK
-    # scrubbed below) are the same belt-and-suspenders as the grok branch,
-    # against a gh/git call that bypasses --disallowedTools somehow. The raw
-    # result is normalised (stopReason added) into $dir.grok.json: callers
-    # that read that file for total_cost_usd/num_turns need no change
-    # (AGENTS.md section 3; see agents/grok-build.md).
-    claude_prompt="$dir.claude-prompt.txt"
-    secrets_deny=$(secrets_deny_rule) || die 2 "could not resolve the secrets directory"
-    { cat "$rules"; printf '\n\n'; cat "$fenced_order"; } > "$claude_prompt"
-    # shellcheck disable=SC2016  # $1.."$5" below expand in the inner bash -c, not this script
-    env -u GH_TOKEN -u GITHUB_TOKEN \
-      -u GH_ENTERPRISE_TOKEN \
-      -u GITHUB_ENTERPRISE_TOKEN \
-      -u FACTORY_GH_APP_ID \
-      -u FACTORY_GH_APP_INSTALLATION_ID \
-      -u FACTORY_GH_APP_KEY_FILE \
-      -u FACTORY_GH_APP_ENV_FILE \
-      -u FACTORY_GH_APP_PRIVATE_KEY \
-      -u AWS_ACCESS_KEY_ID \
-      -u AWS_SECRET_ACCESS_KEY \
-      -u AWS_SESSION_TOKEN \
-      -u AWS_SECURITY_TOKEN \
-      -u GOOGLE_APPLICATION_CREDENTIALS \
-      -u CLOUDSDK_AUTH_ACCESS_TOKEN \
-      -u AZURE_CLIENT_SECRET \
-      -u ANTHROPIC_API_KEY \
-      -u GIT_ASKPASS -u SSH_AUTH_SOCK \
-      env -u GH_TOKEN -u GITHUB_TOKEN \
-      GH_CONFIG_DIR="$gh_config_dir" GIT_TERMINAL_PROMPT=0 \
-      bash -c 'cd "$1" && exec "$2" -p --output-format json --max-turns "$3" \
-        --permission-mode bypassPermissions --setting-sources user \
-        --disallowedTools "$5" "Bash(*factory-secrets*)" \
-          "Bash(git push*)" "Bash(gh *)" "Bash(gh)" "WebSearch" "WebFetch" \
-        < "$4"' _ "$dir" "$claude_bin" "${CLAUDE_MAX_TURNS:-${GROK_MAX_TURNS:-60}}" "$claude_prompt" "$secrets_deny" \
-      > "$dir.claude-raw.json" || status=$?
-    jq '. + {stopReason: (
-          if .subtype == "success" and ((.is_error // false) | not) then "end_turn"
-          elif .subtype == "error_max_turns" then "max_turn_requests"
-          else (.subtype // "error")
-          end)}' "$dir.claude-raw.json" > "$dir.grok.json" 2> /dev/null \
-      || cp "$dir.claude-raw.json" "$dir.grok.json"
+    if [[ "$llm_backend" != "claude" ]]; then
+      # Scrub only this child. Clone, setup and --push keep their credentials, and
+      # apply_factory_gh_app_token runs again before --push. The inner env is the
+      # call-site form scripts/test-gh-app-token.sh locks; it is what runs grok,
+      # inside the container built above.
+      # GIT_TERMINAL_PROMPT=0 and unsetting GIT_ASKPASS/SSH_AUTH_SOCK match the
+      # claude branch below: stops a stray `git` call from prompting for or
+      # finding real credentials, or reaching the box's ssh-agent.
+      "${container_cmd[@]}" \
+        env -u GH_TOKEN -u GITHUB_TOKEN \
+        -u GH_ENTERPRISE_TOKEN \
+        -u GITHUB_ENTERPRISE_TOKEN \
+        -u FACTORY_GH_APP_ID \
+        -u FACTORY_GH_APP_INSTALLATION_ID \
+        -u FACTORY_GH_APP_KEY_FILE \
+        -u FACTORY_GH_APP_ENV_FILE \
+        -u FACTORY_GH_APP_PRIVATE_KEY \
+        -u AWS_ACCESS_KEY_ID \
+        -u AWS_SECRET_ACCESS_KEY \
+        -u AWS_SESSION_TOKEN \
+        -u AWS_SECURITY_TOKEN \
+        -u GOOGLE_APPLICATION_CREDENTIALS \
+        -u CLOUDSDK_AUTH_ACCESS_TOKEN \
+        -u AZURE_CLIENT_SECRET \
+        -u GIT_ASKPASS -u SSH_AUTH_SOCK \
+        GH_CONFIG_DIR="$gh_config_dir" GIT_TERMINAL_PROMPT=0 \
+        env -u GH_TOKEN -u GITHUB_TOKEN grok --no-auto-update \
+        --cwd "$dir" --trust \
+        --prompt-file "$fenced_order" --rules "$(cat "$rules")" \
+        --output-format json --max-turns "${GROK_MAX_TURNS:-60}" \
+        --sandbox workspace \
+        --deny 'Bash(git push*)' --deny 'Bash(gh *)' \
+        --disable-web-search > "$dir.grok.json" || status=$?
+    else
+      # Claude Build headless: the same scrub plus ANTHROPIC_API_KEY, so the
+      # box's existing Claude login is used, never a billed key. --max-turns
+      # follows CLAUDE_MAX_TURNS, then GROK_MAX_TURNS, then 60. claude has no
+      # --cwd, so cwd is set with `cd` in a dedicated subshell. The prompt is
+      # the same rules-plus-order text grok gets via --rules/--prompt-file,
+      # read from a file over stdin. --permission-mode bypassPermissions keeps
+      # the headless run from stalling on approvals now that the grok branch has
+      # no --always-approve; --setting-sources user stops a cloned
+      # repo's own .claude/settings.json (e.g. a SessionStart hook) from running,
+      # since bypassPermissions does not gate hooks; --disallowedTools keeps the
+      # host's secrets directory (FACTORY_SECRETS_DIR, default
+      # $HOME/.factory-secrets, made absolute) out of reach (the leading `//`
+      # anchors an absolute path for Claude Code, a single `/` would anchor at
+      # the project dir instead), blocks `git push`/`gh` the same way grok's --deny
+      # does (bypassPermissions alone would let either run), and drops
+      # WebSearch/WebFetch, the parity for grok's --disable-web-search.
+      # GH_CONFIG_DIR and GIT_TERMINAL_PROMPT=0 (with GIT_ASKPASS/SSH_AUTH_SOCK
+      # scrubbed below) are the same belt-and-suspenders as the grok branch,
+      # against a gh/git call that bypasses --disallowedTools somehow. The raw
+      # result is normalised (stopReason added) into $dir.grok.json: callers
+      # that read that file for total_cost_usd/num_turns need no change
+      # (AGENTS.md section 3; see agents/grok-build.md).
+      claude_prompt="$dir.claude-prompt.txt"
+      secrets_deny=$(secrets_deny_rule) || die 2 "could not resolve the secrets directory"
+      { cat "$rules"; printf '\n\n'; cat "$fenced_order"; } > "$claude_prompt"
+      # shellcheck disable=SC2016  # $1.."$5" below expand in the inner bash -c, not this script
+      "${container_cmd[@]}" \
+        env -u GH_TOKEN -u GITHUB_TOKEN \
+        -u GH_ENTERPRISE_TOKEN \
+        -u GITHUB_ENTERPRISE_TOKEN \
+        -u FACTORY_GH_APP_ID \
+        -u FACTORY_GH_APP_INSTALLATION_ID \
+        -u FACTORY_GH_APP_KEY_FILE \
+        -u FACTORY_GH_APP_ENV_FILE \
+        -u FACTORY_GH_APP_PRIVATE_KEY \
+        -u AWS_ACCESS_KEY_ID \
+        -u AWS_SECRET_ACCESS_KEY \
+        -u AWS_SESSION_TOKEN \
+        -u AWS_SECURITY_TOKEN \
+        -u GOOGLE_APPLICATION_CREDENTIALS \
+        -u CLOUDSDK_AUTH_ACCESS_TOKEN \
+        -u AZURE_CLIENT_SECRET \
+        -u ANTHROPIC_API_KEY \
+        -u GIT_ASKPASS -u SSH_AUTH_SOCK \
+        env -u GH_TOKEN -u GITHUB_TOKEN \
+        GH_CONFIG_DIR="$gh_config_dir" GIT_TERMINAL_PROMPT=0 \
+        bash -c 'cd "$1" && exec "$2" -p --output-format json --max-turns "$3" \
+          --permission-mode bypassPermissions --setting-sources user \
+          --disallowedTools "$5" "Bash(*factory-secrets*)" \
+            "Bash(git push*)" "Bash(gh *)" "Bash(gh)" "WebSearch" "WebFetch" \
+          < "$4"' _ "$dir" "$claude_bin" "${CLAUDE_MAX_TURNS:-${GROK_MAX_TURNS:-60}}" "$claude_prompt" "$secrets_deny" \
+        > "$dir.claude-raw.json" || status=$?
+      jq '. + {stopReason: (
+            if .subtype == "success" and ((.is_error // false) | not) then "end_turn"
+            elif .subtype == "error_max_turns" then "max_turn_requests"
+            else (.subtype // "error")
+            end)}' "$dir.claude-raw.json" > "$dir.grok.json" 2> /dev/null \
+        || cp "$dir.claude-raw.json" "$dir.grok.json"
+    fi
   fi
   rm -rf "$gh_config_dir"
   restore_traps "$prev_llm_traps"
