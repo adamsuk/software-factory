@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-16 (run-factory playbook sets up the station container)
+
+### Fixed
+
+- `stations/run-factory.md` Step 0 now sets up the station container: it checks the proxy, exports the image, network and proxy settings (taking the image tag from `scripts/build-station-image.sh --print station`), lists each provider's credential, and says that exit 9 is a setup problem to report, not to work around. Since #426 the playbook's first station exited 9. The provider detection now looks at the credential the container will get, and the identity notes say stations write with `GH_TOKEN`, not the box's `gh` login. New case in `scripts/test-build-station-image.sh` (#438, part of #418).
+
 ## 2026-11-16 (station image builds over HTTPS only)
 
 ### Fixed
