@@ -126,4 +126,20 @@ if grep -E -q '^(PublishPort|Volume|Environment|AddCapability)=' "$unit"; then
 fi
 pass
 
+tname="apt runs over HTTPS, and only the ca-certificates bootstrap skips TLS verification"
+https_line=$(grep -n 's|http://deb.debian.org|https://deb.debian.org|g' "$station_cf" | head -n 1 | cut -d: -f1)
+first_update=$(grep -n 'apt-get.* update' "$station_cf" | grep -v '^[0-9]*:[[:space:]]*#' | head -n 1 | cut -d: -f1)
+[[ -n "$https_line" ]] || fail "the Containerfile does not switch the apt sources to HTTPS"
+[[ -n "$first_update" && "$https_line" -le "$first_update" ]] || fail "apt-get update runs before the sources are switched to HTTPS"
+# Exactly two unverified apt calls: the first update and the ca-certificates install.
+[[ $(grep -v '^[[:space:]]*#' "$station_cf" | grep -c 'Verify-Peer=false') -eq 2 ]] \
+  || fail "TLS verification is skipped somewhere other than the ca-certificates bootstrap"
+unverified_install=$(grep -v '^[[:space:]]*#' "$station_cf" | grep -A1 'Verify-Peer=false' | grep 'install ')
+[[ "$unverified_install" == *" ca-certificates"* && "$unverified_install" != *" curl"* && "$unverified_install" != *" git"* ]] \
+  || fail "the unverified install fetches more than ca-certificates: $unverified_install"
+if grep -v '^[[:space:]]*#' "$station_cf" | grep -E -q 'curl[^|]* (-k|--insecure)'; then
+  fail "a download in the Containerfile skips TLS verification"
+fi
+pass
+
 echo "all build-station-image tests passed"
