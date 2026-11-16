@@ -1640,7 +1640,60 @@ run_grok() {
   prompt_file=$(mktemp "${STATE}/grok-prompt.XXXXXX" 2>/dev/null || mktemp "${TMPDIR:-/tmp}/grok-prompt.XXXXXX") || return 1
   cp "$prompt" "$prompt_file" || { rm -f "$prompt_file"; return 1; }
   local grok_gh_token=0
+  # The three kinds whose prompts tell grok to call gh get GH_TOKEN, and only
+  # when the App is configured, so it is the bot's one-hour installation token
+  # and never an operator's own login. Every other kind runs with it cleared.
   if [[ $provider == grok ]]; then
+    case $kind in
+      foreman|dependabot-triage|plan)
+        [[ -z ${FACTORY_GH_APP_ID:-} || -z ${GH_TOKEN:-} ]] || grok_gh_token=1
+        ;;
+    esac
+  fi
+  if [[ $provider == grok && ${FACTORY_GROK_ON_HOST:-} == host-is-a-disposable-sandbox ]]; then
+    # The one way to start grok outside the station container (#440): for a
+    # watcher host that is itself a disposable sandbox with its own egress
+    # allow-list and cannot run a container (no runtime, and its network
+    # refuses the package mirrors needed to install one). The operator sets
+    # FACTORY_GROK_ON_HOST to that exact phrase; any other value, or none,
+    # keeps the container. Every such run is logged as uncontained.
+    #
+    # What this path still does, without a container to enforce it:
+    #   - gh has an empty GH_CONFIG_DIR, so a cleared GH_TOKEN does not fall
+    #     back to whatever gh login the host has;
+    #   - the App settings are removed from grok's environment;
+    #   - deny rules refuse reads of the secrets directory, the host's gh
+    #     config and grok's own login file.
+    # A Read rule takes a plain absolute path: grok reads a leading // as
+    # literal text, so the Claude Code spelling Read(//path) matches nothing
+    # (checked against a real grok on 2026-11-16).
+    # The deny rules are the CLI's own and are not a boundary: the files are
+    # still on the same filesystem. This is weaker than the container, by design
+    # of the host, and docs/runbooks/station-container.md says so.
+    if ! command -v grok >/dev/null 2>&1; then
+      log "grok CLI not found"
+      rm -f "$prompt_file"
+      return 1
+    fi
+    tools=$(mktemp -d "${STATE}/grok-host.XXXXXX" 2>/dev/null) || tools=""
+    if [[ -z $tools ]]; then
+      log "grok not started: could not create an empty gh config directory (kind=${kind})"
+      rm -f "$prompt_file"
+      return 1
+    fi
+    log "grok uncontained kind=${kind} repo=${repo} ref=${ref}: FACTORY_GROK_ON_HOST is set, running on this host, not in a container"
+    local secrets_dir="${FACTORY_SECRETS_DIR:-${HOME}/.factory-secrets}"
+    grok_cmd=(env -u FACTORY_GH_APP_ID -u FACTORY_GH_APP_INSTALLATION_ID -u FACTORY_GH_APP_KEY_FILE
+      -u FACTORY_GH_APP_ENV_FILE -u FACTORY_GH_APP_PRIVATE_KEY
+      "GH_CONFIG_DIR=${tools}" GIT_TERMINAL_PROMPT=0
+      grok --prompt-file "$prompt_file" --output-format json --max-turns "$turns" --always-approve --cwd "$cwd"
+      --deny "Read(${secrets_dir}/**)" --deny 'Bash(*factory-secrets*)'
+      --deny "Read(${HOME}/.config/gh/**)" --deny 'Bash(*hosts.yml*)'
+      --deny "Read(${HOME}/.grok/auth.json)" --deny 'Bash(*.grok/auth.json*)')
+    if [[ -n $schema ]]; then
+      grok_cmd+=(--json-schema "$schema")
+    fi
+  elif [[ $provider == grok ]]; then
     # grok runs with --always-approve on untrusted text, so it starts in the
     # station container, never on this host (#418, #428). Mounted: the
     # checkout (rw) and the prompt (ro); for the foreman also the orders
@@ -1684,14 +1737,7 @@ run_grok() {
       return 1
     fi
     grok_cmd=(bash "${tools}/station-container.sh" --provider grok --workdir "$cwd" --ro "$prompt_file")
-    case $kind in
-      foreman|dependabot-triage|plan)
-        if [[ -n ${FACTORY_GH_APP_ID:-} && -n ${GH_TOKEN:-} ]]; then
-          grok_gh_token=1
-          grok_cmd+=(--forward GH_TOKEN)
-        fi
-        ;;
-    esac
+    (( ! grok_gh_token )) || grok_cmd+=(--forward GH_TOKEN)
     if [[ $kind == foreman ]]; then
       mkdir -p "$ORDERS"
       grok_cmd+=(--rw "$ORDERS")

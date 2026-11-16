@@ -159,6 +159,9 @@ ENDCL
   cat > "$w/bin/grok" << 'ENDGROK'
 #!/bin/bash
 printf '%s\n' "$*" > "$CALLS_DIR/grok.args"
+# Names only, plus what GH_CONFIG_DIR points at: never a value that could be a credential.
+{ env | cut -d= -f1 | grep -E '^(GH_TOKEN|GITHUB_TOKEN|GH_CONFIG_DIR|FACTORY_GH_APP_ID|FACTORY_GH_APP_KEY_FILE|FACTORY_STATION_CONTAINER)$' | sort | tr '\n' ' '; echo; } > "$CALLS_DIR/grok.env"
+if [[ -n ${GH_CONFIG_DIR:-} && -d $GH_CONFIG_DIR ]]; then ls -A "$GH_CONFIG_DIR" | wc -l > "$CALLS_DIR/grok.ghcfg"; fi
 echo ran >> "$CALLS_DIR/grok.calls"
 printf '%s\n' '{"stopReason":"end_turn","total_cost_usd":0}'
 ENDGROK
@@ -190,6 +193,8 @@ ENDGROK
     # After the source: the watcher's own start-up applies or clears the token.
     [[ -z ${GROK_TEST_GH_TOKEN:-} ]] || export GH_TOKEN=$GROK_TEST_GH_TOKEN
     [[ -z ${GROK_TEST_APP_ID:-} ]] || export FACTORY_GH_APP_ID=$GROK_TEST_APP_ID
+    [[ -z ${GROK_TEST_APP_ID:-} ]] || export FACTORY_GH_APP_KEY_FILE=/nonexistent/app-key.pem
+    [[ -z ${GROK_TEST_ON_HOST:-} ]] || export FACTORY_GROK_ON_HOST=$GROK_TEST_ON_HOST
     # shellcheck disable=SC2034
     DRY=0
     run_grok "$kind" acme/software-factory 77 25 "$w/target" "$w/prompt.txt" '{"type":"object","required":["verdict"]}' > "$w/out.log" 2>&1 || true
@@ -238,6 +243,47 @@ for lane in watch watch.new; do
   [[ -s $w/calls/grok.calls ]] || fail "$lane: dependabot-triage without the App did not run grok"
   if grep -Fq -- 'GH_TOKEN' "$w/calls/runtime.log"; then fail "$lane: a token that is not the App's was handed to grok"; fi
   echo "ok: $lane gives grok the bot token only for the gh-calling kinds, and only with the App configured"
+done
+
+# FACTORY_GROK_ON_HOST (#440): the one explicit way to start grok outside the
+# container, for a watcher host that is itself a sandbox.
+for lane in watch watch.new; do
+  w=$(GROK_TEST_ON_HOST=host-is-a-disposable-sandbox GROK_TEST_GH_TOKEN=test-gh-token GROK_TEST_APP_ID=1 \
+    FACTORY_NO_IMAGE=1 run_kind_case "$lane" grok review "host-rev" yes)
+  [[ -s $w/calls/grok.calls ]] || fail "$lane: grok did not run on the host with the phrase set ($(tail -3 "$w/out.log" 2>/dev/null))"
+  [[ ! -s $w/calls/runtime.log ]] || fail "$lane: the container runtime was used although the host mode is set"
+  grep -Fq 'grok uncontained kind=review' "$w/out.log" || fail "$lane: the uncontained run was not logged"
+  read -r genv < "$w/calls/grok.env"
+  [[ " $genv " == *" GH_CONFIG_DIR "* ]] || fail "$lane: grok on the host has no GH_CONFIG_DIR override: [$genv]"
+  [[ $(cat "$w/calls/grok.ghcfg" 2>/dev/null) == 0 ]] || fail "$lane: grok's GH_CONFIG_DIR is not an empty directory"
+  [[ " $genv " != *" GH_TOKEN "* && " $genv " != *" GITHUB_TOKEN "* ]] || fail "$lane: a review run on the host was given a GitHub token: [$genv]"
+  [[ " $genv " != *" FACTORY_GH_APP_"* ]] || fail "$lane: the App settings reached grok on the host: [$genv]"
+  [[ " $genv " != *" FACTORY_STATION_CONTAINER "* ]] || fail "$lane: the host run claims to be in the container"
+  for rule in 'Read(' '.factory-secrets/**)' '.config/gh/**)' '.grok/auth.json)' 'Bash(*factory-secrets*)'; do
+    grep -Fq -- "$rule" "$w/calls/grok.args" || fail "$lane: the host run is missing a deny rule containing $rule"
+  done
+  if grep -Fq -- 'Read(//' "$w/calls/grok.args"; then fail "$lane: a Read rule starts with //, which grok matches literally"; fi
+  grep -Fq -- '--json-schema' "$w/calls/grok.args" || fail "$lane: the host run lost --json-schema"
+  left=$(find "$w/watch/state" -maxdepth 1 -name 'grok-host.*' | wc -l)
+  [[ $left -eq 0 ]] || fail "$lane: the empty gh config directory was left behind"
+
+  w=$(GROK_TEST_ON_HOST=host-is-a-disposable-sandbox GROK_TEST_GH_TOKEN=test-gh-token GROK_TEST_APP_ID=1 \
+    FACTORY_NO_IMAGE=1 run_kind_case "$lane" grok dependabot-triage "host-dep" yes)
+  read -r genv < "$w/calls/grok.env"
+  [[ " $genv " == *" GH_TOKEN "* ]] || fail "$lane: dependabot-triage on the host did not get the bot token: [$genv]"
+  [[ " $genv " != *" FACTORY_GH_APP_"* ]] || fail "$lane: the App settings reached grok on the host: [$genv]"
+  w=$(GROK_TEST_ON_HOST=host-is-a-disposable-sandbox GROK_TEST_GH_TOKEN=test-gh-token \
+    FACTORY_NO_IMAGE=1 run_kind_case "$lane" grok dependabot-triage "host-dep-noapp" yes)
+  read -r genv < "$w/calls/grok.env"
+  [[ " $genv " != *" GH_TOKEN "* ]] || fail "$lane: a token that is not the App's reached grok on the host: [$genv]"
+
+  for bad in 1 true yes host-is-a-sandbox; do
+    w=$(GROK_TEST_ON_HOST=$bad FACTORY_NO_IMAGE=1 run_kind_case "$lane" grok review "host-bad-$bad" yes)
+    [[ ! -e $w/calls/grok.calls ]] || fail "$lane: FACTORY_GROK_ON_HOST=$bad started grok on the host"
+  done
+  w=$(GROK_TEST_ON_HOST=host-is-a-disposable-sandbox run_kind_case "$lane" claudecode review "host-cc" no)
+  [[ $(wc -l < "$w/calls/runtime.log") -eq 1 ]] || fail "$lane: the host mode took another provider out of the container"
+  echo "ok: $lane starts grok on the host only with the exact phrase, logged, with gh and the App settings out of reach"
 done
 
 # With no image the watcher starts nothing: not grok on the host, not a container.

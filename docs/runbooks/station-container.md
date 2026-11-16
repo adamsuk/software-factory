@@ -195,6 +195,42 @@ Not covered: the Grok builder clones, runs the target repo's tests and pushes
 on the host through `scripts/run-work-order.sh`; only its model child is in a
 container.
 
+## A watcher host that cannot run a container
+
+Some hosts cannot take this setup at all. The maintainer's remote watcher host
+is one: it is itself a disposable container with no runtime, and its own egress
+allow-list refused the Debian mirrors over both HTTP and HTTPS, so nothing
+could be installed (2026-11-16). For a host like that, and only for the
+watcher's Grok launch, there is one explicit setting (#440):
+
+```bash
+export FACTORY_GROK_ON_HOST=host-is-a-disposable-sandbox
+```
+
+The value must be that exact phrase. Anything else, or nothing, keeps the
+container. With it set, the watcher starts `grok` directly on the host and logs
+`grok uncontained ...` for every such run. Stations and `scripts/station-run.sh`
+ignore the setting: they stay container-only.
+
+What the watcher still does in this mode:
+
+- gives `gh` an empty `GH_CONFIG_DIR`, so a cleared `GH_TOKEN` does not fall
+  back to whatever `gh` login the host has;
+- removes the App settings from grok's environment;
+- passes deny rules for the secrets directory, the host's `gh` config and
+  grok's own login file;
+- applies the same GitHub-token rule as the container: the bot's installation
+  token for foreman, dependabot-triage and plan, and only with the App
+  configured.
+
+What it does not do. There is no filesystem or network boundary of ours: grok
+runs as the host's user, on the host's network, with those files on the same
+disk. The deny rules are grok's own permission rules, not an enforcement layer.
+They held in a test against a real grok on 2026-11-16 (a file read and a `cat`
+of a denied path were both refused, and `gh` had no login), but a model that
+found another way to read a file would not be stopped by them. The host's own
+sandbox is what limits the damage. Use the container wherever it can run.
+
 ## Known traps
 
 - **The proxy and reboots.** Started with a bare `podman run -d --restart
