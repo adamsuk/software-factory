@@ -103,10 +103,25 @@ provider_credentials() {
 #   read-only  files or directories mounted read-only at their host paths; one
 #              that is the workdir or inside it is already there and is skipped
 #
+#   read-write an argument written rw:<path> is mounted read-write instead, for
+#              the one caller that must write outside the workdir (the
+#              watcher's foreman writes its work order to the orders directory)
+#
 # The provider's own model credential is always forwarded, and is required:
 # the container has no login of its own. HOME and TMPDIR are empty tmpfs
 # mounts. Nothing else of the host is visible. Returns 9, with the reason on
 # stderr, when the runtime, image, restricted network or credential is missing.
+#
+# Grok has two extra settings, both optional and both off unless set:
+#   FACTORY_GROK_BIN        a grok binary on this host, mounted read-only at
+#                           /usr/local/bin/grok, for an image that has none
+#                           (the binary is one static file)
+#   FACTORY_GROK_AUTH_FILE  the grok login file (~/.grok/auth.json), mounted
+#                           read-only in the container's own empty ~/.grok,
+#                           for a subscription login that has no XAI_API_KEY.
+#                           It is a long-lived account credential in reach of
+#                           the model: use XAI_API_KEY where one exists
+#                           (AGENTS.md section 7).
 station_cmd=()
 station_container_command() {
   local provider=$1 workdir=$2 forward=$3 runtime image network proxy name path
@@ -123,6 +138,21 @@ station_container_command() {
   for name in "${names[@]}"; do
     [[ -z ${!name:-} ]] || have_credential=true
   done
+  local grok_bin="" grok_auth=""
+  if [[ "$provider" == grok ]]; then
+    if [[ -n ${FACTORY_GROK_BIN:-} ]]; then
+      grok_bin=$(readlink -f -- "$FACTORY_GROK_BIN" 2> /dev/null || true)
+      [[ -n "$grok_bin" && -f "$grok_bin" && -x "$grok_bin" ]] \
+        || { (die 9 "cannot start a container: FACTORY_GROK_BIN is not an executable file"); return 9; }
+    fi
+    # The login file stands in for XAI_API_KEY only when there is no key.
+    if ! $have_credential && [[ -n ${FACTORY_GROK_AUTH_FILE:-} ]]; then
+      grok_auth=$FACTORY_GROK_AUTH_FILE
+      [[ "$grok_auth" == /* && -f "$grok_auth" && -r "$grok_auth" ]] \
+        || { (die 9 "cannot start a container: FACTORY_GROK_AUTH_FILE is not a readable file at an absolute path"); return 9; }
+      have_credential=true
+    fi
+  fi
   if [[ ${#names[@]} -gt 0 ]] && ! $have_credential; then
     (die 9 "cannot start a container: ${names[*]} not set, and the container has no $provider login of its own (docs/runbooks/station-container.md)") || return 9
   fi
@@ -144,10 +174,26 @@ station_container_command() {
     --env GIT_CONFIG_KEY_0=credential.https://github.com.helper
     --env "GIT_CONFIG_VALUE_0=!gh auth git-credential"
   )
+  local mode
   for path in "$@"; do
+    mode=ro
+    if [[ "$path" == rw:* ]]; then
+      mode=rw
+      path=${path#rw:}
+    fi
     [[ -n "$path" && "$path" != "$workdir" && "$path" != "$workdir"/* ]] || continue
-    station_cmd+=(--volume "$path:$path:ro")
+    if [[ $mode == rw ]]; then
+      station_cmd+=(--volume "$path:$path")
+    else
+      station_cmd+=(--volume "$path:$path:ro")
+    fi
   done
+  [[ -z "$grok_bin" ]] || station_cmd+=(--volume "$grok_bin:/usr/local/bin/grok:ro")
+  if [[ -n "$grok_auth" ]]; then
+    # Its own tmpfs first, so grok can write its session files beside the
+    # read-only login; without it the runtime creates ~/.grok owned by root.
+    station_cmd+=(--tmpfs /factory-home/.grok --volume "$grok_auth:/factory-home/.grok/auth.json:ro")
+  fi
   if [[ -n $proxy ]]; then
     station_cmd+=(
       --env "HTTPS_PROXY=$proxy" --env "HTTP_PROXY=$proxy"

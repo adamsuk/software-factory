@@ -1628,12 +1628,9 @@ run_grok() {
       log "${provider} adapter not found: $adapter"
       return 1
     fi
-  elif ! command -v grok >/dev/null 2>&1; then
-    log "grok CLI not found"
-    return 1
   fi
   mark_grok_job "$repo" "$ref" 1
-  local stamp out err rc cost stop result prompt_file
+  local stamp out err rc cost stop result prompt_file tools="" tools_ok=1
   local -a grok_cmd
   stamp=$(date -u +%Y%m%dT%H%M%SZ)
   out="${STATE}/grok-${kind}-$(repo_slug "$repo")-${ref}-${stamp}.json"
@@ -1642,8 +1639,64 @@ run_grok() {
   rc=0
   prompt_file=$(mktemp "${STATE}/grok-prompt.XXXXXX" 2>/dev/null || mktemp "${TMPDIR:-/tmp}/grok-prompt.XXXXXX") || return 1
   cp "$prompt" "$prompt_file" || { rm -f "$prompt_file"; return 1; }
+  local grok_gh_token=0
   if [[ $provider == grok ]]; then
-    grok_cmd=(grok --prompt-file "$prompt_file" --output-format json --max-turns "$turns" --always-approve --cwd "$cwd")
+    # grok runs with --always-approve on untrusted text, so it starts in the
+    # station container, never on this host (#418, #428). Mounted: the
+    # checkout (rw) and the prompt (ro); for the foreman also the orders
+    # directory (rw), where it writes the work order. The grok binary and its
+    # credential come from the image and XAI_API_KEY, or from FACTORY_GROK_BIN
+    # and FACTORY_GROK_AUTH_FILE (scripts/container-env.sh).
+    #
+    # GitHub token: none, except for the three kinds whose prompts tell grok
+    # to call gh (foreman reads factory.yml, dependabot-triage reads checks,
+    # plan files child issues). In the container there is no host gh login to
+    # fall back on, so those three get GH_TOKEN, by name, and only when the
+    # App is configured: then it is the bot's one-hour installation token
+    # (apply_factory_gh_app_token). Without the App, GH_TOKEN could be the
+    # operator's own login, and that is never handed to a model. The App key
+    # file is never mounted. Every other kind still runs with the token cleared.
+    #
+    # The launcher is taken from the home repo's default branch, not from a
+    # working tree: for review, fix and conflict runs the checkout is a pull
+    # request's, and its scripts are not trusted to start anything on this host.
+    local tool_root=$cwd tool_ref=""
+    case $kind in
+      triage|foreman|plan) ;;
+      *)
+        tool_root=$(ensure_work_clone "$HOME_REPO" 2>/dev/null) || tool_root=""
+        tool_ref=$(git -C "${tool_root:-/nonexistent}" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null || echo origin/main)
+        ;;
+    esac
+    tools=$(mktemp -d "${STATE}/station-tools.XXXXXX" 2>/dev/null) || tools=""
+    if [[ -n $tools && -n $tool_root && -z $tool_ref ]]; then
+      cp "${tool_root}/scripts/station-container.sh" "${tool_root}/scripts/container-env.sh" "$tools/" 2>/dev/null || tools_ok=0
+    elif [[ -n $tools && -n $tool_root ]]; then
+      { git -C "$tool_root" show "${tool_ref}:scripts/station-container.sh" > "${tools}/station-container.sh" \
+        && git -C "$tool_root" show "${tool_ref}:scripts/container-env.sh" > "${tools}/container-env.sh"; } 2>/dev/null || tools_ok=0
+    else
+      tools_ok=0
+    fi
+    if [[ ${tools_ok:-1} -ne 1 || ! -s ${tools}/station-container.sh || ! -s ${tools}/container-env.sh ]]; then
+      log "grok not started: no scripts/station-container.sh in ${HOME_REPO} (kind=${kind})"
+      [[ -z $tools ]] || rm -rf -- "$tools"
+      rm -f "$prompt_file"
+      return 1
+    fi
+    grok_cmd=(bash "${tools}/station-container.sh" --provider grok --workdir "$cwd" --ro "$prompt_file")
+    case $kind in
+      foreman|dependabot-triage|plan)
+        if [[ -n ${FACTORY_GH_APP_ID:-} && -n ${GH_TOKEN:-} ]]; then
+          grok_gh_token=1
+          grok_cmd+=(--forward GH_TOKEN)
+        fi
+        ;;
+    esac
+    if [[ $kind == foreman ]]; then
+      mkdir -p "$ORDERS"
+      grok_cmd+=(--rw "$ORDERS")
+    fi
+    grok_cmd+=(-- grok --prompt-file "$prompt_file" --output-format json --max-turns "$turns" --always-approve --cwd "$cwd")
     if [[ -n $schema ]]; then
       grok_cmd+=(--json-schema "$schema")
     fi
@@ -1676,11 +1729,17 @@ run_grok() {
       bash "$adapter" --role "$role" --prompt "$prompt_file" --workdir "$cwd" --repo "$repo" --issue "$ref")
   fi
   log "grok start kind=${kind} provider=${provider} repo=${repo} ref=${ref} turns=${turns} cwd=${cwd}"
-  timeout 40m env -u GH_TOKEN -u GITHUB_TOKEN "${grok_cmd[@]}" >"$out" 2>"$err" || rc=$?
+  if (( grok_gh_token )); then
+    # Only the bot's installation token, only into the container (see above).
+    timeout 40m env -u GITHUB_TOKEN "${grok_cmd[@]}" >"$out" 2>"$err" || rc=$?
+  else
+    timeout 40m env -u GH_TOKEN -u GITHUB_TOKEN "${grok_cmd[@]}" >"$out" 2>"$err" || rc=$?
+  fi
   # Grok can run long enough for the installation token to expire. Refresh
-  # before the caller pushes or comments. The grok process itself did not see it.
+  # before the caller pushes or comments.
   apply_factory_gh_app_token
   rm -f "$prompt_file"
+  [[ -z ${tools:-} ]] || rm -rf -- "$tools"
   cost=$(jq -r '.total_cost_usd // .cost_usd // empty' "$out" 2>/dev/null || true)
   stop=$(jq -r '.stopReason // empty' "$out" 2>/dev/null || true)
   result="exit-${rc}"

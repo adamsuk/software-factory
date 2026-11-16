@@ -76,7 +76,7 @@ ENDGROK
     # none: it runs the adapter with only the environment a container would get.
     cp "$root/scripts/fixtures/fake-container-runtime.sh" "$w/bin/podman" && chmod +x "$w/bin/podman"
     export FACTORY_CONTAINER_IMAGE=factory-station:test FACTORY_CONTAINER_NETWORK=factory-egress-test
-    export FAKE_RUNTIME_LOG="$w/calls/runtime.log" FAKE_RUNTIME_PASS=CALLS_DIR CLAUDE_CODE_OAUTH_TOKEN=test-claude-token
+    export FAKE_RUNTIME_LOG="$w/calls/runtime.log" FAKE_RUNTIME_PASS=CALLS_DIR CLAUDE_CODE_OAUTH_TOKEN=test-claude-token XAI_API_KEY=test-xai-key
     unset FACTORY_CONTAINER_RUNTIME FACTORY_CONTAINER_PROXY
     # Only the fakes and the system tools: no grok anywhere unless the case adds it.
     export PATH="$w/bin:/usr/bin:/bin"
@@ -112,6 +112,12 @@ for lane in watch watch.new; do
     w=$(run_case "$lane" "$p" "g${p:-unset}" yes)
     [[ -s $w/calls/grok.calls ]] || fail "$lane: FACTORY_PROVIDER='${p}' did not call grok"
     [[ ! -e $w/calls/claude.calls ]] || fail "$lane: claude ran with FACTORY_PROVIDER='${p}'"
+    # grok starts through the station container too, never on the host (#428).
+    [[ $(wc -l < "$w/calls/runtime.log") -eq 1 ]] || fail "$lane: grok was not started through the container runtime (FACTORY_PROVIDER='${p}')"
+    grep -Fq -- '--network factory-egress-test' "$w/calls/runtime.log" || fail "$lane: grok's container is not on the restricted network"
+    grep -Fq -- '--env XAI_API_KEY' "$w/calls/runtime.log" || fail "$lane: XAI_API_KEY is not forwarded by name"
+    if grep -Fq -e test-xai-key -e test-claude-token "$w/calls/runtime.log"; then fail "$lane: a credential value is on the runtime argv"; fi
+    if grep -Fq -- 'CLAUDE_CODE_OAUTH_TOKEN' "$w/calls/runtime.log"; then fail "$lane: grok's container was given the claude credential"; fi
     echo "ok: $lane triage still calls grok with FACTORY_PROVIDER='${p:-unset}'"
   done
 done
@@ -171,15 +177,19 @@ ENDGROK
     # none: it runs the adapter with only the environment a container would get.
     cp "$root/scripts/fixtures/fake-container-runtime.sh" "$w/bin/podman" && chmod +x "$w/bin/podman"
     export FACTORY_CONTAINER_IMAGE=factory-station:test FACTORY_CONTAINER_NETWORK=factory-egress-test
-    export FAKE_RUNTIME_LOG="$w/calls/runtime.log" FAKE_RUNTIME_PASS=CALLS_DIR CLAUDE_CODE_OAUTH_TOKEN=test-claude-token
+    export FAKE_RUNTIME_LOG="$w/calls/runtime.log" FAKE_RUNTIME_PASS=CALLS_DIR CLAUDE_CODE_OAUTH_TOKEN=test-claude-token XAI_API_KEY=test-xai-key
     unset FACTORY_CONTAINER_RUNTIME FACTORY_CONTAINER_PROXY
     export PATH="$w/bin:/usr/bin:/bin"
     unset FACTORY_APPROVER_LOGIN FACTORY_BLOCKED_OWNERS FACTORY_PROVIDER GH_TOKEN GITHUB_TOKEN \
       FACTORY_GH_APP_ID FACTORY_GH_APP_INSTALLATION_ID FACTORY_GH_APP_KEY_FILE FACTORY_GH_APP_ENV_FILE \
       FACTORY_GH_APP_PRIVATE_KEY FACTORY_GH_APP_SLUG GH_APP_SLUG
     [[ -n $provider ]] && export FACTORY_PROVIDER=$provider
+    [[ -z ${FACTORY_NO_IMAGE:-} ]] || unset FACTORY_CONTAINER_IMAGE
     # shellcheck disable=SC1090
     source "$w/repo/scripts/watcher/${name}.sh"
+    # After the source: the watcher's own start-up applies or clears the token.
+    [[ -z ${GROK_TEST_GH_TOKEN:-} ]] || export GH_TOKEN=$GROK_TEST_GH_TOKEN
+    [[ -z ${GROK_TEST_APP_ID:-} ]] || export FACTORY_GH_APP_ID=$GROK_TEST_APP_ID
     # shellcheck disable=SC2034
     DRY=0
     run_grok "$kind" acme/software-factory 77 25 "$w/target" "$w/prompt.txt" '{"type":"object","required":["verdict"]}' > "$w/out.log" 2>&1 || true
@@ -205,8 +215,36 @@ for lane in watch watch.new; do
       [[ -s $w/calls/grok.calls ]] || fail "$lane: $kind with FACTORY_PROVIDER='${p}' did not call grok"
       [[ ! -e $w/calls/claude.calls ]] || fail "$lane: claude ran for $kind with FACTORY_PROVIDER='${p}'"
       grep -Fq -- '--json-schema' "$w/calls/grok.args" || fail "$lane: $kind lost --json-schema on grok"
+      [[ $(wc -l < "$w/calls/runtime.log") -eq 1 ]] || fail "$lane: $kind did not start grok through the container runtime"
+      grep -Fq -- "--volume $w/target:$w/target " "$w/calls/runtime.log" || fail "$lane: $kind did not mount the target checkout for grok"
+      grep -Eq -- '--volume [^ ]*/grok-prompt\.[^ ]*:ro ' "$w/calls/runtime.log" || fail "$lane: $kind did not mount the prompt read-only"
+      if grep -Fq -- "--volume $w/watch/work" "$w/calls/runtime.log"; then fail "$lane: $kind mounted the home-repo clone into grok's container"; fi
       echo "ok: $lane $kind still calls grok with --json-schema, FACTORY_PROVIDER='${p:-unset}'"
     done
   done
+done
+# The GitHub token (#428). grok's container gets GH_TOKEN only for the kinds
+# whose prompts call gh, and only when the App is configured, so the token is
+# the bot's installation token and never the operator's own login.
+for lane in watch watch.new; do
+  w=$(GROK_TEST_GH_TOKEN=test-gh-token GROK_TEST_APP_ID=1 run_kind_case "$lane" grok dependabot-triage "tok-dep" yes)
+  [[ -s $w/calls/grok.calls ]] || fail "$lane: dependabot-triage did not run grok ($(tail -3 "$w/out.log" 2>/dev/null))"
+  grep -Fq -- '--env GH_TOKEN' "$w/calls/runtime.log" || fail "$lane: dependabot-triage did not get the bot token by name"
+  if grep -Fq test-gh-token "$w/calls/runtime.log"; then fail "$lane: the token value is on the runtime argv"; fi
+  w=$(GROK_TEST_GH_TOKEN=test-gh-token GROK_TEST_APP_ID=1 run_kind_case "$lane" grok review "tok-rev" yes)
+  [[ -s $w/calls/grok.calls ]] || fail "$lane: review did not run grok"
+  if grep -Fq -- 'GH_TOKEN' "$w/calls/runtime.log"; then fail "$lane: a review run was given a GitHub token"; fi
+  w=$(GROK_TEST_GH_TOKEN=test-gh-token run_kind_case "$lane" grok dependabot-triage "tok-noapp" yes)
+  [[ -s $w/calls/grok.calls ]] || fail "$lane: dependabot-triage without the App did not run grok"
+  if grep -Fq -- 'GH_TOKEN' "$w/calls/runtime.log"; then fail "$lane: a token that is not the App's was handed to grok"; fi
+  echo "ok: $lane gives grok the bot token only for the gh-calling kinds, and only with the App configured"
+done
+
+# With no image the watcher starts nothing: not grok on the host, not a container.
+for lane in watch watch.new; do
+  w=$(FACTORY_NO_IMAGE=1 run_kind_case "$lane" grok review "noimg" yes)
+  [[ ! -e $w/calls/grok.calls ]] || fail "$lane: grok ran with no container image"
+  [[ ! -s $w/calls/runtime.log ]] || fail "$lane: a container was started with no image"
+  echo "ok: $lane starts no grok when the station container is not configured"
 done
 echo "all watcher provider tests passed"

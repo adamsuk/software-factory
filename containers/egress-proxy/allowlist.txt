@@ -2,3 +2,4 @@
 ^api\.x\.ai$
 ^api\.github\.com$
 ^github\.com$
+^cli-chat-proxy\.grok\.com$

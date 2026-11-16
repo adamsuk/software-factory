@@ -48,7 +48,7 @@ The proxy allows `CONNECT` to port 443 on the hosts in
 | Host | Why |
 | --- | --- |
 | `api.anthropic.com` | Claude Code's model API |
-| `api.x.ai` | Grok's model API |
+| `api.x.ai`, `cli-chat-proxy.grok.com` | Grok's model API (the second is what a subscription login uses) |
 | `api.github.com`, `github.com` | `gh` reads, `scripts/station-post.sh` writes, git fetch and push |
 
 A change to that list is a change to the file and a rebuild of the proxy image.
@@ -85,6 +85,31 @@ claude setup-token
 Export what it prints as `CLAUDE_CODE_OAUTH_TOKEN` in the shell (or service)
 that starts stations. Never commit it, and never put it in an image. Grok takes
 `XAI_API_KEY` the same way.
+
+### Grok
+
+With an API key, export `XAI_API_KEY` and use an image that has the `grok` CLI.
+
+A SuperGrok subscription has no API key. Two settings cover that, both off
+unless set:
+
+```bash
+export FACTORY_GROK_BIN="$HOME/.grok/bin/grok"
+```
+
+```bash
+export FACTORY_GROK_AUTH_FILE="$HOME/.grok/auth.json"
+```
+
+`FACTORY_GROK_BIN` mounts the host's `grok` binary read-only at
+`/usr/local/bin/grok`; it is one static file, so the station image needs
+nothing added. `FACTORY_GROK_AUTH_FILE` mounts the login file read-only into
+the container's own empty `~/.grok`. It is used only when `XAI_API_KEY` is not
+set.
+
+The login file is a long-lived account credential, and inside the container the
+model can read it. The proxy limits where it could be sent; it does not remove
+the risk. Use `XAI_API_KEY` where one exists (AGENTS.md section 7).
 
 ## 5. What to export
 
@@ -138,9 +163,22 @@ read-only mount could not be written. A reviewer station run with a
 deliberately invalid token reached the model API and was answered `401 Invalid
 bearer token`. A run with a valid token has not been done yet.
 
-Not covered: the Grok builder clones and pushes on the host through
-`scripts/run-work-order.sh`, and the watcher's Grok calls still start `grok`
-on the host.
+The watcher's Grok calls go through the same container (#428). They get no
+GitHub token, except the foreman, dependabot-triage and plan jobs, whose
+prompts call `gh`: those get `GH_TOKEN` by name, and only when the App is
+configured, so it is the bot's one-hour installation token. The foreman also
+gets the orders directory read-write, where it writes the work order.
+
+Checked on 2026-11-15 with a real Grok on a subscription login: a job ran in
+the container and answered, a second one called `gh api` with the bot's token
+and returned the repository name, and the login file on the host was unchanged
+afterwards. The proxy refused `api.mixpanel.com` and `grok.com`, which Grok
+tries and does not need. Not run: the watcher itself, end to end, on a host
+that runs it.
+
+Not covered: the Grok builder clones, runs the target repo's tests and pushes
+on the host through `scripts/run-work-order.sh`; only its model child is in a
+container.
 
 ## Known traps
 

@@ -555,4 +555,64 @@ PATH="$BIN:$PATH" bash "$wrap" --provider opencode --workdir "$probe" > /dev/nul
 [[ $code -eq 2 ]] || fail "no command exited $code, want 2"
 pass
 
+tname="station-container.sh mounts --rw read-write and --ro read-only"
+mkdir -p "$work/orders"
+: > "$RUNTIME_LOG"
+PATH="$BIN:$PATH" bash "$wrap" --provider opencode --workdir "$probe" --rw "$work/orders" --ro "$work/ro-file" -- true
+argv=" $(last_run) "
+[[ "$argv" == *" --volume $work/orders:$work/orders "* ]] || fail "--rw is not mounted read-write"
+[[ "$argv" == *" --volume $work/ro-file:$work/ro-file:ro "* ]] || fail "--ro lost its read-only flag"
+code=0
+PATH="$BIN:$PATH" bash "$wrap" --provider opencode --workdir "$probe" --rw "$work/ro-file" -- true > /dev/null 2>&1 || code=$?
+[[ $code -eq 2 ]] || fail "--rw on a file exited $code, want 2"
+pass
+
+# --- grok: its binary and its login (#428) -----------------------------------
+printf '#!/usr/bin/env bash\nexit 0\n' > "$work/grok-bin"
+chmod +x "$work/grok-bin"
+printf 'login-file-sentinel\n' > "$work/grok-auth.json"
+run_grok_wrap() { PATH="$BIN:$PATH" bash "$wrap" --provider grok --workdir "$probe" -- true; }
+
+tname="grok with XAI_API_KEY mounts no login file"
+: > "$RUNTIME_LOG"
+XAI_API_KEY=test-xai-key FACTORY_GROK_AUTH_FILE="$work/grok-auth.json" run_grok_wrap
+argv=" $(last_run) "
+[[ "$argv" == *" --env XAI_API_KEY "* ]] || fail "XAI_API_KEY is not forwarded by name"
+[[ "$argv" != *"auth.json"* ]] || fail "the login file was mounted although a key exists"
+[[ "$argv" != *"test-xai-key"* ]] || fail "the key value is on argv"
+pass
+
+tname="grok with no key mounts the login file read-only in its own empty ~/.grok"
+: > "$RUNTIME_LOG"
+FACTORY_GROK_AUTH_FILE="$work/grok-auth.json" run_grok_wrap
+argv=" $(last_run) "
+[[ "$argv" == *" --volume $work/grok-auth.json:/factory-home/.grok/auth.json:ro "* ]] || fail "the login file is not mounted read-only: $argv"
+[[ "$argv" == *" --tmpfs /factory-home/.grok "* ]] || fail "grok's home is not its own tmpfs"
+[[ "$argv" != *"login-file-sentinel"* ]] || fail "the login file's content is on argv"
+pass
+
+tname="grok with neither a key nor a login file is exit 9"
+code=0; : > "$RUNTIME_LOG"
+run_grok_wrap > /dev/null 2>&1 || code=$?
+[[ $code -eq 9 ]] || fail "exited $code, want 9"
+code=0
+FACTORY_GROK_AUTH_FILE="$work/no-such-auth.json" run_grok_wrap > /dev/null 2>&1 || code=$?
+[[ $code -eq 9 ]] || fail "a missing login file exited $code, want 9"
+[[ ! -s "$RUNTIME_LOG" ]] || fail "a container was started without a grok credential"
+pass
+
+tname="FACTORY_GROK_BIN is mounted read-only on PATH, and only for grok"
+: > "$RUNTIME_LOG"
+XAI_API_KEY=test-xai-key FACTORY_GROK_BIN="$work/grok-bin" run_grok_wrap
+[[ " $(last_run) " == *" --volume $work/grok-bin:/usr/local/bin/grok:ro "* ]] || fail "the grok binary is not mounted read-only"
+: > "$RUNTIME_LOG"
+FACTORY_GROK_BIN="$work/grok-bin" FACTORY_GROK_AUTH_FILE="$work/grok-auth.json" \
+  PATH="$BIN:$PATH" bash "$wrap" --provider opencode --workdir "$probe" -- true
+argv=" $(last_run) "
+[[ "$argv" != *"/usr/local/bin/grok"* && "$argv" != *"auth.json"* ]] || fail "another provider's container got grok's binary or login"
+code=0
+XAI_API_KEY=test-xai-key FACTORY_GROK_BIN="$work/no-such-grok" run_grok_wrap > /dev/null 2>&1 || code=$?
+[[ $code -eq 9 ]] || fail "a missing FACTORY_GROK_BIN exited $code, want 9"
+pass
+
 echo "all station-run container tests passed"

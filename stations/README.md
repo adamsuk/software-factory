@@ -95,11 +95,12 @@ restricted network or no provider credential, `station-run.sh` exits 9 and
 starts nothing; each adapter also refuses to start its CLI outside the
 container. Host setup is in `docs/runbooks/station-container.md`.
 
-Two things are still outside it. The Grok builder goes to
-`scripts/run-work-order.sh`, which clones and pushes on the host and puts only
-the model child in a container. And the watcher's own Grok calls
-(`scripts/watcher/watch.sh`, `FACTORY_PROVIDER` unset or `grok`) still start
-`grok` on the host; only its non-Grok provider calls go through the container.
+One thing is still outside it. The Grok builder goes to
+`scripts/run-work-order.sh`, which clones, runs the target repo's tests and
+pushes on the host, and puts only the model child in a container. That stays
+as it is for now: the script, not the model, does the clone and the push, but
+the tests it runs are code the model just wrote. The watcher's own Grok calls
+(`scripts/watcher/watch.sh`) run in the container since #428.
 
 A clone and not a linked worktree on purpose: a worktree shares `.git/config`
 with the real repository, so removing the worktree's `origin` removes the
