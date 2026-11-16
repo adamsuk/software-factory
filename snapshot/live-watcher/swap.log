@@ -1,0 +1,39 @@
+2026-10-26T22:55:55Z swapped main (was 901960)
+2026-10-27T07:06:53Z swapped watch.new.sh to 07:00 start
+2026-10-27T07:07:05Z swapped watch.sh to 07:00 start
+2026-10-27T08:19:40Z swapped watch.new.sh for merge-from-main review fix
+2026-10-27T08:19:42Z swapped watch.sh for merge-from-main review fix
+2026-10-27T10:29:51Z swapped watch.new.sh to add line
+2026-10-27T10:29:53Z swapped watch.sh to add line
+2026-10-27T10:42:37Z swapped watch.new.sh for line merge rule
+2026-10-27T10:42:39Z swapped watch.sh for line merge rule
+2026-10-27T10:59:02Z swapped watch.new.sh to add adamsuk
+2026-10-27T10:59:04Z swapped watch.sh to add adamsuk
+2026-10-27T11:54:25Z swapped watch.new.sh to drop line merge rule
+2026-10-27T11:56:37Z swapped watch.sh to drop line merge rule
+2026-10-27T13:43:01Z swapped watch.new.sh for crfull follow-up + failing-CI routing
+2026-10-27T13:43:13Z swapped watch.sh for crfull follow-up + failing-CI routing
+2026-10-27T14:52:06Z swapped watch.new.sh: no CodeRabbit commits on sensitive PRs, scoped Grok fix
+2026-10-27T14:52:08Z swapped watch.sh: no CodeRabbit commits on sensitive PRs, scoped Grok fix
+2026-10-27T16:34:54Z swapped watch.new.sh: independent review gate
+2026-10-27T16:35:47Z swapped watch.new.sh: independent review gate + merge_protected_issues
+2026-10-27T16:42:39Z swapped watch.sh: independent review gate + merge_protected_issues
+2026-10-27T17:07:50Z swapped watch.sh: dismiss coderabbitai CHANGES_REQUESTED on PASS merges
+2026-10-27T17:11:37Z swapped watch.new.sh: dismiss coderabbitai CHANGES_REQUESTED on PASS merges
+2026-10-27T18:19:37Z swapped watch.sh: run_grok passes prompt via --prompt-file (argv limit fix)
+2026-10-27T18:19:39Z swapped watch.new.sh: run_grok passes prompt via --prompt-file (argv limit fix)
+2026-10-31T17:05:37Z swapped watch.sh + watch.new.sh: budget focus_issues, max_issues_in_flight, period_start (Scott 31 Oct 17:00)
+2026-10-31T18:34:20Z swapped watch.sh + watch.new.sh: Grok gate work (review/fix/conflict/dependabot triage) only for focus_issues PRs (Scott 31 Oct 18:28)
+2026-10-31T18:38:22Z restarted both lanes after swap: new processes exited on lock held by old lanes' sleep children
+2026-10-31T21:41:46Z swapped watch.sh + watch.new.sh: pr_in_focus matches cross-repo software-factory#N refs; same-repo #N only in software-factory (Scott 31 Oct)
+2026-11-01T08:19:45Z swapped watch.new.sh: port #196 ir_save_result (last verdict object, bare verdict line, raw path on failure) for #194
+2026-11-01T08:23:18Z swapped watch.sh: port #196 ir_save_result (last verdict object, bare verdict line, raw path on failure) for #194
+2026-11-02T09:07:59Z swapped watch.new.sh (was 507256): #200 app-token minting ported into live (GitHub App software-factory-line)
+2026-11-02T09:08:02Z swapped watch.sh (was 509651): #200 app-token minting ported into live (GitHub App software-factory-line)
+2026-11-03T08:30:10Z swapped watch.new.sh (was 1725347): build GROK_MAX_TURNS 40->60 (Scott, 3 Nov)
+2026-11-03T08:32:33Z swapped watch.sh (was 1725507): build GROK_MAX_TURNS 40->60 (Scott, 3 Nov)
+2026-11-04T11:10:56Z swapped watch.new.sh to new pid 3218159: llm_backend switch (claude), Scott 4 Nov
+2026-11-04T11:10:58Z swapped watch.sh to new pid 3218292: llm_backend switch (claude), Scott 4 Nov
+2026-11-09T15:09:30Z swapped watch.sh (was none): Scott 9 Nov: CodeRabbit only size/L|XL (or >200 lines); thorough IR for smaller
+2026-11-09T15:09:33Z swapped watch.new.sh (was none): Scott 9 Nov: CodeRabbit only size/L|XL (or >200 lines); thorough IR for smaller
+2026-11-09T15:10:36Z restarted watch.sh LANE=main + watch.new.sh LANE=build: Scott 9 Nov CR size gate
