@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-16 (the watcher can start grok on a host that is already a sandbox)
+
+### Added
+
+- `FACTORY_GROK_ON_HOST=host-is-a-disposable-sandbox` lets the watcher (`scripts/watcher/watch.sh`, `watch.new.sh`) start `grok` directly on a host that is itself a disposable sandbox and cannot run a container. Off by default; the exact phrase is required; only the watcher's Grok launch honours it, so stations stay container-only. Every such run is logged as `grok uncontained`. In that mode `gh` gets an empty `GH_CONFIG_DIR` (a cleared token no longer falls back to the host's `gh` login), the App settings are removed from grok's environment, deny rules cover the secrets directory, the host's `gh` config and grok's login file, and the GitHub-token rule is the container's. This is weaker than the container and the runbook says what it does not protect. New cases in `scripts/test-watcher-provider.sh` (#440, part of #418).
+
 ## 2026-11-16 (run-factory playbook sets up the station container)
 
 ### Fixed

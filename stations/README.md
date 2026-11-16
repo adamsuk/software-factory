@@ -102,6 +102,15 @@ as it is for now: the script, not the model, does the clone and the push, but
 the tests it runs are code the model just wrote. The watcher's own Grok calls
 (`scripts/watcher/watch.sh`) run in the container since #428.
 
+There is one deliberate exception for the watcher. A watcher host that is
+itself a disposable sandbox and cannot run a container may set
+`FACTORY_GROK_ON_HOST=host-is-a-disposable-sandbox` (#440). The watcher then
+starts `grok` on that host, logs every such run as uncontained, and keeps the
+host's `gh` login, the App settings and the secrets directory out of grok's
+reach as far as environment and deny rules can. That is weaker than the
+container; `docs/runbooks/station-container.md` says what it does not protect.
+Stations do not honour the setting.
+
 A clone and not a linked worktree on purpose: a worktree shares `.git/config`
 with the real repository, so removing the worktree's `origin` removes the
 repository's own remote. That happened while building #142.
