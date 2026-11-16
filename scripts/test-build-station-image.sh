@@ -142,4 +142,22 @@ if grep -v '^[[:space:]]*#' "$station_cf" | grep -E -q 'curl[^|]* (-k|--insecure
 fi
 pass
 
+tname="the run-factory playbook sets up what a station needs"
+playbook="$root_dir/stations/run-factory.md"
+for setting in FACTORY_CONTAINER_IMAGE FACTORY_CONTAINER_NETWORK FACTORY_CONTAINER_PROXY \
+  CLAUDE_CODE_OAUTH_TOKEN XAI_API_KEY FACTORY_GROK_BIN FACTORY_GROK_AUTH_FILE GH_TOKEN; do
+  grep -q "$setting" "$playbook" || fail "stations/run-factory.md does not mention $setting"
+  grep -q "$setting" "$root_dir/scripts/container-env.sh" "$root_dir/scripts/station-run.sh" \
+    || fail "$setting is in the playbook but no script reads it"
+done
+grep -q 'docs/runbooks/station-container.md' "$playbook" || fail "the playbook does not point to the host runbook"
+grep -F -q 'scripts/build-station-image.sh --print station' "$playbook" \
+  || fail "the playbook does not take the image tag from the build script"
+# The tag is never typed out, so a version bump cannot leave the playbook stale.
+if grep -E -q 'factory-station:[a-z0-9]' "$playbook"; then fail "the playbook hard-codes an image tag"; fi
+# The command the playbook gives really yields the station tag.
+got=$(PATH="$BIN:$PATH" bash "$build" --print station | grep -o -- '--tag [^ ]*' | cut -d' ' -f2)
+[[ "$got" == localhost/factory-station:* ]] || fail "the playbook's tag command printed [$got]"
+pass
+
 echo "all build-station-image tests passed"

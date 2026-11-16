@@ -56,10 +56,63 @@ on demand (skipped whenever the system `python3` happens to already have
 PyYAML), that `source` would fail outright on a box where it was never
 created, or silently run under a venv that itself lacks PyYAML because the
 check never looked there. Also confirm
-`gh auth status` succeeds — everything downstream assumes an authenticated
-`gh`. There is no bot identity available for *writing*
-(see `stations/run-factory-quirks.md` → "The identity wrinkle") — every station runs
-as the single authenticated human account, whichever provider drives it.
+`gh auth status` succeeds — the scripts you run on the host (`gate-issue.sh`,
+`review-issue.sh`, `gh pr checks`) use that login.
+
+**The stations themselves do not.** Since #426 every station runs in a
+container that has no host `gh` login: it writes to GitHub with `GH_TOKEN`
+only. Export the factory bot's installation token as `GH_TOKEN`, or set
+`FACTORY_GH_APP_ID` and its two companions so `scripts/station-run.sh` mints
+one. Then a station's comments, labels and pull requests are the bot's, not
+yours. Approving and merging stay with a person (see
+`stations/run-factory-quirks.md` → "The identity wrinkle").
+
+### The station container (required)
+
+`scripts/station-run.sh` and `scripts/foreman-orchestrate.sh` start each
+station in a fresh container on a restricted network. Without the settings
+below they exit **9** and start nothing. Host setup (images, networks, the
+proxy) is `docs/runbooks/station-container.md`; this is the per-session check.
+
+```bash
+# The proxy is the only way out of the station network. No proxy, no model call.
+podman ps --format '{{.Names}}' | grep -qx factory-egress-proxy \
+  || echo "proxy not running: systemctl --user start factory-egress-proxy.service"
+
+# The image tag is whatever the build script builds; never type it from memory.
+export FACTORY_CONTAINER_IMAGE="$(scripts/build-station-image.sh --print station | grep -o -- '--tag [^ ]*' | cut -d' ' -f2)"
+export FACTORY_CONTAINER_NETWORK=factory-egress
+export FACTORY_CONTAINER_PROXY=http://factory-egress-proxy:8888
+podman image exists "$FACTORY_CONTAINER_IMAGE" || echo "image not built: scripts/build-station-image.sh"
+```
+
+Each provider also needs its own credential in the environment, because the
+container has no login of its own:
+
+| Provider | What it needs |
+| --- | --- |
+| `claudecode` | `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`) |
+| `grok` | `XAI_API_KEY`, or on a subscription login `FACTORY_GROK_BIN` and `FACTORY_GROK_AUTH_FILE` (the operator sets these, never an agent: AGENTS.md section 7) |
+| `opencode` | one of `OPENCODE_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` |
+
+Load a credential from wherever the operator keeps it, by name, and never
+print it. Check what is set with names only:
+
+```bash
+for v in FACTORY_CONTAINER_IMAGE FACTORY_CONTAINER_NETWORK FACTORY_CONTAINER_PROXY \
+  CLAUDE_CODE_OAUTH_TOKEN XAI_API_KEY FACTORY_GROK_BIN FACTORY_GROK_AUTH_FILE GH_TOKEN FACTORY_GH_APP_ID; do
+  [[ -n "${!v:-}" ]] && echo "$v set" || echo "$v unset"
+done
+```
+
+**Exit 9 is a setup problem, not a station failure.** The message says which
+piece is missing (`cannot start a container: ...`). Fix the setup or tell the
+person; never work around it by running an adapter or a model CLI on the
+host. The adapters refuse that too.
+
+If your own command runner sandboxes shell commands (Claude Code's does),
+podman's network set-up can fail inside it with `rootless netns: kill network
+process: permission denied`. Run the station commands outside that sandbox.
 
 **Pick a station provider and use it for every `--provider` flag below.**
 This repo's stations are explicitly provider-agnostic
@@ -68,9 +121,11 @@ This repo's stations are explicitly provider-agnostic
 actually usable rather than assuming:
 
 ```bash
-command -v grok > /dev/null 2>&1 && [[ -n "${XAI_API_KEY:-}" ]] && echo "grok: usable"
-command -v claude > /dev/null 2>&1 && echo "claudecode: usable"
-command -v opencode > /dev/null 2>&1 && echo "opencode: usable"
+# What counts is the credential the container will be given, not the CLI on
+# this host: the CLI comes from the image (or FACTORY_GROK_BIN for grok).
+[[ -n "${XAI_API_KEY:-}" || ( -n "${FACTORY_GROK_BIN:-}" && -n "${FACTORY_GROK_AUTH_FILE:-}" ) ]] && echo "grok: usable"
+[[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]] && echo "claudecode: usable"
+[[ -n "${OPENCODE_API_KEY:-}${OPENROUTER_API_KEY:-}${OPENAI_API_KEY:-}${ANTHROPIC_API_KEY:-}" ]] && echo "opencode: usable"
 ```
 
 If more than one is usable, prefer **`grok`** for any run that includes a
@@ -82,8 +137,9 @@ create` calls through its own tool use. The missing-work-order-paperwork gap
 in `stations/run-factory-quirks.md` happened on `claudecode` runs precisely because
 that path leaves "clone, commit, push, open PR" to the prompted agent
 instead of to deterministic script logic — `grok`'s builder doesn't have
-that failure mode. `grok` needs `XAI_API_KEY` set and the `grok` CLI on
-`PATH`; if neither is available, fall back to `claudecode` or `opencode` and
+that failure mode. The `grok` builder runs `scripts/run-work-order.sh` on
+the host, so it needs the `grok` CLI on `PATH` there as well as its
+credential; if it is not usable, fall back to `claudecode` or `opencode` and
 expect to double-check the work-order paperwork a little more carefully
 after Step 3. Tell the user which provider you picked and why, once, rather
 than silently defaulting.

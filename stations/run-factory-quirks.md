@@ -7,6 +7,15 @@ rather than up front.
 
 ## The identity wrinkle (#210, but broader than filed)
 
+**Since #426 this is narrower.** A station now runs in a container with no
+host `gh` login and writes with `GH_TOKEN` only, so with the bot's
+installation token exported (or `FACTORY_GH_APP_ID` set) its comments, labels
+and pull requests are the bot's, and the self-approval wall below does not
+arise for them. What follows still applies to anything done on the host with
+the box's own login: the Grok builder's push and pull request from
+`scripts/run-work-order.sh` when the App is not configured, and anything you
+do by hand.
+
 Every station in this environment writes to GitHub using whatever `gh`
 login is on the box — the human user's own account. Issue #210 filed this
 as a Grok-only problem (`run_grok()` strips `GH_TOKEN`/`GITHUB_TOKEN` from
