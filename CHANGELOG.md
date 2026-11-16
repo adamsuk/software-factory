@@ -3,6 +3,19 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-16 (three behaviours ported from the live watcher)
+
+### Changed
+
+- `scripts/watcher/watch.sh` and `watch.new.sh` gain three behaviours the live watcher host has run since late October and that never reached the repository (#443, part of #418):
+  - `@coderabbitai` trigger comments post with the host's own `gh` login, not the App token, because CodeRabbit ignores bots (#209). Every other comment keeps the App token.
+  - A build gets 60 turns (`GROK_MAX_TURNS=60`), up from 40.
+  - The weekly run count starts at `.period_start` in the budget file when that date is after Monday, so a mid-week budget reset takes effect.
+
+### Added
+
+- `scripts/test-watcher-ports.sh`.
+
 ## 2026-11-16 (the watcher can start grok on a host that is already a sandbox)
 
 ### Added
