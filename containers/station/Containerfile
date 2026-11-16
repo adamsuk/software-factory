@@ -6,9 +6,19 @@ FROM ${BASE_IMAGE}
 
 # jq, PyYAML and shellcheck are what scripts/*.sh call; curl and
 # ca-certificates are for the CLI and git over HTTPS.
-RUN apt-get update \
+#
+# apt goes over HTTPS: some hosts' egress refuses plain HTTP (a watcher host
+# answered every http://deb.debian.org request with 500, #435). The base image
+# has no CA certificates, so the first fetch, ca-certificates itself, cannot
+# verify the server. That costs nothing plain HTTP had: apt still checks every
+# package against Debian's signing keys. Everything after it is verified TLS.
+RUN sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/debian.sources \
+  && apt-get -o Acquire::https::Verify-Peer=false -o Acquire::https::Verify-Host=false update \
+  && apt-get -o Acquire::https::Verify-Peer=false -o Acquire::https::Verify-Host=false \
+    install -y --no-install-recommends ca-certificates \
+  && apt-get update \
   && apt-get install -y --no-install-recommends \
-    bash ca-certificates curl git jq python3 python3-yaml shellcheck \
+    bash curl git jq python3 python3-yaml shellcheck \
   && rm -rf /var/lib/apt/lists/*
 
 # gh from the official release, pinned and digest-verified. Debian's package

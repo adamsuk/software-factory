@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-16 (station image builds over HTTPS only)
+
+### Fixed
+
+- `containers/station/Containerfile` switches the apt sources to `https://deb.debian.org` before the first `apt-get update`. A watcher host's egress answered every plain-HTTP Debian request with `500`, so the image could not be built there. The base image has no CA certificates, so `ca-certificates` is fetched first without TLS verification (apt still checks package signatures); every later fetch is verified. New case in `scripts/test-build-station-image.sh` (#435, part of #418).
+
 ## 2026-11-16 (the egress proxy survives a reboot)
 
 ### Fixed
