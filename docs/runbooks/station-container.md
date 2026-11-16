@@ -34,8 +34,23 @@ podman network create factory-egress-out
 ```
 
 ```bash
-podman run -d --name factory-egress-proxy --restart unless-stopped --network factory-egress-out --network factory-egress localhost/factory-egress-proxy:1
+mkdir -p ~/.config/containers/systemd && cp containers/egress-proxy/factory-egress-proxy.container ~/.config/containers/systemd/
 ```
+
+```bash
+systemctl --user daemon-reload && systemctl --user start factory-egress-proxy.service
+```
+
+```bash
+systemctl --user is-active factory-egress-proxy.service
+```
+
+The proxy runs as a systemd user service (a Quadlet unit), so it starts when
+the user logs in and is restarted if it stops. It starts at login, not at boot:
+a host that must run stations with nobody logged in also needs
+`loginctl enable-linger`, which is the operator's call. On docker or nerdctl
+there is no Quadlet; run the same image on the same two networks with that
+runtime's own restart policy.
 
 `factory-egress` is internal: a container on it has no route to any other
 host. The proxy sits on both networks, so it is the only way out. It needs the
@@ -181,6 +196,14 @@ on the host through `scripts/run-work-order.sh`; only its model child is in a
 container.
 
 ## Known traps
+
+- **The proxy and reboots.** Started with a bare `podman run -d --restart
+  unless-stopped`, the proxy did not come back after a reboot under rootless
+  podman: the images and networks were still there and the container was
+  `Exited`, so every station run would have failed at the network step (#433).
+  The Quadlet unit above replaces that. It was killed once on purpose on
+  2026-11-16 and systemd had it back within seconds; a reboot with the unit
+  installed has not been tried yet.
 
 - **Debian's gh is too old.** The first image took `gh` from Debian (2.46.0),
   which has no `gh pr checks --json`. `scripts/ready-gate.sh` then failed with

@@ -1,0 +1,21 @@
+# Quadlet unit for the factory's egress allow-list proxy (rootless podman).
+# Install: copy to ~/.config/containers/systemd/, then
+#   systemctl --user daemon-reload && systemctl --user start factory-egress-proxy.service
+# systemd then starts it at login and restarts it if it stops. A bare
+# `podman run --restart unless-stopped` does not come back after a reboot.
+# The image and both networks must exist first: docs/runbooks/station-container.md.
+[Unit]
+Description=Software factory egress allow-list proxy
+
+[Container]
+ContainerName=factory-egress-proxy
+Image=localhost/factory-egress-proxy:1
+Network=factory-egress-out
+Network=factory-egress
+
+[Service]
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

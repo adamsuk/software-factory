@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-16 (the egress proxy survives a reboot)
+
+### Fixed
+
+- `docs/runbooks/station-container.md` starts the egress proxy as a systemd user service from the new Quadlet unit `containers/egress-proxy/factory-egress-proxy.container`, so it starts at login and is restarted if it stops. Started with a bare `podman run -d --restart unless-stopped` it did not come back after a reboot under rootless podman, which would have failed every station run at the network step. New case in `scripts/test-build-station-image.sh` (#433, part of #418).
+
 ## 2026-11-15 (the watcher's Grok calls run in the station container)
 
 ### Changed
