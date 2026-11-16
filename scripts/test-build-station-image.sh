@@ -111,4 +111,19 @@ for host in 'api\.anthropic\.com' 'api\.github\.com' 'github\.com'; do
 done
 pass
 
+tname="the proxy's systemd unit runs the image this script builds, on both networks"
+unit="$proxy_dir/factory-egress-proxy.container"
+[[ -f "$unit" ]] || fail "no Quadlet unit for the proxy"
+proxy_tag=$(printf '%s\n' "$out" | grep -o -- '--tag [^ ]*factory-egress-proxy[^ ]*' | cut -d' ' -f2)
+[[ -n "$proxy_tag" ]] || fail "could not read the proxy tag from the build commands"
+grep -q -x "Image=$proxy_tag" "$unit" || fail "the unit does not run $proxy_tag"
+grep -q -x 'Network=factory-egress' "$unit" || fail "the unit is not on the internal network"
+grep -q -x 'Network=factory-egress-out' "$unit" || fail "the unit has no outward network, so the proxy cannot resolve or reach anything"
+[[ $(grep -c '^Network=' "$unit") -eq 2 ]] || fail "the unit joins a network other than the two the runbook creates"
+grep -q -x 'Restart=always' "$unit" || fail "the unit is not restarted when it stops"
+if grep -E -q '^(PublishPort|Volume|Environment|AddCapability)=' "$unit"; then
+  fail "the unit publishes a port, mounts a path or sets an environment the proxy does not need"
+fi
+pass
+
 echo "all build-station-image tests passed"
