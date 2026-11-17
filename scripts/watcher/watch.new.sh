@@ -2184,6 +2184,26 @@ cr_full_review_stall() {
 # merge_gate. Returns 0 (sensitive) when the PR is protected, its file list is
 # unknown, or any changed path is CI/workflow, a test file (added too), or a
 # lockfile. Sets PR_SENS_WHY. Returns 1 for an ordinary PR.
+# Whether a pull request gets CodeRabbit (maintainer rule, 9 Nov; AGENTS.md
+# section 10.4, #445): size/L and size/XL do; any other size/ label does
+# not; with no size label, over 200 changed lines does. Smaller pull requests
+# skip CodeRabbit and get a more thorough independent review instead, which
+# saves CodeRabbit's free-tier allowance for the changes that need it. The
+# same size line as scripts/ready-gate.sh condition 4. Ported from the live
+# watcher. A read failure counts as small: the independent review still runs.
+pr_needs_coderabbit() {
+  local repo=$1 pr=$2 labels stats additions deletions
+  labels=$(timeout 60 gh pr view "$pr" -R "$repo" --json labels --jq '.labels[]?.name // empty' 2>/dev/null || true)
+  if printf '%s\n' "$labels" | grep -qxE 'size/(L|XL)'; then return 0; fi
+  if printf '%s\n' "$labels" | grep -q '^size/'; then return 1; fi
+  stats=$(timeout 60 gh pr view "$pr" -R "$repo" --json additions,deletions --jq '[(.additions // 0), (.deletions // 0)] | @tsv' 2>/dev/null || true)
+  [[ -n ${stats:-} ]] || return 1
+  additions=${stats%%$'\t'*}
+  deletions=${stats#*$'\t'}
+  [[ $additions =~ ^[0-9]+$ && $deletions =~ ^[0-9]+$ ]] || return 1
+  (( additions + deletions > 200 ))
+}
+
 pr_is_sensitive() {
   local repo=$1 pr=$2 files status filename previous p why
   PR_SENS_WHY=""
@@ -2589,6 +2609,10 @@ step_cr_autopilot() {
       fi
       continue
     fi
+    if ! pr_needs_coderabbit "$repo" "$pr"; then
+      log "autopilot skip ${repo}#${pr}: not size/L or XL"
+      continue
+    fi
     if [[ $GATE_BRANCH != factory/* ]]; then
       continue
     fi
@@ -2640,6 +2664,10 @@ step_cr_review_resume() {
     marker="crresume-${slug}-${pr}-${GATE_SHA}"
     # Only CodeRabbit reviews whose commit_id is this head count (cr_count_on).
     if (( GATE_CR_COUNT > 0 )); then
+      continue
+    fi
+    if ! pr_needs_coderabbit "$repo" "$pr"; then
+      log "crresume skip ${repo}#${pr}: not size/L or XL (independent review only)"
       continue
     fi
     # Head is CodeRabbit's own commit, or resume+review already sent: an
@@ -3224,6 +3252,10 @@ step_cr_conflict_comment() {
       log "crconflict skip ${repo}#${pr}: sensitive (${PR_SENS_WHY}); CodeRabbit may not commit"
       continue
     fi
+    if ! pr_needs_coderabbit "$repo" "$pr"; then
+      log "crconflict skip ${repo}#${pr}: not size/L or XL (Grok conflict path)"
+      continue
+    fi
     if ! manual_cr_trigger_allowed "$slug" crconflict; then
       continue
     fi
@@ -3278,6 +3310,10 @@ step_cr_fix_comment() {
       log "crfix skip ${repo}#${pr}: sensitive (${PR_SENS_WHY}); Grok fix path, not CodeRabbit"
       continue
     fi
+    if ! pr_needs_coderabbit "$repo" "$pr"; then
+      log "crfix skip ${repo}#${pr}: not size/L or XL (Grok fix path)"
+      continue
+    fi
     if ! manual_cr_trigger_allowed "$slug" crfix; then
       continue
     fi
@@ -3328,17 +3364,25 @@ step_conflict_fallback() {
         needs_scott "crconflict-sens-${slug}-${pr}-${GATE_SHA}-${GATE_BASE_SHA}" \
           "$(printf '%s\n' "${repo}#${pr} ${GATE_URL}" "Head ${GATE_SHA} is DIRTY against base ${GATE_BASE_SHA} and the PR is sensitive (${PR_SENS_WHY})." "CodeRabbit may not resolve conflicts on it and Grok does not merge main into it. Needs a person.")" \
           || true
+        continue
       fi
-      continue
-    fi
-    age=$(state_age_secs "$marker" || true)
-    if [[ -z ${age:-} ]]; then
-      log "conflict fallback skip ${repo}#${pr}: bad timestamp"
-      continue
-    fi
-    if (( age < 3600 )); then
-      log "conflict fallback wait ${repo}#${pr}: ${age}s since CodeRabbit request"
-      continue
+      # A pull request that does not get CodeRabbit (pr_needs_coderabbit) was
+      # never asked to resolve the conflict, so there is nothing to wait for:
+      # go straight to the Grok conflict path (#445).
+      if pr_needs_coderabbit "$repo" "$pr"; then
+        continue
+      fi
+      log "conflict fallback ${repo}#${pr}: not size/L or XL; no CodeRabbit request to wait for"
+    else
+      age=$(state_age_secs "$marker" || true)
+      if [[ -z ${age:-} ]]; then
+        log "conflict fallback skip ${repo}#${pr}: bad timestamp"
+        continue
+      fi
+      if (( age < 3600 )); then
+        log "conflict fallback wait ${repo}#${pr}: ${age}s since CodeRabbit request"
+        continue
+      fi
     fi
     if [[ $GATE_PROTECTED == y ]]; then
       key="crconflict-wait-${slug}-${pr}-${GATE_SHA}-${GATE_BASE_SHA}"
@@ -3905,9 +3949,15 @@ step_independent_review() {
       [[ $GATE_VERDICT == pending ]] && log "independent review wait ${repo}#${pr} ${GATE_SHORT}: CI ${GATE_CHECKS}"
       continue
     fi
-    if (( GATE_CR_COUNT == 0 )); then
-      log "independent review wait ${repo}#${pr} ${GATE_SHORT}: no CodeRabbit review on this head yet"
-      continue
+    local cr_large=0
+    if pr_needs_coderabbit "$repo" "$pr"; then
+      cr_large=1
+      if (( GATE_CR_COUNT == 0 )); then
+        log "independent review wait ${repo}#${pr} ${GATE_SHORT}: no CodeRabbit review on this head yet"
+        continue
+      fi
+    else
+      log "independent review ${repo}#${pr} ${GATE_SHORT}: not size/L or XL; no CodeRabbit wait (thorough review)"
     fi
     if [[ $GATE_MERGE == DIRTY ]]; then
       log "independent review wait ${repo}#${pr} ${GATE_SHORT}: DIRTY"
@@ -3947,9 +3997,15 @@ step_independent_review() {
     prompt="${STATE}/prompt-ireview-${slug}-${pr}.txt"
     schema='{"type":"object","additionalProperties":false,"required":["verdict","summary","agreed_behaviour","checks_ran","unasked_behaviour","blast_radius","fix","dismissed","escalate"],"properties":{"verdict":{"type":"string","enum":["PASS","FIX","ESCALATE"]},"summary":{"type":"string"},"agreed_behaviour":{"type":"string"},"checks_ran":{"type":"string"},"unasked_behaviour":{"type":"string"},"blast_radius":{"type":"string"},"fix":{"type":"array","maxItems":10,"items":{"type":"string"}},"dismissed":{"type":"array","maxItems":15,"items":{"type":"string"}},"escalate":{"type":"array","maxItems":6,"items":{"type":"string"}}}}'
     {
-      printf '%s\n' "You are the independent reviewer for ${repo} pull request #${pr}, branch ${GATE_BRANCH}, head ${GATE_SHA}. CodeRabbit has already reviewed it; you decide, CodeRabbit does not."
-      printf '%s\n' "Judge the whole change against its work order or issue: correctness, whether it meets the acceptance criteria, scope, tests, CI, security."
-      printf '%s\n' "Weigh every open CodeRabbit finding: either list it under fix (worth fixing in this PR) or under dismissed as 'finding - one-line reason it is not blocking'. Add your own findings to fix when they are worth fixing."
+      if (( cr_large )); then
+        printf '%s\n' "You are the independent reviewer for ${repo} pull request #${pr}, branch ${GATE_BRANCH}, head ${GATE_SHA}. CodeRabbit has already reviewed it; you decide, CodeRabbit does not."
+        printf '%s\n' "Judge the whole change against its work order or issue: correctness, whether it meets the acceptance criteria, scope, tests, CI, security."
+        printf '%s\n' "Weigh every open CodeRabbit finding: either list it under fix (worth fixing in this PR) or under dismissed as 'finding - one-line reason it is not blocking'. Add your own findings to fix when they are worth fixing."
+      else
+        printf '%s\n' "You are the independent reviewer for ${repo} pull request #${pr}, branch ${GATE_BRANCH}, head ${GATE_SHA}. CodeRabbit does not review pull requests this size; you are the only review before merge, so be thorough."
+        printf '%s\n' "Judge the whole change against its work order or issue. Cover each of these, and put a gap under fix or escalate, or dismiss it with a one-line reason: (1) secrets or credentials in the diff; (2) existing tests weakened, skipped, deleted, or assertions loosened; (3) every acceptance criterion met; (4) protected-path, CI or lockfile changes beyond the work order; (5) error handling that fails open; (6) blast radius: what else this can break; (7) behaviour nobody asked for."
+        printf '%s\n' "Add your own findings to fix when they are worth fixing."
+      fi
       printf '%s\n' "Verdict PASS: ready to merge; nothing in fix. FIX: fix lists concrete, small, in-scope changes (prefix each with 'CodeRabbit:' or 'Review:'). ESCALATE: needs a person - risky or irreversible change, scope creep beyond the work order, tests weakened, skipped or deleted, CI weakened, secrets or security concerns; say why under escalate."
       printf '%s\n' "summary is one or two plain sentences. Keep each list item to one line."
       printf '%s\n' "Also fill the four review-record fields, each one or two plain sentences: agreed_behaviour is what this head was supposed to do, from the acceptance criteria and the work order. checks_ran is the checks that ran on this head and what they reported. unasked_behaviour is behaviour in this head the acceptance criteria do not ask for; the literal string none when there is none. blast_radius is what else this head can change or break."
@@ -4177,7 +4233,16 @@ step_fix_fallback() {
     mode=""
     due=0
     age=""
-    if [[ $GATE_IR == FIX ]] && (( sens )); then
+    # A pull request that does not get CodeRabbit (pr_needs_coderabbit) has no
+    # CodeRabbit fix request to wait for, so it goes straight to the Grok fix
+    # once per head, like a sensitive one. The live watcher skipped the
+    # CodeRabbit request for these but still waited for it, so a FIX on a small
+    # pull request never ran (#445).
+    local cr_large=1
+    if [[ $GATE_IR == FIX ]] && (( ! sens )) && ! pr_needs_coderabbit "$repo" "$pr"; then
+      cr_large=0
+    fi
+    if [[ $GATE_IR == FIX ]] && (( sens || ! cr_large )); then
       if [[ -e $gmarker ]]; then
         log "fix fallback ${repo}#${pr}: scoped Grok fix already tried on ${GATE_SHORT}"
       else
@@ -4267,7 +4332,7 @@ step_fix_fallback() {
     prompt="${STATE}/prompt-fix-${slug}-${pr}.txt"
     if [[ $mode == ci ]]; then
       printf '%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$cimarker"
-    elif (( sens )); then
+    elif (( sens || ! cr_large )); then
       printf '%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$gmarker"
     fi
     {
@@ -4622,7 +4687,11 @@ step_build() {
         log "PR already open ${wo_repo}#${pr_num} for ${wo_branch}"
       fi
       if [[ -n $pr_num ]]; then
-        comment_pr "$wo_repo" "$pr_num" '@coderabbitai review' "" || true
+        if pr_needs_coderabbit "$wo_repo" "$pr_num"; then
+          comment_pr "$wo_repo" "$pr_num" '@coderabbitai review' "" || true
+        else
+          log "build skip CR trigger ${wo_repo}#${pr_num}: not size/L or XL (independent review only)"
+        fi
       fi
       swap_factory_label "$repo" "$num" "factory:review" || true
       note "build done ${repo}#${num} -> ${wo_repo}#${pr_num:-?} factory:review"

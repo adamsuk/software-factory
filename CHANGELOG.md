@@ -3,6 +3,21 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-17 (CodeRabbit only for size/L and size/XL)
+
+### Changed
+
+- The watcher (`scripts/watcher/watch.sh`, `watch.new.sh`) asks CodeRabbit only on `size/L` and `size/XL` pull requests, or, with no size label, ones over 200 changed lines. Smaller pull requests get no CodeRabbit triggers (review, resume, fix comments, autopilot, resolve merge conflict), and their independent review no longer waits for CodeRabbit and covers a fixed checklist instead. This is the rule the live watcher host has run since 2026-11-09, and the same size line `scripts/ready-gate.sh` already uses (#445, part of #418).
+- AGENTS.md section 10 and `agents/roles/reviewer.md` state the rule.
+
+### Fixed
+
+- On a pull request that does not get CodeRabbit, a FIX verdict and a merge conflict go straight to the Grok fix and conflict paths, once per head. The live watcher's version skipped the CodeRabbit request but still waited for it, so those pull requests stalled.
+
+### Added
+
+- `scripts/test-watcher-cr-size.sh`.
+
 ## 2026-11-16 (three behaviours ported from the live watcher)
 
 ### Changed
