@@ -212,6 +212,11 @@ container. With it set, the watcher starts `grok` directly on the host and logs
 `grok uncontained ...` for every such run. Stations and `scripts/station-run.sh`
 ignore the setting: they stay container-only.
 
+The builder is not covered: `scripts/run-work-order.sh` still needs the
+container. A host like that should also set `FACTORY_WATCHER_BUILDS=off`
+(#447), so its watcher never builds, and run builds somewhere that has the
+container, for example through `/run-factory`.
+
 What the watcher still does in this mode:
 
 - gives `gh` an empty `GH_CONFIG_DIR`, so a cleared `GH_TOKEN` does not fall

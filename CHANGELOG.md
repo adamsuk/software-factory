@@ -3,6 +3,40 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-17 (a watcher host can turn building off)
+
+### Added
+
+- `FACTORY_WATCHER_BUILDS=off` makes a watcher (`scripts/watcher/watch.sh`, `watch.new.sh`) never build: the main lane skips its build step and the build lane exits at start without taking its lock. Unset or `on` builds as before; any other value stops the watcher at start. For a host whose builds run elsewhere, such as a watcher host that cannot run the builder's container. `scripts/watcher/README.md` and `docs/runbooks/station-container.md` describe it. New `scripts/test-watcher-builds-off.sh` (#447, part of #418).
+
+## 2026-11-17 (CodeRabbit only for size/L and size/XL)
+
+### Changed
+
+- The watcher (`scripts/watcher/watch.sh`, `watch.new.sh`) asks CodeRabbit only on `size/L` and `size/XL` pull requests, or, with no size label, ones over 200 changed lines. Smaller pull requests get no CodeRabbit triggers (review, resume, fix comments, autopilot, resolve merge conflict), and their independent review no longer waits for CodeRabbit and covers a fixed checklist instead. This is the rule the live watcher host has run since 2026-11-09, and the same size line `scripts/ready-gate.sh` already uses (#445, part of #418).
+- AGENTS.md section 10 and `agents/roles/reviewer.md` state the rule.
+
+### Fixed
+
+- On a pull request that does not get CodeRabbit, a FIX verdict and a merge conflict go straight to the Grok fix and conflict paths, once per head. The live watcher's version skipped the CodeRabbit request but still waited for it, so those pull requests stalled.
+
+### Added
+
+- `scripts/test-watcher-cr-size.sh`.
+
+## 2026-11-16 (three behaviours ported from the live watcher)
+
+### Changed
+
+- `scripts/watcher/watch.sh` and `watch.new.sh` gain three behaviours the live watcher host has run since late October and that never reached the repository (#443, part of #418):
+  - `@coderabbitai` trigger comments post with the host's own `gh` login, not the App token, because CodeRabbit ignores bots (#209). Every other comment keeps the App token.
+  - A build gets 60 turns (`GROK_MAX_TURNS=60`), up from 40.
+  - The weekly run count starts at `.period_start` in the budget file when that date is after Monday, so a mid-week budget reset takes effect.
+
+### Added
+
+- `scripts/test-watcher-ports.sh`.
+
 ## 2026-11-16 (the watcher can start grok on a host that is already a sandbox)
 
 ### Added
