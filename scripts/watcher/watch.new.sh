@@ -160,6 +160,11 @@ WORK="${ROOT}/work"
 ORDERS="${ROOT}/orders"
 # main (default) or build. Build is a second process with its own lock and log.
 LANE=${LANE:-main}
+# on (default) or off. Off: this watcher never builds. The main lane skips
+# step_build and the build lane refuses to start. For a host whose builds run
+# elsewhere, such as a watcher host that cannot run the builder's container
+# (#447). Any other value stops the watcher at start.
+WATCHER_BUILDS=${FACTORY_WATCHER_BUILDS:-on}
 LOCK="${ROOT}/watch.lock"
 LOG="${ROOT}/watch.log"
 if [[ $LANE == build ]]; then
@@ -4509,6 +4514,10 @@ claim_build_issue() {
 step_build() {
   local row repo num title body target order prompt rc wlog wdir cost
   local foreman_text agents_note slug claim_rc notes
+  if [[ $WATCHER_BUILDS == off ]]; then
+    log "build skip: FACTORY_WATCHER_BUILDS=off, builds run elsewhere"
+    return 0
+  fi
   if [[ ! -s ${ISSUE_CACHE:-} ]]; then
     log "build: no issue cache"
     return 0
@@ -5919,6 +5928,19 @@ main() {
     printf '%s\n' "no home repo: set FACTORY_HOME_REPO (and FACTORY_REPOS), or run inside a clone" >&2
     exit 2
   fi
+  case "$WATCHER_BUILDS" in
+    on) ;;
+    off)
+      if [[ $LANE == build ]]; then
+        printf '%s\n' "build lane not started: FACTORY_WATCHER_BUILDS=off, builds run elsewhere" >&2
+        exit 0
+      fi
+      ;;
+    *)
+      printf 'FACTORY_WATCHER_BUILDS must be on or off, got: %s\n' "$WATCHER_BUILDS" >&2
+      exit 2
+      ;;
+  esac
   mkdir -p "$STATE" "$WORK" "$ORDERS"
   touch "$LOG"
   exec 9>"$LOCK"

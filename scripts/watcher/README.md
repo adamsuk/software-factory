@@ -32,6 +32,12 @@ Both lanes are long-running bash processes. Each cycle ends with a 180-second cy
 - Main lane, `watch.sh`. No `LANE` override (committed default `main`). Lock `watch.lock`. Log `watch.log`.
 - Build lane, `watch.new.sh`. `LANE=build`. Lock `watch-build.lock`. Log `watch-build.log`.
 
+`FACTORY_WATCHER_BUILDS=off` makes a watcher never build: the main lane skips
+its build step and the build lane exits at start without taking its lock. Use
+it on a host whose builds run elsewhere, for example a watcher host that cannot
+run the builder's container (`docs/runbooks/station-container.md`). Unset, or
+`on`, keeps building. Any other value stops the watcher at start (#447).
+
 On the CodeRabbit resume path, the main lane skips a head that already has a review before the pause check. The build lane does that skip only when the lane is not paused. In the main loop, the main lane always calls `step_build`. The build lane calls `step_build` only when `build_lane_alive` is false. No script sources another file.
 
 ## State files
