@@ -388,7 +388,15 @@ refresh_counts() {
   [[ $DAY_CAP =~ ^[0-9]+$ ]] || DAY_CAP=0
   [[ $LOOP_CAP =~ ^[0-9]+$ ]] || LOOP_CAP=1
   [[ $CR_HOUR_CAP =~ ^[0-9]+$ ]] || CR_HOUR_CAP=8
-  RUNS_WEEK=$(count_ledger "$WEEK_START" "$TODAY_UTC")
+  # The week's count starts at .period_start in the budget file when that is a
+  # date later than Monday: a mid-week budget reset (Scott, 31 Oct). Ported
+  # from the live watcher (#443).
+  local period_start count_from=$WEEK_START
+  period_start=$(jq -r '.period_start // ""' "$BUDGET" 2>/dev/null || true)
+  if [[ $period_start =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ && $period_start > $WEEK_START ]]; then
+    count_from=$period_start
+  fi
+  RUNS_WEEK=$(count_ledger "$count_from" "$TODAY_UTC")
   RUNS_TODAY=$(count_ledger "$TODAY_UTC" "$TODAY_UTC")
   # One build per build-lane cycle. Day and week caps still come from the budget.
   if [[ $LANE == build ]]; then
@@ -1501,7 +1509,15 @@ comment_pr() {
     fi
     return 0
   fi
-  if timeout 60 gh pr comment "$pr" -R "$repo" --body "$body"; then
+  # CodeRabbit ignores bot accounts (#209), so a trigger command
+  # (@coderabbitai ...) posts with this host's own gh login, not the App
+  # token. Every other comment keeps the App token. Ported from the live
+  # watcher, where it has run since 2 Nov (#443).
+  local -a gh_post=(gh)
+  if [[ $body == @coderabbitai* ]]; then
+    gh_post=(env -u GH_TOKEN -u GITHUB_TOKEN gh)
+  fi
+  if timeout 60 "${gh_post[@]}" pr comment "$pr" -R "$repo" --body "$body"; then
     if cr_command_is_limited "$body"; then
       cr_record_request || log "cr request log write failed ${repo}#${pr}"
     fi
@@ -4619,7 +4635,7 @@ step_build() {
       log "run-work-order --push ${order}"
       (
         cd "$dest"
-        GROK_MAX_TURNS=40 timeout 60m bash scripts/run-work-order.sh --push "$order"
+        GROK_MAX_TURNS=60 timeout 60m bash scripts/run-work-order.sh --push "$order"
       ) >"$wlog" 2>&1 || rc=$?
       wdir=$(sed -n 's/^run-work-order: .* in //p' "$wlog" | head -n 1 || true)
       cost=""
