@@ -103,6 +103,8 @@ for name in \
   CLAUDE_CODE_OAUTH_TOKEN \
   OPENCODE_API_KEY OPENROUTER_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY \
   FACTORY_WATCH_ROOT FACTORY_HOME XDG_DATA_HOME \
+  'FACTORY_HOME_REPO=<owner>/<repo>' 'FACTORY_WATCHER_BUILDS=off' \
+  'on its own' \
   gh grok claude opencode podman docker nerdctl \
   'LANE=build' watch.sh watch.new.sh 'systemctl --user'; do
   grep -F -q -- "$name" "$runbook" || fail "runbook does not name $name"
@@ -133,11 +135,13 @@ expect_ok "$tname" \
   FACTORY_CONTAINER_IMAGE="$image" \
   FACTORY_WATCH_ROOT="$work/watch"
 
+# Builds stay on, so the build foreman still needs a grok credential.
 tname=prepared-claudecode
 expect_ok "$tname" \
   GH_AUTH_RC=0 \
   FACTORY_PROVIDER=claudecode \
   CLAUDE_CODE_OAUTH_TOKEN="$secret" \
+  XAI_API_KEY="$secret" \
   FACTORY_CONTAINER_IMAGE="$image" \
   FACTORY_WATCH_ROOT="$work/watch"
 
@@ -146,6 +150,34 @@ expect_ok "$tname" \
   GH_AUTH_RC=0 \
   FACTORY_PROVIDER=opencode \
   ANTHROPIC_API_KEY="$secret" \
+  XAI_API_KEY="$secret" \
+  FACTORY_CONTAINER_IMAGE="$image" \
+  FACTORY_WATCH_ROOT="$work/watch"
+
+tname=prepared-claudecode-builds-off
+expect_ok "$tname" \
+  GH_AUTH_RC=0 \
+  FACTORY_PROVIDER=claudecode \
+  FACTORY_WATCHER_BUILDS=off \
+  CLAUDE_CODE_OAUTH_TOKEN="$secret" \
+  FACTORY_CONTAINER_IMAGE="$image" \
+  FACTORY_WATCH_ROOT="$work/watch"
+
+tname=prepared-opencode-builds-off
+expect_ok "$tname" \
+  GH_AUTH_RC=0 \
+  FACTORY_PROVIDER=opencode \
+  FACTORY_WATCHER_BUILDS=off \
+  ANTHROPIC_API_KEY="$secret" \
+  FACTORY_CONTAINER_IMAGE="$image" \
+  FACTORY_WATCH_ROOT="$work/watch"
+
+tname=prepared-grok-auth-file-only
+printf '%s\n' "$secret" > "$work/auth-file-only"
+expect_ok "$tname" \
+  GH_AUTH_RC=0 \
+  FACTORY_PROVIDER=grok \
+  FACTORY_GROK_AUTH_FILE="$work/auth-file-only" \
   FACTORY_CONTAINER_IMAGE="$image" \
   FACTORY_WATCH_ROOT="$work/watch"
 
@@ -207,13 +239,18 @@ run_pf \
   FACTORY_PROVIDER=grok \
   FACTORY_WATCH_ROOT="$work/empty"
 [[ $pf_rc -ne 0 ]] || fail "unprepared environment exited zero"
-for name in "gh auth status" "XAI_API_KEY" "FACTORY_GROK_BIN" "FACTORY_GROK_AUTH_FILE" \
+for name in "gh auth status" "XAI_API_KEY" "FACTORY_GROK_AUTH_FILE" \
   FACTORY_CONTAINER_IMAGE podman docker nerdctl FACTORY_CONTAINER_RUNTIME \
   "FACTORY_WATCH_ROOT/state"; do
   printf '%s\n' "$pf_out" | grep -F -q -- "$name" || fail "unprepared run omitted $name"
 done
 printf '%s\n' "$pf_out" | grep -F -x -q "watcher-preflight: missing grok" \
   || fail "unprepared run omitted grok"
+printf '%s\n' "$pf_out" | grep -F -x -q "watcher-preflight: missing XAI_API_KEY or FACTORY_GROK_AUTH_FILE" \
+  || fail "unprepared run omitted the grok credential"
+if printf '%s\n' "$pf_out" | grep -F -q -- "FACTORY_GROK_BIN"; then
+  fail "unprepared run named FACTORY_GROK_BIN when it was unset"
+fi
 pass
 reset_bin
 add_cmd podman
@@ -300,6 +337,64 @@ expect_missing "$tname" "FACTORY_WATCH_ROOT/state" \
   XAI_API_KEY="$secret" \
   FACTORY_CONTAINER_IMAGE="$image" \
   FACTORY_WATCH_ROOT="$work/file-root"
+
+tname=unprepared-claudecode-needs-grok
+expect_missing "$tname" "XAI_API_KEY or FACTORY_GROK_AUTH_FILE" \
+  GH_AUTH_RC=0 \
+  FACTORY_PROVIDER=claudecode \
+  CLAUDE_CODE_OAUTH_TOKEN="$secret" \
+  FACTORY_CONTAINER_IMAGE="$image" \
+  FACTORY_WATCH_ROOT="$work/watch"
+
+tname=unprepared-opencode-needs-grok
+expect_missing "$tname" "XAI_API_KEY or FACTORY_GROK_AUTH_FILE" \
+  GH_AUTH_RC=0 \
+  FACTORY_PROVIDER=opencode \
+  ANTHROPIC_API_KEY="$secret" \
+  FACTORY_CONTAINER_IMAGE="$image" \
+  FACTORY_WATCH_ROOT="$work/watch"
+
+tname=unprepared-grok-builds-off
+expect_missing "$tname" "XAI_API_KEY or FACTORY_GROK_AUTH_FILE" \
+  GH_AUTH_RC=0 \
+  FACTORY_PROVIDER=grok \
+  FACTORY_WATCHER_BUILDS=off \
+  FACTORY_CONTAINER_IMAGE="$image" \
+  FACTORY_WATCH_ROOT="$work/watch"
+
+tname=unprepared-auth-file-without-bin
+expect_missing "$tname" FACTORY_GROK_AUTH_FILE \
+  GH_AUTH_RC=0 \
+  FACTORY_PROVIDER=grok \
+  FACTORY_GROK_AUTH_FILE="$work/no-such-auth-file" \
+  FACTORY_CONTAINER_IMAGE="$image" \
+  FACTORY_WATCH_ROOT="$work/watch"
+if printf '%s\n' "$pf_out" | grep -F -q -- FACTORY_GROK_BIN; then
+  fail "auth-file check required FACTORY_GROK_BIN"
+fi
+
+# Non-root owner: mode 0600 is writable but not searchable. Mode 0700 is usable.
+tname=unprepared-state-mode-0600
+[[ $(id -u) -ne 0 ]] || fail "state mode cases need a non-root owner"
+mkdir -p "$work/mode-0600/state"
+chmod 0600 "$work/mode-0600/state"
+expect_missing "$tname" "FACTORY_WATCH_ROOT/state" \
+  GH_AUTH_RC=0 \
+  FACTORY_PROVIDER=grok \
+  XAI_API_KEY="$secret" \
+  FACTORY_CONTAINER_IMAGE="$image" \
+  FACTORY_WATCH_ROOT="$work/mode-0600"
+[[ $pf_out == "watcher-preflight: missing FACTORY_WATCH_ROOT/state" ]] || fail "mode 0600 was accepted or extra items were named"
+
+tname=prepared-state-mode-0700
+mkdir -p "$work/mode-0700/state"
+chmod 0700 "$work/mode-0700/state"
+expect_ok "$tname" \
+  GH_AUTH_RC=0 \
+  FACTORY_PROVIDER=grok \
+  XAI_API_KEY="$secret" \
+  FACTORY_CONTAINER_IMAGE="$image" \
+  FACTORY_WATCH_ROOT="$work/mode-0700"
 
 printf 'test-watcher-preflight: all passed\n'
 exit 0

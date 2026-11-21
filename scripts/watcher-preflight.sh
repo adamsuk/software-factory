@@ -30,29 +30,47 @@ fi
 image_set=0
 [[ -z ${FACTORY_CONTAINER_IMAGE:-} ]] || image_set=1
 
+# Grok credential: XAI_API_KEY, or FACTORY_GROK_AUTH_FILE on its own when the
+# key is unset (scripts/container-env.sh). FACTORY_GROK_BIN is checked only
+# when it is set, and the auth file does not require it.
+check_grok() {
+  if [[ -n ${FACTORY_GROK_BIN:-} ]]; then
+    [[ -f "$FACTORY_GROK_BIN" && -x "$FACTORY_GROK_BIN" ]] || note_missing "FACTORY_GROK_BIN"
+  elif ! command -v grok > /dev/null 2>&1 && [[ $image_set -eq 0 ]]; then
+    note_missing "grok"
+  fi
+  if [[ -z ${XAI_API_KEY:-} ]]; then
+    if [[ -n ${FACTORY_GROK_AUTH_FILE:-} ]]; then
+      # Same stand-in as scripts/container-env.sh: a readable absolute file,
+      # and only the name is reported when it is not.
+      [[ "$FACTORY_GROK_AUTH_FILE" == /* && -f "$FACTORY_GROK_AUTH_FILE" && -r "$FACTORY_GROK_AUTH_FILE" ]] \
+        || note_missing "FACTORY_GROK_AUTH_FILE"
+    else
+      note_missing "XAI_API_KEY or FACTORY_GROK_AUTH_FILE"
+    fi
+  fi
+}
+
+# The build foreman always calls grok, whatever FACTORY_PROVIDER is. When
+# FACTORY_WATCHER_BUILDS=off that step does not run, so a non-grok provider
+# does not need the grok CLI or credential. A grok provider still does.
+grok_for_builds=1
+if [[ ${FACTORY_WATCHER_BUILDS:-} == off ]]; then
+  grok_for_builds=0
+fi
+
 case $provider in
   grok)
-    if [[ -n ${FACTORY_GROK_BIN:-} ]]; then
-      [[ -f "$FACTORY_GROK_BIN" && -x "$FACTORY_GROK_BIN" ]] || note_missing "FACTORY_GROK_BIN"
-    elif ! command -v grok > /dev/null 2>&1 && [[ $image_set -eq 0 ]]; then
-      note_missing "grok"
-    fi
-    if [[ -z ${XAI_API_KEY:-} ]]; then
-      if [[ -n ${FACTORY_GROK_BIN:-} && -n ${FACTORY_GROK_AUTH_FILE:-} ]]; then
-        # Same stand-in as scripts/container-env.sh: a readable absolute file,
-        # and only the name is reported when it is not.
-        [[ "$FACTORY_GROK_AUTH_FILE" == /* && -f "$FACTORY_GROK_AUTH_FILE" && -r "$FACTORY_GROK_AUTH_FILE" ]] \
-          || note_missing "FACTORY_GROK_AUTH_FILE"
-      else
-        note_missing "XAI_API_KEY or FACTORY_GROK_BIN and FACTORY_GROK_AUTH_FILE"
-      fi
-    fi
+    check_grok
     ;;
   claudecode)
     if ! command -v claude > /dev/null 2>&1 && [[ $image_set -eq 0 ]]; then
       note_missing "claude"
     fi
     [[ -n ${CLAUDE_CODE_OAUTH_TOKEN:-} ]] || note_missing "CLAUDE_CODE_OAUTH_TOKEN"
+    if [[ $grok_for_builds -eq 1 ]]; then
+      check_grok
+    fi
     ;;
   opencode)
     if ! command -v opencode > /dev/null 2>&1 && [[ $image_set -eq 0 ]]; then
@@ -60,6 +78,9 @@ case $provider in
     fi
     if [[ -z ${OPENCODE_API_KEY:-} && -z ${OPENROUTER_API_KEY:-} && -z ${OPENAI_API_KEY:-} && -z ${ANTHROPIC_API_KEY:-} ]]; then
       note_missing "OPENCODE_API_KEY, OPENROUTER_API_KEY, OPENAI_API_KEY or ANTHROPIC_API_KEY"
+    fi
+    if [[ $grok_for_builds -eq 1 ]]; then
+      check_grok
     fi
     ;;
 esac
@@ -91,7 +112,9 @@ else
   factory_home=${FACTORY_HOME:-${XDG_DATA_HOME:-${HOME:-}/.local/share}/software-factory}
   state=${factory_home}/factory-watch/state
 fi
-[[ -d "$state" && -w "$state" ]] || note_missing "FACTORY_WATCH_ROOT/state"
+# Write alone is not enough: without search permission a non-root watcher
+# cannot open files inside the directory. Mode 0600 fails; mode 0700 passes.
+[[ -d "$state" && -w "$state" && -x "$state" ]] || note_missing "FACTORY_WATCH_ROOT/state"
 
 if [[ ${#missing[@]} -gt 0 ]]; then
   for item in "${missing[@]}"; do
