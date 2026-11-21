@@ -55,10 +55,19 @@
 # CI results, and CodeRabbit's open threads as untrusted data. Verdict PASS,
 # FIX (list of findings), or ESCALATE, saved in ireview-result-*.json, posted
 # as a short comment (no @ mentions), marker ireview-*, counted in the ledger
-# and Grok caps; out of budget means wait. The script scope check on
+# and Grok caps; out of budget means wait. Before that comment is posted,
+# ir_guard_open_coderabbit rewrites a PASS when this head still has an
+# unresolved, not-outdated CodeRabbit review thread, an unresolved CodeRabbit
+# comment, or a CodeRabbit review in COMMENTED or CHANGES_REQUESTED. The
+# saved verdict is FIX for a small in-scope finding and ESCALATE when a
+# person must act, and the comment lists each outstanding finding as
+# addressed, dismissed with a reason, or escalated. Outdated threads and
+# threads only on earlier commits do not rewrite PASS. The outdated-review
+# dismiss below still runs only after a valid PASS. The script scope check on
 # CodeRabbit commits forces ESCALATE without Grok. (3) merge_gate: ready only
-# when checks are green AND the verdict on this head is PASS. CodeRabbit
-# CHANGES_REQUESTED alone no longer blocks; APPROVED alone no longer suffices.
+# when checks are green AND the verdict on this head is PASS. An outdated
+# CodeRabbit CHANGES_REQUESTED does not by itself block that PASS; APPROVED
+# alone no longer suffices.
 # Ordinary factory/ PASS PRs merge (standing permission); sensitive PASS PRs
 # (protected, CI, test, lockfile) go to the maintainer as ready with the summary.
 # Ordinary and allowlisted PASS + green factory/ PRs whose GitHub state is
@@ -3946,6 +3955,11 @@ step_independent_review() {
     fi
     result_file=$(ir_result_file "$repo" "$pr" "$GATE_SHA")
     if [[ -s $result_file ]]; then
+      # A result saved before the comment went out still has to pass the open
+      # CodeRabbit guard. An already-posted comment is left as it was.
+      if [[ ! -e ${STATE}/ireview-posted-${slug}-${pr}-${GATE_SHA} ]]; then
+        ir_guard_open_coderabbit "$repo" "$pr" "$result_file" "$GATE_SHA"
+      fi
       ir_post_comment "$repo" "$pr" "$GATE_SHA" || log "independent review comment failed ${repo}#${pr}"
       continue
     fi
@@ -4005,13 +4019,14 @@ step_independent_review() {
       if (( cr_large )); then
         printf '%s\n' "You are the independent reviewer for ${repo} pull request #${pr}, branch ${GATE_BRANCH}, head ${GATE_SHA}. CodeRabbit has already reviewed it; you decide, CodeRabbit does not."
         printf '%s\n' "Judge the whole change against its work order or issue: correctness, whether it meets the acceptance criteria, scope, tests, CI, security."
-        printf '%s\n' "Weigh every open CodeRabbit finding: either list it under fix (worth fixing in this PR) or under dismissed as 'finding - one-line reason it is not blocking'. Add your own findings to fix when they are worth fixing."
+        printf '%s\n' "Weigh every open CodeRabbit finding on this head. List a small in-scope change under fix. List a finding that needs a person under escalate. A dismissed note ('finding - one-line reason') does not allow PASS while that finding is still open on this head. Add your own findings to fix when they are worth fixing."
       else
         printf '%s\n' "You are the independent reviewer for ${repo} pull request #${pr}, branch ${GATE_BRANCH}, head ${GATE_SHA}. CodeRabbit does not review pull requests this size; you are the only review before merge, so be thorough."
         printf '%s\n' "Judge the whole change against its work order or issue. Cover each of these, and put a gap under fix or escalate, or dismiss it with a one-line reason: (1) secrets or credentials in the diff; (2) existing tests weakened, skipped, deleted, or assertions loosened; (3) every acceptance criterion met; (4) protected-path, CI or lockfile changes beyond the work order; (5) error handling that fails open; (6) blast radius: what else this can break; (7) behaviour nobody asked for."
         printf '%s\n' "Add your own findings to fix when they are worth fixing."
       fi
       printf '%s\n' "Verdict PASS: ready to merge; nothing in fix. FIX: fix lists concrete, small, in-scope changes (prefix each with 'CodeRabbit:' or 'Review:'). ESCALATE: needs a person - risky or irreversible change, scope creep beyond the work order, tests weakened, skipped or deleted, CI weakened, secrets or security concerns; say why under escalate."
+      printf '%s\n' "Do not return PASS while a CodeRabbit review thread on this head is unresolved and not outdated, an unresolved CodeRabbit comment is on this head, or a CodeRabbit review on this head is COMMENTED or CHANGES_REQUESTED and not outdated. Put each of those under fix when it is a small in-scope change, or under escalate when a person must act. Listing one only under dismissed does not allow PASS while it is still open. An outdated thread, or a thread only on an earlier commit, does not by itself block PASS."
       printf '%s\n' "summary is one or two plain sentences. Keep each list item to one line."
       printf '%s\n' "Also fill the four review-record fields, each one or two plain sentences: agreed_behaviour is what this head was supposed to do, from the acceptance criteria and the work order. checks_ran is the checks that ran on this head and what they reported. unasked_behaviour is behaviour in this head the acceptance criteria do not ask for; the literal string none when there is none. blast_radius is what else this head can change or break."
       printf '%s\n' "You may read files and run git log, git show, and git diff in this checkout. Do not edit files. Do not commit, push, rebase, merge, or run gh. Do not comment on the pull request. The watcher posts the verdict."
@@ -4031,10 +4046,302 @@ step_independent_review() {
     fi
     (( ir_rc != 0 )) && log "independent review grok rc=${ir_rc} ${repo}#${pr}"
     ir_save_result "$GROK_LAST_OUT" "$result_file" "$GATE_SHA"
+    ir_guard_open_coderabbit "$repo" "$pr" "$result_file" "$GATE_SHA"
     ir_post_comment "$repo" "$pr" "$GATE_SHA" || log "independent review comment failed ${repo}#${pr}"
     note "independent review ${repo}#${pr} $(jq -r '.verdict' "$result_file") head ${GATE_SHORT}"
     continue
   done
+}
+
+# $1 graphql reviewThreads JSON, $2 pull review-comment array, $3 pull
+# review array. Prints {threads, comments, reviews} for ir_blocking_findings.
+# A comment on a resolved thread is marked resolved. A comment on an outdated
+# thread has a null position, which the blocker treats as outdated. No gh calls.
+ir_normalize_open() {
+  jq -nc --slurpfile threads "$1" --slurpfile comments "$2" --slurpfile reviews "$3" '
+def login($u):
+  if ($u | type) == "string" then $u
+  elif ($u | type) == "object" then ($u.login // "")
+  else "" end;
+($threads[0].data.repository.pullRequest.reviewThreads.nodes // []) as $nodes
+| [ $nodes[] | {
+      isResolved: (.isResolved == true),
+      isOutdated: (.isOutdated == true),
+      path: (.path // ""),
+      comments: [ (.comments.nodes // [])[] | {
+        author: (.author.login // ""),
+        body: (.body // ""),
+        commit: (.originalCommit.oid // ""),
+        id: (.databaseId // null)
+      } ]
+    }
+  ] as $t
+| [ $t[] | . as $th | .comments[] | select(.id != null) | {id: (.id | tostring), resolved: $th.isResolved, outdated: $th.isOutdated} ] as $ids
+| [ ($comments[0] // [])[] | . as $c
+    | ([$ids[] | select(.id == ($c.id | tostring))] | first // null) as $st
+    | {
+        author: login($c.user),
+        body: ($c.body // ""),
+        original_commit_id: ($c.original_commit_id // ""),
+        commit_id: ($c.commit_id // ""),
+        position: (if ($st != null and $st.outdated) then null else $c.position end),
+        resolved: (if $st == null then false else $st.resolved end)
+      }
+  ] as $c
+| [ ($reviews[0] // [])[] | {
+      author: login(.user),
+      state: (.state // ""),
+      commit_id: (.commit_id // ""),
+      body: (.body // ""),
+      outdated: (.outdated == true)
+    }
+  ] as $r
+| {threads: $t, comments: $c, reviews: $r}
+  '
+}
+
+# $1 head sha, $2 normalized payload JSON file. Prints a JSON array of
+# CodeRabbit findings on that head that block an independent PASS. A finding
+# is blocking when it is a CodeRabbit review thread that is unresolved and
+# not outdated and has a CodeRabbit comment on this head, an unresolved
+# CodeRabbit review comment on this head (original commit, not a re-anchored
+# commit_id; position null means outdated), or a CodeRabbit review in
+# COMMENTED or CHANGES_REQUESTED on this head. Outdated threads, and threads
+# whose CodeRabbit comments sit only on earlier commits, are left out.
+# Prints [] when nothing blocks. Does not call gh.
+ir_blocking_findings() {
+  local sha=$1 payload=$2
+  jq -c --arg sha "$sha" '
+def who($u):
+  if ($u | type) == "object" then ($u.login // "")
+  elif ($u | type) == "string" then $u
+  else "" end;
+def cr($s): ($s | ascii_downcase | test("coderabbit"));
+def same($a): (($a // "") | ascii_downcase) == ($sha | ascii_downcase);
+def one($s):
+  ($s // "" | tostring | gsub("[\r\n]+"; " ") | gsub("[[:space:]]+"; " ") | gsub("^[[:space:]]+|[[:space:]]+$"; "") | .[0:240]);
+def body_or($s; $fallback):
+  if (($s // "") | tostring | gsub("[[:space:]]+"; "") | length) > 0 then ($s | tostring) else $fallback end;
+[ (.threads // [])[]
+  | select(.isResolved != true and .isOutdated != true)
+  | . as $t
+  | [ ($t.comments // [])[] | select(cr(who(.author))) ] as $cc
+  | select(($cc | length) > 0)
+  | [ $cc[] | select(same(.commit)) ] as $on
+  | select(($on | length) > 0)
+  | one(body_or(([$on[].body | select((. // "") | tostring | gsub("[[:space:]]+"; "") | length > 0)] | first); ($t.path // "CodeRabbit review thread"))) as $text
+  | select($text != "")
+  | {kind: "thread", text: $text}
+] as $threads
+| [ (.comments // [])[]
+    | select(cr(who(.author)))
+    | select(same(.original_commit_id))
+    | select(.position != null)
+    | select(.resolved != true)
+    | one(body_or(.body; "CodeRabbit review comment")) as $text
+    | select($text != "")
+    | {kind: "comment", text: $text}
+  ] as $comments
+| [ (.reviews // [])[]
+    | select(cr(who(.author // .user)))
+    | select((.state // "") | ascii_upcase | (. == "COMMENTED" or . == "CHANGES_REQUESTED"))
+    | select(same(.commit_id))
+    | select(.outdated != true)
+    | one(body_or(.body; "CodeRabbit review " + ((.state // "") | ascii_upcase) + " on this head")) as $text
+    | select($text != "")
+    | {kind: "review", text: $text}
+  ] as $reviews
+| reduce ($threads + $comments + $reviews)[] as $i
+    ([]; if any(.[]; .text == $i.text) then . else . + [$i] end)
+  ' "$payload"
+}
+
+# $1 saved result file, $2 blocking-findings JSON array from ir_blocking_findings.
+# A non-empty array rewrites PASS. A small in-scope finding becomes FIX. A
+# finding that needs a person (protected path, secret, weakened test or CI,
+# lockfile, security, irreversible change, scope creep) becomes ESCALATE.
+# A model PASS that only lists the finding under dismissed is not kept: the
+# comment disposition is "dismissed: <reason>" when the model gave a reason,
+# and the verdict is still FIX while the thread is open. Each finding is
+# stored on .outstanding as addressed, dismissed: <reason>, or escalated.
+# An empty array leaves the file unchanged, so an outdated thread or a thread
+# only on an earlier commit does not turn PASS into FIX or ESCALATE.
+ir_apply_open_coderabbit() {
+  local dest=$1 block=$2 tmp
+  [[ -s $dest && -s $block ]] || return 0
+  if ! jq -e 'type == "array" and length > 0' "$block" >/dev/null 2>&1; then
+    return 0
+  fi
+  tmp=$(mktemp "${dest}.XXXXXX") || return 1
+  if jq -c --slurpfile block "$block" '
+def one_line($s):
+  ($s // "" | tostring | gsub("[\r\n]+"; " ") | gsub("[[:space:]]+"; " ") | gsub("^[[:space:]]+|[[:space:]]+$"; "") | .[0:240]);
+def person:
+  test("needs a person|protected path|protected file|(^|[^[:alpha:]])secrets?([^[:alpha:]]|$)|(^|[^[:alpha:]])credentials?([^[:alpha:]]|$)|test weakened|tests weakened|weakened test|skipped or deleted|assertion loosened|(^|[^[:alpha:]])lockfile([^[:alpha:]]|$)|security concern|irreversible|scope creep|CI weakened|workflow weakened"; "i");
+def reason_for($dismissed; $text):
+  ([ $dismissed[]? | tostring | select(ascii_downcase | startswith($text | ascii_downcase)) ] | first // "") as $line
+  | if $line == "" then ""
+    else
+      ($line[($text | length):] | gsub("^[[:space:]]+|[[:space:]]+$"; "")) as $rest
+      | if ($rest | startswith("-")) then ($rest[1:] | gsub("^[[:space:]]+|[[:space:]]+$"; ""))
+        else "" end
+    end;
+def prior_of($prior; $text):
+  ([ $prior[]? | select((.text // "") == $text) | (.disposition // "") ] | first // "");
+def model_escalates($escalate; $text):
+  [ $escalate[]? | tostring | select(ascii_downcase | contains($text | ascii_downcase)) | select(person) ] | length > 0;
+($block[0] // []) as $raw
+| ((.dismissed // []) | map(tostring)) as $dismissed
+| ((.escalate // []) | map(tostring)) as $escalate
+| (.outstanding // []) as $prior
+| (.verdict | tostring | ascii_upcase) as $was
+| [ $raw[]?
+    | one_line(.text) as $text
+    | select($text != "")
+    | (prior_of($prior; $text)) as $prev
+    | (if $prev != "" then $prev
+       elif (($text | person) or model_escalates($escalate; $text)) then "escalated"
+       else
+         (reason_for($dismissed; $text)) as $why
+         | if $why != "" then "dismissed: " + ($why | .[0:200])
+           else "addressed" end
+       end) as $disp
+    | {text: $text, disposition: $disp}
+  ] as $out
+| if ($out | length) == 0 then .
+  else
+    (if ([ $out[] | select(.disposition == "escalated")] | length) > 0 or $was == "ESCALATE" then "ESCALATE" else "FIX" end) as $v
+    | .verdict = $v
+    | .outstanding = ($out | .[0:15])
+    | .summary = (
+        ((.summary // "") | tostring) as $s
+        | if ($s | contains("Open CodeRabbit findings on this head block PASS.")) then ($s | .[0:600])
+          else (($s + " Open CodeRabbit findings on this head block PASS.") | gsub("[[:space:]]+"; " ") | gsub("^[[:space:]]+|[[:space:]]+$"; "") | .[0:600])
+          end
+      )
+    | .fix = (
+        (((.fix // []) | map(tostring)) + [ $out[] | select(.disposition != "escalated") | "CodeRabbit: " + .text ])
+        | unique | map(.[0:400]) | .[0:10]
+      )
+    | .escalate = (
+        (((.escalate // []) | map(tostring)) + [ $out[] | select(.disposition == "escalated") | "CodeRabbit: " + .text ])
+        | unique | map(.[0:400]) | .[0:6]
+      )
+    | .dismissed = (
+        [ $dismissed[]
+          | . as $d
+          | select([ $out[].text | . as $t | select(($d | ascii_downcase) | startswith($t | ascii_downcase)) ] | length == 0)
+          | .[0:400]
+        ] | .[0:15]
+      )
+  end
+  ' "$dest" >"$tmp"; then
+    mv "$tmp" "$dest"
+  else
+    rm -f "$tmp"
+    return 1
+  fi
+}
+
+# $1 repo, $2 pr. Prints the normalized open-CodeRabbit payload. Returns 1
+# when a read fails. The caller logs and keeps the model verdict on failure.
+ir_fetch_open_payload() {
+  local repo=$1 pr=$2
+  local owner=${repo%%/*} name=${repo#*/}
+  local threads comments reviews query rc
+  threads=$(mktemp) || return 1
+  comments=$(mktemp) || { rm -f "$threads"; return 1; }
+  reviews=$(mktemp) || { rm -f "$threads" "$comments"; return 1; }
+  query=$(cat <<EOF
+query(\$owner:String!,\$name:String!,\$number:Int!){
+  repository(owner:\$owner, name:\$name){
+    pullRequest(number:\$number){
+      reviewThreads(first:100){
+        pageInfo { hasNextPage }
+        nodes {
+          isResolved
+          isOutdated
+          path
+          comments(first:30) {
+            nodes { databaseId author { login } body originalCommit { oid } }
+          }
+        }
+      }
+    }
+  }
+}
+EOF
+)
+  if ! timeout 120 gh api graphql -f query="$query" -f owner="$owner" -f name="$name" -F number="$pr" >"$threads" 2>"${threads}.err"; then
+    log "open-coderabbit threads failed ${repo}#${pr}: $(redact <"${threads}.err" | tr '\n' ' ')"
+    rm -f "$threads" "${threads}.err" "$comments" "$reviews"
+    return 1
+  fi
+  rm -f "${threads}.err"
+  if ! jq -e '.data.repository.pullRequest.reviewThreads' "$threads" >/dev/null 2>&1; then
+    log "open-coderabbit threads unreadable ${repo}#${pr}"
+    rm -f "$threads" "$comments" "$reviews"
+    return 1
+  fi
+  if jq -e '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage == true' "$threads" >/dev/null 2>&1; then
+    log "warning: ${repo}#${pr} has more than 100 review threads; open-coderabbit check uses the first page"
+  fi
+  if ! timeout 120 gh api --paginate "repos/${repo}/pulls/${pr}/comments" >"$comments" 2>"${comments}.err"; then
+    log "open-coderabbit comments failed ${repo}#${pr}: $(redact <"${comments}.err" | tr '\n' ' ')"
+    rm -f "$threads" "$comments" "${comments}.err" "$reviews"
+    return 1
+  fi
+  rm -f "${comments}.err"
+  if ! timeout 120 gh api --paginate "repos/${repo}/pulls/${pr}/reviews" >"$reviews" 2>"${reviews}.err"; then
+    log "open-coderabbit reviews failed ${repo}#${pr}: $(redact <"${reviews}.err" | tr '\n' ' ')"
+    rm -f "$threads" "$comments" "$reviews" "${reviews}.err"
+    return 1
+  fi
+  rm -f "${reviews}.err"
+  if ! jq -e 'type == "array"' "$comments" >/dev/null 2>&1; then
+    printf '[]\n' > "$comments"
+  fi
+  if ! jq -e 'type == "array"' "$reviews" >/dev/null 2>&1; then
+    printf '[]\n' > "$reviews"
+  fi
+  ir_normalize_open "$threads" "$comments" "$reviews"
+  rc=$?
+  rm -f "$threads" "$comments" "$reviews"
+  return "$rc"
+}
+
+# $1 repo, $2 pr, $3 result file, $4 head sha. Rewrites a saved PASS when
+# CodeRabbit still has a blocking action on that head. A failed read leaves
+# the model verdict and logs. Outdated threads and threads only on earlier
+# commits are not blocking. The outdated-review dismiss path is unchanged
+# and still runs only after a valid PASS.
+ir_guard_open_coderabbit() {
+  local repo=$1 pr=$2 dest=$3 sha=$4 payload block
+  [[ -s $dest ]] || return 0
+  payload=$(mktemp) || {
+    log "independent review open-coderabbit temp failed ${repo}#${pr}"
+    return 0
+  }
+  block=$(mktemp) || {
+    rm -f "$payload"
+    log "independent review open-coderabbit temp failed ${repo}#${pr}"
+    return 0
+  }
+  if ! ir_fetch_open_payload "$repo" "$pr" >"$payload"; then
+    log "independent review open-coderabbit read failed ${repo}#${pr}; model verdict kept"
+    rm -f "$payload" "$block"
+    return 0
+  fi
+  if ! ir_blocking_findings "$sha" "$payload" >"$block"; then
+    log "independent review open-coderabbit parse failed ${repo}#${pr}; model verdict kept"
+    rm -f "$payload" "$block"
+    return 0
+  fi
+  if ! ir_apply_open_coderabbit "$dest" "$block"; then
+    log "independent review open-coderabbit apply failed ${repo}#${pr}"
+  fi
+  rm -f "$payload" "$block"
+  return 0
 }
 
 # $1 grok JSON, $2 result file, $3 sha. Writes a verdict object.
@@ -4141,6 +4448,13 @@ ir_post_comment() {
     + "\n**Behaviour nobody asked for:** " + ((.unasked_behaviour // "not available") | prose)
     + "\n**Blast radius:** " + ((.blast_radius // "not available") | prose)
     + section("Fix:"; (.fix // []))
+    + section("Outstanding CodeRabbit findings:"; [
+        (.outstanding // [])[]
+        | ((.text // "") | tostring) as $t
+        | ((.disposition // "addressed") | tostring) as $d
+        | select(($t | gsub("[[:space:]]+"; "")) != "")
+        | $t + " — " + (if $d == "" then "addressed" else $d end)
+      ])
     + section("CodeRabbit findings not blocking:"; (.dismissed // []))
     + section("Needs a person:"; (.escalate // []))
   ' "$f") || return 1

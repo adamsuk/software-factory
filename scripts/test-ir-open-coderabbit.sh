@@ -1,0 +1,443 @@
+#!/usr/bin/env bash
+# Independent review must not stay PASS while CodeRabbit still has a blocking
+# action on the current head (#451). Offline. A fake gh records the posted
+# comment. Both watcher lanes must agree. No network.
+# Case functions run inside the sourced subshell. LANE_NAME and GH_BODY are
+# exported there, and STATE comes from the watcher. ShellCheck sees those
+# assignments as local to the subshell.
+# shellcheck disable=SC2030,SC2031,SC2153
+set -euo pipefail
+
+here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+root=$(cd "$here/.." && pwd)
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
+pass() { printf 'ok: %s\n' "$*"; }
+
+HEAD=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+OLD=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+
+extract_between() {
+  awk -v start="$2" -v end="$3" '
+    index($0, start) == 1 { on = 1 }
+    on { print }
+    on && index($0, end) == 1 && index($0, start) != 1 { exit }
+  ' "$1"
+}
+
+extract_fn() {
+  awk -v name="$2" '
+    $0 ~ ("^" name "\\(\\)") { on = 1 }
+    on { print }
+    on && /^}/ { exit }
+  ' "$1"
+}
+
+extract_between "$root/scripts/watcher/watch.sh" "# \$1 graphql reviewThreads" "# \$1 grok JSON" > "$work/block.watch"
+extract_between "$root/scripts/watcher/watch.new.sh" "# \$1 graphql reviewThreads" "# \$1 grok JSON" > "$work/block.watch.new"
+cmp -s "$work/block.watch" "$work/block.watch.new" || fail "open-coderabbit blocks differ between watcher lanes"
+pass "open-coderabbit blocks match"
+
+extract_fn "$root/scripts/watcher/watch.sh" ir_post_comment > "$work/post.watch"
+extract_fn "$root/scripts/watcher/watch.new.sh" ir_post_comment > "$work/post.watch.new"
+cmp -s "$work/post.watch" "$work/post.watch.new" || fail "ir_post_comment copies differ"
+pass "ir_post_comment copies match"
+
+extract_fn "$root/scripts/watcher/watch.sh" ir_save_result > "$work/save.watch"
+extract_fn "$root/scripts/watcher/watch.new.sh" ir_save_result > "$work/save.watch.new"
+cmp -s "$work/save.watch" "$work/save.watch.new" || fail "ir_save_result copies differ"
+pass "ir_save_result copies match"
+
+for lane in watch watch.new; do
+  body=$(sed -n '/^step_independent_review() {/,/^}/p' "$root/scripts/watcher/${lane}.sh")
+  [[ -n $body ]] || fail "$lane: step_independent_review not found"
+  printf '%s\n' "$body" | awk '
+    /ir_save_result / { saved = NR }
+    saved && !guarded && /ir_guard_open_coderabbit / { guarded = NR }
+    guarded && !posted && /ir_post_comment / { posted = NR }
+    END { exit !(saved && guarded && posted && saved < guarded && guarded < posted) }
+  ' || fail "$lane: ir_guard_open_coderabbit is not between ir_save_result and ir_post_comment"
+  printf '%s\n' "$body" | awk '
+    /ir_save_result / { exit }
+    /ir_guard_open_coderabbit / { guarded = 1 }
+    /ir_post_comment / { if (guarded) ok = 1 }
+    END { exit !ok }
+  ' || fail "$lane: an unposted saved result is posted without the open-coderabbit guard"
+  grep -F -q 'Do not return PASS while a CodeRabbit review thread on this head is unresolved and not outdated' <<< "$body" \
+    || fail "$lane: independent-review prompt does not refuse PASS for an open CodeRabbit finding"
+  grep -F -q 'CodeRabbit does not review pull requests this size; you are the only review before merge' <<< "$body" \
+    || fail "$lane: small-pull-request prompt was dropped"
+done
+pass "both lanes call the guard before posting"
+
+grep -F -q 'no outstanding blocking CodeRabbit action remains on that head' "$root/agents/roles/reviewer.md" \
+  || fail "reviewer brief does not refuse PASS while a CodeRabbit action is open"
+grep -F -q 'dismissed with a reason, or escalated' "$root/agents/roles/reviewer.md" \
+  || fail "reviewer brief does not require a disposition for each outstanding finding"
+grep -F -q 'ir_guard_open_coderabbit' "$root/agents/roles/reviewer.md" \
+  || fail "reviewer brief does not name the guard"
+if grep -F -q 'changes-requested alone does **not** force FIX/ESCALATE' "$root/agents/roles/reviewer.md"; then
+  fail "reviewer brief still says a current-head changes-requested review does not force FIX or ESCALATE"
+fi
+pass "reviewer brief states the rule"
+
+export FACTORY_HOME="$work/home"
+export FACTORY_WATCH_ROOT="$work/root"
+export FACTORY_BUDGET_FILE="$work/budget.json"
+export FACTORY_LEDGER_FILE="$work/ledger.csv"
+export FACTORY_HOME_REPO=acme/software-factory
+export FACTORY_REPOS=acme/software-factory
+unset FACTORY_BLOCKED_OWNERS
+mkdir -p "$FACTORY_WATCH_ROOT/state" "$FACTORY_HOME" "$work/bin"
+printf '%s\n' '{"max_grok_build_runs_per_week":20,"max_grok_build_runs_per_day":20,"max_runs_per_loop":5,"max_coderabbit_requests_per_hour":8}' > "$FACTORY_BUDGET_FILE"
+
+cat > "$work/bin/gh" << 'EOF'
+#!/bin/bash
+if [[ ${1:-} == pr && ${2:-} == comment ]]; then
+  while [[ $# -gt 0 ]]; do
+    if [[ $1 == --body && $# -ge 2 ]]; then
+      printf '%s\n' "$2" > "${GH_BODY:?}"
+      exit 0
+    fi
+    shift
+  done
+fi
+printf 'unexpected gh: %s\n' "$*" >&2
+exit 99
+EOF
+chmod +x "$work/bin/gh"
+export PATH="$work/bin:$PATH"
+
+empty_threads() {
+  jq -n '{data:{repository:{pullRequest:{reviewThreads:{pageInfo:{hasNextPage:false},nodes:[]}}}}}'
+}
+
+one_thread() {
+  local resolved=$1 outdated=$2 path=$3 id=$4 author=$5 body=$6 commit=$7
+  jq -n \
+    --argjson resolved "$resolved" --argjson outdated "$outdated" \
+    --arg path "$path" --argjson id "$id" --arg author "$author" \
+    --arg body "$body" --arg commit "$commit" \
+    '{data:{repository:{pullRequest:{reviewThreads:{pageInfo:{hasNextPage:false},nodes:[{
+      isResolved:$resolved, isOutdated:$outdated, path:$path,
+      comments:{nodes:[{databaseId:$id, author:{login:$author}, body:$body, originalCommit:{oid:$commit}}]}
+    }]}}}}}'
+}
+
+two_threads() {
+  local id_a=$1 author_a=$2 body_a=$3 commit_a=$4
+  local id_b=$5 author_b=$6 body_b=$7 commit_b=$8
+  jq -n \
+    --argjson ida "$id_a" --arg aa "$author_a" --arg ba "$body_a" --arg ca "$commit_a" \
+    --argjson idb "$id_b" --arg ab "$author_b" --arg bb "$body_b" --arg cb "$commit_b" \
+    '{data:{repository:{pullRequest:{reviewThreads:{pageInfo:{hasNextPage:false},nodes:[
+      {isResolved:false, isOutdated:false, path:"scripts/a.sh",
+        comments:{nodes:[{databaseId:$ida, author:{login:$aa}, body:$ba, originalCommit:{oid:$ca}}]}},
+      {isResolved:false, isOutdated:false, path:"scripts/b.sh",
+        comments:{nodes:[{databaseId:$idb, author:{login:$ab}, body:$bb, originalCommit:{oid:$cb}}]}}
+    ]}}}}}'
+}
+
+one_comment() {
+  local id=$1 author=$2 body=$3 original=$4 commit=$5 position=$6
+  jq -n \
+    --argjson id "$id" --arg author "$author" --arg body "$body" \
+    --arg original "$original" --arg commit "$commit" --argjson position "$position" \
+    '[{id:$id, user:{login:$author}, body:$body, original_commit_id:$original, commit_id:$commit, position:$position}]'
+}
+
+no_comments() { printf '%s\n' '[]'; }
+
+one_review() {
+  local author=$1 state=$2 commit=$3 body=$4 outdated=${5:-false}
+  jq -n \
+    --arg author "$author" --arg state "$state" --arg commit "$commit" \
+    --arg body "$body" --argjson outdated "$outdated" \
+    '[{user:{login:$author}, state:$state, commit_id:$commit, body:$body, outdated:$outdated}]'
+}
+
+no_reviews() { printf '%s\n' '[]'; }
+
+write_result() {
+  local dest=$1 verdict=$2 dismissed=$3 escalate=$4
+  jq -n --arg sha "$HEAD" --arg verdict "$verdict" --argjson dismissed "$dismissed" --argjson escalate "$escalate" \
+    '{verdict:$verdict, summary:"Meets the criteria.", agreed_behaviour:"do the thing",
+      checks_ran:"tests passed", unasked_behaviour:"none", blast_radius:"one script",
+      fix:[], dismissed:$dismissed, escalate:$escalate, sha:$sha, at:"2026-11-21T00:00:00Z"}' > "$dest"
+}
+
+# $1 case name. Reads the three payload files and writes the lane result.
+apply_case() {
+  local name=$1
+  local norm=$work/${name}.norm.json block=$work/${name}.block.json dest=$work/${name}.result.json
+  ir_normalize_open "$work/${name}.threads.json" "$work/${name}.comments.json" "$work/${name}.reviews.json" > "$norm"
+  ir_blocking_findings "$HEAD" "$norm" > "$block"
+  cp "$dest" "$work/${name}.before.json"
+  ir_apply_open_coderabbit "$dest" "$block"
+  cp "$dest" "$work/${name}.${LANE_NAME}.json"
+  cp "$block" "$work/${name}.${LANE_NAME}.block"
+}
+
+assert_unchanged() {
+  local name=$1
+  cmp -s "$work/${name}.before.json" "$work/${name}.${LANE_NAME}.json" \
+    || fail "$name ($LANE_NAME): PASS was rewritten"
+  jq -e 'type == "array" and length == 0' "$work/${name}.${LANE_NAME}.block" >/dev/null \
+    || fail "$name ($LANE_NAME): expected no blocking findings"
+}
+
+run_in() {
+  local lane=$1 fn=$2 err=$work/stderr.txt
+  if ! (
+    export LANE_NAME=$lane
+    export GH_BODY="$work/body.${fn}.${lane}"
+    # shellcheck disable=SC1090
+    source "$root/scripts/watcher/${lane}.sh"
+    "$fn"
+  ) >"$work/stdout.txt" 2>"$err"; then
+    printf 'FAIL: %s (%s)\n' "$fn" "$lane" >&2
+    cat "$err" >&2
+    exit 1
+  fi
+}
+
+both_lanes() {
+  local fn=$1
+  local lane
+  for lane in watch watch.new; do
+    run_in "$lane" "$fn"
+  done
+  cmp -s "$work/${fn}.watch.json" "$work/${fn}.watch.new.json" || fail "$fn: lanes disagree on the saved verdict"
+}
+
+case_dismissed_thread() {
+  local name=${FUNCNAME[0]} text="Rename the helper so the name matches the check."
+  one_thread false false scripts/foo.sh 101 'coderabbitai[bot]' "$text" "$HEAD" > "$work/${name}.threads.json"
+  one_comment 101 'coderabbitai[bot]' "$text" "$HEAD" "$HEAD" 12 > "$work/${name}.comments.json"
+  no_reviews > "$work/${name}.reviews.json"
+  write_result "$work/${name}.result.json" PASS "$(jq -n --arg t "$text" '[$t + " - the name is internal"]')" '[]'
+  apply_case "$name"
+  jq -e --arg t "$text" --arg sha "$HEAD" '
+    .verdict == "FIX"
+    and .sha == $sha
+    and (.outstanding | length) == 1
+    and .outstanding[0].text == $t
+    and .outstanding[0].disposition == "dismissed: the name is internal"
+    and ([.fix[]? | select(. == "CodeRabbit: " + $t)] | length) == 1
+    and ([.dismissed[]? | select(startswith($t))] | length) == 0
+    and (.summary | contains("Open CodeRabbit findings on this head block PASS."))
+  ' "$work/${name}.${LANE_NAME}.json" >/dev/null || fail "$name ($LANE_NAME): dismissed finding still PASS or missing disposition"
+}
+
+case_addressed_thread() {
+  local name=${FUNCNAME[0]} text="Use a named constant for the limit."
+  one_thread false false scripts/foo.sh 102 'coderabbitai[bot]' "$text" "$HEAD" > "$work/${name}.threads.json"
+  one_comment 102 'coderabbitai[bot]' "$text" "$HEAD" "$HEAD" 4 > "$work/${name}.comments.json"
+  no_reviews > "$work/${name}.reviews.json"
+  write_result "$work/${name}.result.json" PASS '[]' '[]'
+  apply_case "$name"
+  jq -e --arg t "$text" '
+    .verdict == "FIX"
+    and .outstanding[0].text == $t
+    and .outstanding[0].disposition == "addressed"
+  ' "$work/${name}.${LANE_NAME}.json" >/dev/null || fail "$name ($LANE_NAME): in-scope finding was not FIX/addressed"
+}
+
+case_secret_escalates() {
+  local name=${FUNCNAME[0]} text="This change prints a secret in the log."
+  one_thread false false scripts/foo.sh 103 'coderabbitai[bot]' "$text" "$HEAD" > "$work/${name}.threads.json"
+  one_comment 103 'coderabbitai[bot]' "$text" "$HEAD" "$HEAD" 8 > "$work/${name}.comments.json"
+  no_reviews > "$work/${name}.reviews.json"
+  write_result "$work/${name}.result.json" PASS "$(jq -n --arg t "$text" '[$t + " - not a real secret"]')" '[]'
+  apply_case "$name"
+  jq -e --arg t "$text" '
+    .verdict == "ESCALATE"
+    and .outstanding[0].text == $t
+    and .outstanding[0].disposition == "escalated"
+    and ([.escalate[]? | select(. == "CodeRabbit: " + $t)] | length) == 1
+    and ([.fix[]? | select(startswith("CodeRabbit: "))] | length) == 0
+  ' "$work/${name}.${LANE_NAME}.json" >/dev/null || fail "$name ($LANE_NAME): a secret finding was not escalated"
+}
+
+case_comment_only() {
+  local name=${FUNCNAME[0]} text="Handle the empty list before indexing."
+  empty_threads > "$work/${name}.threads.json"
+  one_comment 201 'coderabbitai' "$text" "$HEAD" "$HEAD" 6 > "$work/${name}.comments.json"
+  no_reviews > "$work/${name}.reviews.json"
+  write_result "$work/${name}.result.json" PASS '[]' '[]'
+  apply_case "$name"
+  jq -e --arg t "$text" '
+    .verdict == "FIX" and .outstanding[0].text == $t and .outstanding[0].disposition == "addressed"
+  ' "$work/${name}.${LANE_NAME}.json" >/dev/null || fail "$name ($LANE_NAME): an unresolved comment on the head stayed PASS"
+}
+
+case_commented_review() {
+  local name=${FUNCNAME[0]} text="Walkthrough of the new check."
+  empty_threads > "$work/${name}.threads.json"
+  no_comments > "$work/${name}.comments.json"
+  one_review 'coderabbitai[bot]' COMMENTED "$HEAD" "$text" false > "$work/${name}.reviews.json"
+  write_result "$work/${name}.result.json" PASS '[]' '[]'
+  apply_case "$name"
+  jq -e --arg t "$text" '.verdict == "FIX" and .outstanding[0].text == $t' \
+    "$work/${name}.${LANE_NAME}.json" >/dev/null || fail "$name ($LANE_NAME): COMMENTED review on the head stayed PASS"
+}
+
+case_changes_requested() {
+  local name=${FUNCNAME[0]} text="Please handle the empty list."
+  empty_threads > "$work/${name}.threads.json"
+  no_comments > "$work/${name}.comments.json"
+  one_review 'coderabbitai[bot]' CHANGES_REQUESTED "$HEAD" "$text" false > "$work/${name}.reviews.json"
+  write_result "$work/${name}.result.json" PASS '[]' '[]'
+  apply_case "$name"
+  jq -e --arg t "$text" '.verdict == "FIX" and .outstanding[0].text == $t' \
+    "$work/${name}.${LANE_NAME}.json" >/dev/null || fail "$name ($LANE_NAME): CHANGES_REQUESTED on the head stayed PASS"
+}
+
+case_outdated_thread() {
+  local name=${FUNCNAME[0]} text="Outdated note about the helper."
+  one_thread false true README.md 301 'coderabbitai[bot]' "$text" "$HEAD" > "$work/${name}.threads.json"
+  one_comment 301 'coderabbitai[bot]' "$text" "$HEAD" "$HEAD" 9 > "$work/${name}.comments.json"
+  no_reviews > "$work/${name}.reviews.json"
+  write_result "$work/${name}.result.json" PASS '[]' '[]'
+  apply_case "$name"
+  assert_unchanged "$name"
+}
+
+case_earlier_commit() {
+  local name=${FUNCNAME[0]} text="Earlier head note."
+  one_thread false false README.md 302 'coderabbitai[bot]' "$text" "$OLD" > "$work/${name}.threads.json"
+  one_comment 302 'coderabbitai[bot]' "$text" "$OLD" "$HEAD" 5 > "$work/${name}.comments.json"
+  no_reviews > "$work/${name}.reviews.json"
+  write_result "$work/${name}.result.json" PASS '[]' '[]'
+  apply_case "$name"
+  assert_unchanged "$name"
+}
+
+case_resolved_thread() {
+  local name=${FUNCNAME[0]} text="Already fixed the helper name."
+  one_thread true false scripts/foo.sh 303 'coderabbitai[bot]' "$text" "$HEAD" > "$work/${name}.threads.json"
+  one_comment 303 'coderabbitai[bot]' "$text" "$HEAD" "$HEAD" 2 > "$work/${name}.comments.json"
+  no_reviews > "$work/${name}.reviews.json"
+  write_result "$work/${name}.result.json" PASS '[]' '[]'
+  apply_case "$name"
+  assert_unchanged "$name"
+}
+
+case_human_comment() {
+  local name=${FUNCNAME[0]} text="Please rename the helper."
+  empty_threads > "$work/${name}.threads.json"
+  one_comment 304 octocat "$text" "$HEAD" "$HEAD" 3 > "$work/${name}.comments.json"
+  one_review octocat COMMENTED "$HEAD" "$text" false > "$work/${name}.reviews.json"
+  write_result "$work/${name}.result.json" PASS '[]' '[]'
+  apply_case "$name"
+  assert_unchanged "$name"
+}
+
+case_approved_review() {
+  local name=${FUNCNAME[0]}
+  empty_threads > "$work/${name}.threads.json"
+  no_comments > "$work/${name}.comments.json"
+  one_review 'coderabbitai[bot]' APPROVED "$HEAD" "Looks good." false > "$work/${name}.reviews.json"
+  write_result "$work/${name}.result.json" PASS '[]' '[]'
+  apply_case "$name"
+  assert_unchanged "$name"
+}
+
+case_old_changes_requested() {
+  local name=${FUNCNAME[0]}
+  empty_threads > "$work/${name}.threads.json"
+  no_comments > "$work/${name}.comments.json"
+  one_review 'coderabbitai[bot]' CHANGES_REQUESTED "$OLD" "Old requested change." false > "$work/${name}.reviews.json"
+  write_result "$work/${name}.result.json" PASS '[]' '[]'
+  apply_case "$name"
+  assert_unchanged "$name"
+}
+
+case_outdated_review() {
+  local name=${FUNCNAME[0]}
+  empty_threads > "$work/${name}.threads.json"
+  no_comments > "$work/${name}.comments.json"
+  one_review 'coderabbitai[bot]' COMMENTED "$HEAD" "Stale walkthrough." true > "$work/${name}.reviews.json"
+  write_result "$work/${name}.result.json" PASS '[]' '[]'
+  apply_case "$name"
+  assert_unchanged "$name"
+}
+
+case_null_position_comment() {
+  local name=${FUNCNAME[0]} text="Position was cleared."
+  empty_threads > "$work/${name}.threads.json"
+  one_comment 305 'coderabbitai[bot]' "$text" "$HEAD" "$HEAD" null > "$work/${name}.comments.json"
+  no_reviews > "$work/${name}.reviews.json"
+  write_result "$work/${name}.result.json" PASS '[]' '[]'
+  apply_case "$name"
+  assert_unchanged "$name"
+}
+
+case_posts_dispositions() {
+  local name=${FUNCNAME[0]}
+  local small="Rename the helper so the name matches the check."
+  local secret="This change prints a secret in the log."
+  two_threads 401 'coderabbitai[bot]' "$small" "$HEAD" 402 'coderabbitai[bot]' "$secret" "$HEAD" > "$work/${name}.threads.json"
+  jq -n --arg head "$HEAD" --arg small "$small" --arg secret "$secret" '[
+    {id:401, user:{login:"coderabbitai[bot]"}, body:$small, original_commit_id:$head, commit_id:$head, position:1},
+    {id:402, user:{login:"coderabbitai[bot]"}, body:$secret, original_commit_id:$head, commit_id:$head, position:2}
+  ]' > "$work/${name}.comments.json"
+  no_reviews > "$work/${name}.reviews.json"
+  write_result "$work/${name}.result.json" PASS "$(jq -n --arg t "$small" '[$t + " - the name is internal"]')" '[]'
+  apply_case "$name"
+  jq -e --arg small "$small" --arg secret "$secret" '
+    .verdict == "ESCALATE"
+    and (.outstanding | length) == 2
+    and .outstanding[0].text == $small
+    and .outstanding[0].disposition == "dismissed: the name is internal"
+    and .outstanding[1].text == $secret
+    and .outstanding[1].disposition == "escalated"
+  ' "$work/${name}.${LANE_NAME}.json" >/dev/null || fail "$name ($LANE_NAME): mixed findings were not escalated with both dispositions"
+  rm -f "${STATE}/ireview-posted-acme_software-factory-7-${HEAD}"
+  local f
+  f=$(ir_result_file acme/software-factory 7 "$HEAD")
+  cp "$work/${name}.${LANE_NAME}.json" "$f"
+  ir_post_comment acme/software-factory 7 "$HEAD" || fail "$name ($LANE_NAME): ir_post_comment failed"
+  [[ -s "$GH_BODY" ]] || fail "$name ($LANE_NAME): comment body was not recorded"
+  grep -F -q '**Independent review (after CodeRabbit): ESCALATE**' "$GH_BODY" \
+    || fail "$name ($LANE_NAME): posted verdict is not ESCALATE"
+  grep -F -q 'Outstanding CodeRabbit findings:' "$GH_BODY" \
+    || fail "$name ($LANE_NAME): comment has no outstanding list"
+  grep -F -q "${small} — dismissed: the name is internal" "$GH_BODY" \
+    || fail "$name ($LANE_NAME): comment lacks the dismissed disposition"
+  grep -F -q "${secret} — escalated" "$GH_BODY" \
+    || fail "$name ($LANE_NAME): comment lacks the escalated disposition"
+  if grep -F -q 'CodeRabbit findings not blocking:' "$GH_BODY"; then
+    fail "$name ($LANE_NAME): an open finding is still listed as not blocking"
+  fi
+  cp "$GH_BODY" "$work/${name}.${LANE_NAME}.comment"
+}
+
+for fn in \
+  case_dismissed_thread \
+  case_addressed_thread \
+  case_secret_escalates \
+  case_comment_only \
+  case_commented_review \
+  case_changes_requested \
+  case_outdated_thread \
+  case_earlier_commit \
+  case_resolved_thread \
+  case_human_comment \
+  case_approved_review \
+  case_old_changes_requested \
+  case_outdated_review \
+  case_null_position_comment \
+  case_posts_dispositions
+do
+  both_lanes "$fn"
+  pass "$fn"
+done
+
+cmp -s "$work/case_posts_dispositions.watch.comment" "$work/case_posts_dispositions.watch.new.comment" \
+  || fail "posted comments differ between lanes"
+pass "posted comments match"
+
+echo "all open-coderabbit independent-review tests passed"
