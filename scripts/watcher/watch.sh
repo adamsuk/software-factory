@@ -61,7 +61,16 @@
 # review in COMMENTED or CHANGES_REQUESTED, from any reviewer. The
 # saved verdict is FIX for a small in-scope finding and ESCALATE when a
 # person must act, and the comment lists each outstanding finding as
-# addressed, dismissed with a reason, or escalated. That pass also replies
+# addressed, dismissed with a reason, or escalated. Every outstanding finding
+# is kept; a comment that would exceed the length limit is split. The model's
+# own fix entries are kept when guard findings are added. On a later cycle the
+# routed verdict is computed again from the model result and the findings still
+# open: a guard-only FIX is cleared once nothing blocks, and a model FIX or
+# ESCALATE stays. A failed or unreadable read is retryable: the guard returns
+# failure, the caller does not post PASS, and it does not write the
+# ireview-posted marker. That marker only stops a duplicate comment.
+# merge_gate checks the same open findings again before a saved PASS can count
+# as ready or merge. That pass also replies
 # on each unresolved thread with the finding's disposition and does not post
 # a second identical reply. Outdated threads and threads only on earlier
 # commits do not rewrite PASS. The outdated-review
@@ -80,7 +89,7 @@
 # dismissed. A protected PR that goes to the maintainer stays with the maintainer. A failed
 # dismiss is reported to the maintainer.
 # FIX goes to the fix path: ordinary PRs get @coderabbitai fix comments, then
-# Grok fallback; sensitive PRs go straight to scoped Grok; 3 rounds per PR.
+# Grok fallback; sensitive PRs go straight to scoped Grok; 5 rounds per PR.
 # ESCALATE goes to the maintainer (needs_scott). Exception (maintainer 27 Oct 16:34):
 # factory/ PRs that close an issue in .merge_protected_issues of the budget
 # file (same repo) merge on PASS + green + CLEAN even when sensitive.
@@ -960,8 +969,27 @@ merge_gate() {
   fi
   load_ir_state "$repo" "$pr"
 
-  local ready=0 block_kind=""
+  local ready=0 block_kind="" pass_rc=0
   [[ $GATE_VERDICT == ok && $GATE_IR == PASS ]] && ready=1
+
+  # A saved PASS is not ready while this head still has an unresolved,
+  # not-outdated review thread, an unresolved review comment, or a COMMENTED
+  # or CHANGES_REQUESTED review, from any reviewer. The ireview-posted marker
+  # only stops a duplicate comment; it does not skip this check. A failed
+  # read is retryable and is not treated as ready.
+  if (( ready )); then
+    ir_pass_still_blocked "$repo" "$pr" "$GATE_SHA" "$reviews" || pass_rc=$?
+    if (( pass_rc == 2 )); then
+      GATE_DECISION=no
+      GATE_REASON="could not verify open review findings on ${GATE_SHORT}"
+      return 3
+    fi
+    if (( pass_rc == 1 )); then
+      GATE_DECISION=no
+      GATE_REASON="open review findings on ${GATE_SHORT} block PASS"
+      return 1
+    fi
+  fi
 
   # The ready bit above is not enough on its own: scripts/ready-gate.sh is the
   # one owner-ready decision (independent PASS for this exact head, no open
@@ -2047,8 +2075,8 @@ report_ci_failure() {
   slug=$(repo_slug "$repo")
   sha_ok "$GATE_SHA" || return 0
   rounds=$(read_rounds "${STATE}/rounds-${slug}-${pr}")
-  if (( rounds >= 3 )); then
-    why="fix rounds used (${rounds}/3)"
+  if (( rounds >= 5 )); then
+    why="fix rounds used (${rounds}/5)"
   elif pr_is_lockfile_only "$repo" "$pr"; then
     why="dependabot or lockfile-only PR, so no automatic fix"
   elif [[ $GATE_PROTECTED != n && $GATE_PROTECTED != y ]]; then
@@ -2057,7 +2085,7 @@ report_ci_failure() {
     why="unsafe branch name, so no automatic fix"
   fi
   if [[ -z $why ]]; then
-    msg="failing CI: ${repo}#${pr} head ${GATE_SHORT} (${GATE_CHECKS}). Not ready for review or merge; routed to the Grok fix path (round $((rounds + 1))/3$(pr_is_sensitive "$repo" "$pr" && echo ", limited to the PR's own files"))."
+    msg="failing CI: ${repo}#${pr} head ${GATE_SHORT} (${GATE_CHECKS}). Not ready for review or merge; routed to the Grok fix path (round $((rounds + 1))/5$(pr_is_sensitive "$repo" "$pr" && echo ", limited to the PR's own files"))."
   else
     msg="blocked by failing CI: ${repo}#${pr} head ${GATE_SHORT} (${GATE_CHECKS}); ${why}. Not ready for review or merge."
   fi
@@ -3314,7 +3342,7 @@ step_cr_fix_comment() {
     fi
     rounds_file="${STATE}/rounds-${slug}-${pr}"
     rounds=$(read_rounds "$rounds_file")
-    if (( rounds >= 3 )); then
+    if (( rounds >= 5 )); then
       needs_scott "fixcap-${slug}-${pr}" \
         "$(printf '%s\n' "${repo}#${pr} has had ${rounds} fix rounds and the independent review of head ${GATE_SHA} is still FIX. Needs a person." "$(ir_list_text "$repo" "$pr" "$GATE_SHA" fix)")" || true
       continue
@@ -3339,10 +3367,10 @@ step_cr_fix_comment() {
     comment_pr "$repo" "$pr" '@coderabbitai fix comments' "$marker" || crc=$?
     if (( crc == 0 )); then
       if (( DRY )); then
-        note "DRY-RUN would count crfix round $((rounds + 1))/3 for ${repo}#${pr} ${GATE_SHORT}"
+        note "DRY-RUN would count crfix round $((rounds + 1))/5 for ${repo}#${pr} ${GATE_SHORT}"
       elif [[ -e ${STATE}/${marker} ]]; then
         printf '%s\n' $((rounds + 1)) > "$rounds_file"
-        note "crfix counted round $((rounds + 1))/3 for ${repo}#${pr} ${GATE_SHORT}"
+        note "crfix counted round $((rounds + 1))/5 for ${repo}#${pr} ${GATE_SHORT}"
       fi
     elif (( crc != 2 )); then
       log "crfix comment failed ${repo}#${pr}"
@@ -3959,11 +3987,11 @@ step_independent_review() {
     fi
     result_file=$(ir_result_file "$repo" "$pr" "$GATE_SHA")
     if [[ -s $result_file ]]; then
-      # A result saved before the comment went out still has to pass the open
-      # review guard. An already-posted comment is left as it was. Thread
-      # replies still go out from ir_post_comment when no identical reply exists.
-      if [[ ! -e ${STATE}/ireview-posted-${slug}-${pr}-${GATE_SHA} ]]; then
-        ir_guard_open_coderabbit "$repo" "$pr" "$result_file" "$GATE_SHA"
+      # The posted marker only stops a duplicate comment. The open-finding
+      # guard still runs. A failed read must not post or write the marker.
+      if ! ir_guard_open_coderabbit "$repo" "$pr" "$result_file" "$GATE_SHA"; then
+        log "independent review open-coderabbit failed ${repo}#${pr}; retryable, not posting"
+        continue
       fi
       ir_post_comment "$repo" "$pr" "$GATE_SHA" || log "independent review comment failed ${repo}#${pr}"
       continue
@@ -4051,7 +4079,10 @@ step_independent_review() {
     fi
     (( ir_rc != 0 )) && log "independent review grok rc=${ir_rc} ${repo}#${pr}"
     ir_save_result "$GROK_LAST_OUT" "$result_file" "$GATE_SHA"
-    ir_guard_open_coderabbit "$repo" "$pr" "$result_file" "$GATE_SHA"
+    if ! ir_guard_open_coderabbit "$repo" "$pr" "$result_file" "$GATE_SHA"; then
+      log "independent review open-coderabbit failed ${repo}#${pr}; retryable, not posting"
+      continue
+    fi
     ir_post_comment "$repo" "$pr" "$GATE_SHA" || log "independent review comment failed ${repo}#${pr}"
     note "independent review ${repo}#${pr} $(jq -r '.verdict' "$result_file") head ${GATE_SHORT}"
     continue
@@ -4192,21 +4223,67 @@ def tag_of($names):
   ' "$payload"
 }
 
+# $1 saved result file. When the guard rewrote this file and nothing blocking
+# remains, restore the model verdict and the model's own lists and clear
+# outstanding. A file with no model snapshot is left byte for byte.
+ir_clear_guard_fix() {
+  local dest=$1 tmp
+  [[ -s $dest ]] || return 1
+  if ! jq -e '
+    (.model_verdict | type) == "string"
+    and (.model_verdict | length) > 0
+    and (
+      (.verdict // "") != .model_verdict
+      or ((.outstanding // []) != [])
+      or ((.fix // []) != (.model_fix // []))
+      or ((.escalate // []) != (.model_escalate // []))
+      or ((.dismissed // []) != (.model_dismissed // []))
+      or ((.summary // "") != (.model_summary // ""))
+    )
+  ' "$dest" >/dev/null 2>&1; then
+    return 0
+  fi
+  tmp=$(mktemp "${dest}.XXXXXX") || return 1
+  if jq -c '
+    .verdict = .model_verdict
+    | .fix = (.model_fix // [])
+    | .dismissed = (.model_dismissed // [])
+    | .escalate = (.model_escalate // [])
+    | .summary = (.model_summary // "")
+    | .outstanding = []
+  ' "$dest" >"$tmp"; then
+    mv "$tmp" "$dest" || { rm -f "$tmp"; return 1; }
+  else
+    rm -f "$tmp"
+    return 1
+  fi
+}
+
 # $1 saved result file, $2 blocking-findings JSON array from ir_blocking_findings.
-# A non-empty array rewrites PASS. A small in-scope finding becomes FIX. A
-# finding that needs a person (protected path, secret, weakened test or CI,
-# lockfile, security, irreversible change, scope creep) becomes ESCALATE.
-# A model PASS that only lists the finding under dismissed is not kept: the
-# comment disposition is "dismissed: <reason>" when the model gave a reason,
-# and the verdict is still FIX while the thread is open. Each finding is
-# stored on .outstanding as addressed, dismissed: <reason>, or escalated,
-# with the comment id, the bodies already on that thread, and a tag.
-# An empty array leaves the file unchanged, so an outdated thread or a thread
-# only on an earlier commit does not turn PASS into FIX or ESCALATE.
+# A non-empty array rewrites the routed verdict from the model result plus the
+# findings still open. A small in-scope finding becomes FIX. A finding that
+# needs a person (protected path, secret, weakened test or CI, lockfile,
+# security, irreversible change, scope creep) becomes ESCALATE. A model PASS
+# that only lists the finding under dismissed is not kept: the comment
+# disposition is "dismissed: <reason>" when the model gave a reason, and the
+# verdict is still FIX while the thread is open. Each finding is stored on
+# .outstanding as addressed, dismissed: <reason>, or escalated, with the
+# comment id, the bodies already on that thread, and a tag. Every outstanding
+# finding is kept. The model's own .fix entries are kept when guard findings
+# are added; nothing is dropped to fit a 10-item cap. The first rewrite stores
+# the model verdict and lists. An empty array restores that snapshot when the
+# guard had rewritten the file, and leaves an unstamped file unchanged, so an
+# outdated thread or a thread only on an earlier commit does not turn PASS
+# into FIX or ESCALATE. A missing or unreadable file is a retryable failure.
 ir_apply_open_coderabbit() {
   local dest=$1 block=$2 tmp
-  [[ -s $dest && -s $block ]] || return 0
-  if ! jq -e 'type == "array" and length > 0' "$block" >/dev/null 2>&1; then
+  [[ -s $dest ]] || return 1
+  [[ -s $block ]] || return 1
+  if ! jq -e 'type == "array"' "$block" >/dev/null 2>&1; then
+    return 1
+  fi
+  if jq -e 'length == 0' "$block" >/dev/null 2>&1; then
+    ir_clear_guard_fix "$dest" || return 1
     return 0
   fi
   tmp=$(mktemp "${dest}.XXXXXX") || return 1
@@ -4228,10 +4305,13 @@ def prior_of($prior; $text):
 def model_escalates($escalate; $text):
   [ $escalate[]? | tostring | select(ascii_downcase | contains($text | ascii_downcase)) | select(person) ] | length > 0;
 ($block[0] // []) as $raw
-| ((.dismissed // []) | map(tostring)) as $dismissed
-| ((.escalate // []) | map(tostring)) as $escalate
+| (.model_verdict // "") as $mv
+| (if ($mv | tostring | length) > 0 then ($mv | tostring | ascii_upcase) else (.verdict | tostring | ascii_upcase) end) as $was
+| (if ($mv | tostring | length) > 0 then ((.model_dismissed // []) | map(tostring)) else ((.dismissed // []) | map(tostring)) end) as $dismissed
+| (if ($mv | tostring | length) > 0 then ((.model_escalate // []) | map(tostring)) else ((.escalate // []) | map(tostring)) end) as $escalate
+| (if ($mv | tostring | length) > 0 then ((.model_fix // []) | map(tostring)) else ((.fix // []) | map(tostring)) end) as $fixbase
+| (if ($mv | tostring | length) > 0 then ((.model_summary // "") | tostring) else ((.summary // "") | tostring) end) as $summarybase
 | (.outstanding // []) as $prior
-| (.verdict | tostring | ascii_upcase) as $was
 | [ $raw[]?
     | one_line(.text) as $text
     | select($text != "")
@@ -4256,20 +4336,20 @@ def model_escalates($escalate; $text):
   else
     (if ([ $out[] | select(.disposition == "escalated")] | length) > 0 or $was == "ESCALATE" then "ESCALATE" else "FIX" end) as $v
     | .verdict = $v
-    | .outstanding = ($out | .[0:15])
+    | .outstanding = $out
     | .summary = (
-        ((.summary // "") | tostring) as $s
+        $summarybase as $s
         | if ($s | contains("Open CodeRabbit findings on this head block PASS.")) then ($s | .[0:600])
           else (($s + " Open CodeRabbit findings on this head block PASS.") | gsub("[[:space:]]+"; " ") | gsub("^[[:space:]]+|[[:space:]]+$"; "") | .[0:600])
           end
       )
     | .fix = (
-        (((.fix // []) | map(tostring)) + [ $out[] | select(.disposition != "escalated") | ((.tag // "CodeRabbit") + ": " + .text) ])
-        | unique | map(.[0:400]) | .[0:10]
+        ($fixbase + [ $out[] | select(.disposition != "escalated") | ((.tag // "CodeRabbit") + ": " + .text) ])
+        | unique | map(.[0:400])
       )
     | .escalate = (
-        (((.escalate // []) | map(tostring)) + [ $out[] | select(.disposition == "escalated") | ((.tag // "CodeRabbit") + ": " + .text) ])
-        | unique | map(.[0:400]) | .[0:6]
+        ($escalate + [ $out[] | select(.disposition == "escalated") | ((.tag // "CodeRabbit") + ": " + .text) ])
+        | unique | map(.[0:400])
       )
     | .dismissed = (
         [ $dismissed[]
@@ -4278,19 +4358,25 @@ def model_escalates($escalate; $text):
           | .[0:400]
         ] | .[0:15]
       )
+    | .model_verdict = (if ($mv | tostring | length) > 0 then ($mv | tostring | ascii_upcase) else $was end)
+    | .model_fix = $fixbase
+    | .model_dismissed = $dismissed
+    | .model_escalate = $escalate
+    | .model_summary = $summarybase
   end
   ' "$dest" >"$tmp"; then
-    mv "$tmp" "$dest"
+    mv "$tmp" "$dest" || { rm -f "$tmp"; return 1; }
   else
     rm -f "$tmp"
     return 1
   fi
 }
 
-# $1 repo, $2 pr. Prints the normalized open-CodeRabbit payload. Returns 1
-# when a read fails. The caller logs and keeps the model verdict on failure.
+# $1 repo, $2 pr, $3 optional reviews JSON array. When $3 is set, that file is
+# the review list and reviews are not fetched again. Returns 1 when a read
+# fails. The caller treats that as retryable and does not post.
 ir_fetch_open_payload() {
-  local repo=$1 pr=$2
+  local repo=$1 pr=$2 reviews_src=${3:-}
   local owner=${repo%%/*} name=${repo#*/}
   local threads comments reviews query rc
   threads=$(mktemp) || return 1
@@ -4336,12 +4422,20 @@ EOF
     return 1
   fi
   rm -f "${comments}.err"
-  if ! timeout 120 gh api --paginate "repos/${repo}/pulls/${pr}/reviews" >"$reviews" 2>"${reviews}.err"; then
-    log "open-coderabbit reviews failed ${repo}#${pr}: $(redact <"${reviews}.err" | tr '\n' ' ')"
-    rm -f "$threads" "$comments" "$reviews" "${reviews}.err"
-    return 1
+  if [[ -n $reviews_src ]]; then
+    if [[ -s $reviews_src ]]; then
+      cp "$reviews_src" "$reviews" || { rm -f "$threads" "$comments" "$reviews"; return 1; }
+    else
+      printf '[]\n' > "$reviews"
+    fi
+  else
+    if ! timeout 120 gh api --paginate "repos/${repo}/pulls/${pr}/reviews" >"$reviews" 2>"${reviews}.err"; then
+      log "open-coderabbit reviews failed ${repo}#${pr}: $(redact <"${reviews}.err" | tr '\n' ' ')"
+      rm -f "$threads" "$comments" "$reviews" "${reviews}.err"
+      return 1
+    fi
+    rm -f "${reviews}.err"
   fi
-  rm -f "${reviews}.err"
   if ! jq -e 'type == "array"' "$comments" >/dev/null 2>&1; then
     printf '[]\n' > "$comments"
   fi
@@ -4354,35 +4448,92 @@ EOF
   return "$rc"
 }
 
-# $1 repo, $2 pr, $3 result file, $4 head sha. Rewrites a saved PASS when
-# any reviewer still has a blocking action on that head. A failed read leaves
-# the model verdict and logs. Outdated threads and threads only on earlier
-# commits are not blocking. The outdated-review dismiss path is unchanged
-# and still runs only after a valid PASS.
+# $1 repo, $2 pr, $3 head sha, $4 reviews JSONL already loaded by merge_gate.
+# 0 when nothing on this head blocks. 1 when an unresolved, not-outdated
+# thread, an unresolved review comment, or a COMMENTED or CHANGES_REQUESTED
+# review on this head blocks, from any reviewer. 2 when the read failed.
+# Does not look at the posted-comment marker and does not fetch reviews again.
+ir_pass_still_blocked() {
+  local repo=$1 pr=$2 sha=$3 reviews_jsonl=$4
+  local reviews_json payload block rc=0
+  sha_ok "$sha" || return 2
+  reviews_json=$(mktemp) || return 2
+  payload=$(mktemp) || { rm -f "$reviews_json"; return 2; }
+  block=$(mktemp) || { rm -f "$reviews_json" "$payload"; return 2; }
+  if [[ -s ${reviews_jsonl:-} ]]; then
+    if ! jq -s '
+      map({
+        user: {login: (if (.user | type) == "object" then (.user.login // "") else (.user // "" | tostring) end)},
+        state: (.state // ""),
+        commit_id: (.commit_id // ""),
+        body: (.body // ""),
+        outdated: (.outdated == true)
+      })
+    ' "$reviews_jsonl" >"$reviews_json"; then
+      rm -f "$reviews_json" "$payload" "$block"
+      return 2
+    fi
+  else
+    printf '[]\n' > "$reviews_json"
+  fi
+  if ! ir_fetch_open_payload "$repo" "$pr" "$reviews_json" >"$payload"; then
+    rm -f "$reviews_json" "$payload" "$block"
+    return 2
+  fi
+  rm -f "$reviews_json"
+  if ! ir_blocking_findings "$sha" "$payload" >"$block"; then
+    rm -f "$payload" "$block"
+    return 2
+  fi
+  rm -f "$payload"
+  if ! jq -e 'type == "array"' "$block" >/dev/null 2>&1; then
+    rm -f "$block"
+    return 2
+  fi
+  if jq -e 'length > 0' "$block" >/dev/null 2>&1; then
+    rc=1
+  fi
+  rm -f "$block"
+  return "$rc"
+}
+
+# $1 repo, $2 pr, $3 result file, $4 head sha. Rewrites a saved verdict when
+# any reviewer still has a blocking action on that head. A failed or
+# unreadable read returns 1 and leaves the saved file unchanged. The caller
+# must not post and must not write the ireview-posted marker. Outdated threads
+# and threads only on earlier commits are not blocking. The outdated-review
+# dismiss path is unchanged and still runs only after a valid PASS.
 ir_guard_open_coderabbit() {
   local repo=$1 pr=$2 dest=$3 sha=$4 payload block
   [[ -s $dest ]] || return 0
   payload=$(mktemp) || {
-    log "independent review open-coderabbit temp failed ${repo}#${pr}"
-    return 0
+    log "independent review open-coderabbit temp failed ${repo}#${pr}; retryable, not posting"
+    return 1
   }
   block=$(mktemp) || {
     rm -f "$payload"
-    log "independent review open-coderabbit temp failed ${repo}#${pr}"
-    return 0
+    log "independent review open-coderabbit temp failed ${repo}#${pr}; retryable, not posting"
+    return 1
   }
   if ! ir_fetch_open_payload "$repo" "$pr" >"$payload"; then
-    log "independent review open-coderabbit read failed ${repo}#${pr}; model verdict kept"
+    log "independent review open-coderabbit read failed ${repo}#${pr}; retryable, not posting"
     rm -f "$payload" "$block"
-    return 0
+    return 1
   fi
   if ! ir_blocking_findings "$sha" "$payload" >"$block"; then
-    log "independent review open-coderabbit parse failed ${repo}#${pr}; model verdict kept"
+    log "independent review open-coderabbit parse failed ${repo}#${pr}; retryable, not posting"
     rm -f "$payload" "$block"
-    return 0
+    return 1
+  fi
+  if [[ ! -s $block ]] || ! jq -e 'type == "array"' "$block" >/dev/null 2>&1; then
+    log "independent review open-coderabbit unreadable ${repo}#${pr}; retryable, not posting"
+    rm -f "$payload" "$block"
+    return 1
   fi
   if ! ir_apply_open_coderabbit "$dest" "$block"; then
-    log "independent review open-coderabbit apply failed ${repo}#${pr}"
+    log "independent review open-coderabbit apply failed ${repo}#${pr}; retryable, not posting"
+    rm -f "$payload" "$block"
+    return 1
   fi
   rm -f "$payload" "$block"
   return 0
@@ -4536,10 +4687,105 @@ ir_reply_threads() {
   return "$rc"
 }
 
+# GitHub issue comments cap at 65536 characters. IR_COMMENT_LIMIT overrides it
+# in tests. A non-numeric override is ignored.
+ir_comment_limit() {
+  local n=${IR_COMMENT_LIMIT:-65536}
+  if [[ ! $n =~ ^[1-9][0-9]*$ ]]; then
+    n=65536
+  fi
+  printf '%s' "$n"
+}
+
+# One outstanding bullet per line, same wording as the single comment.
+ir_outstanding_lines() {
+  local f=$1
+  jq -r '
+    def clean: tostring | gsub("[\r\n]+"; " ") | gsub("@"; "") | .[0:300];
+    (.outstanding // [])[]
+    | ((.text // "") | tostring) as $t
+    | ((.disposition // "addressed") | tostring) as $d
+    | select(($t | gsub("[[:space:]]+"; "")) != "")
+    | "- " + (($t + " — " + (if $d == "" then "addressed" else $d end)) | clean)
+  ' "$f"
+}
+
+# The comment without the outstanding section. Same prose as ir_post_comment.
+ir_comment_prefix() {
+  local f=$1 sha=$2
+  jq -r --arg sha "$sha" '
+    def clean: tostring | gsub("[\r\n]+"; " ") | gsub("@"; "") | .[0:300];
+    def prose: tostring | gsub("[\r\n]+"; " ") | if test("^\\s*$") then "not available" else .[0:600] | gsub("@"; "@\u200b") end;
+    def section($title; $xs): if ($xs | length) > 0 then "\n" + $title + "\n" + ([$xs[] | "- " + clean] | join("\n")) else "" end;
+    "<!-- factory:independent-review v2 sha=" + $sha + " -->\n"
+    + "**Independent review (after CodeRabbit): " + .verdict + "** on " + ($sha[0:7]) + "\nHead: `" + $sha + "`\n"
+    + ((.summary // "") | clean)
+    + "\n\n**Agreed behaviour:** " + ((.agreed_behaviour // "not available") | prose)
+    + "\n**Checks that ran:** " + ((.checks_ran // "not available") | prose)
+    + "\n**Behaviour nobody asked for:** " + ((.unasked_behaviour // "not available") | prose)
+    + "\n**Blast radius:** " + ((.blast_radius // "not available") | prose)
+    + section("Fix:"; (.fix // []))
+    + section("CodeRabbit findings not blocking:"; (.dismissed // []))
+    + section("Needs a person:"; (.escalate // []))
+  ' "$f"
+}
+
+# Post the report in parts when it is over the length limit. No finding is
+# dropped: a part that is itself over the limit is still posted. The
+# ireview-posted marker is written once, after every part.
+ir_post_split() {
+  local repo=$1 pr=$2 sha=$3 f=$4 limit=$5
+  local slug prefix line chunk addition header started marker lines split_rc=0
+  slug=$(repo_slug "$repo")
+  prefix=$(ir_comment_prefix "$f" "$sha") || return 1
+  prefix=$(printf '%s' "$prefix" | redact) || return 1
+  lines=$(mktemp) || return 1
+  if ! ir_outstanding_lines "$f" >"$lines"; then
+    rm -f "$lines"
+    return 1
+  fi
+  header='Outstanding CodeRabbit findings:'
+  chunk=$prefix
+  started=0
+  while IFS= read -r line || [[ -n ${line:-} ]]; do
+    [[ -n $line ]] || continue
+    line=$(printf '%s' "$line" | redact) || { split_rc=1; break; }
+    if (( started == 0 )); then
+      addition=$'\n'"${header}"$'\n'"${line}"
+      started=1
+    else
+      addition=$'\n'"${line}"
+    fi
+    if [[ -n $chunk ]] && (( ${#chunk} + ${#addition} > limit )); then
+      comment_pr "$repo" "$pr" "$chunk" "" || { split_rc=1; break; }
+      chunk="${header}"$'\n'"${line}"
+      if (( ${#chunk} > limit )); then
+        comment_pr "$repo" "$pr" "$chunk" "" || { split_rc=1; break; }
+        chunk=""
+      fi
+    else
+      chunk="${chunk}${addition}"
+    fi
+  done < "$lines"
+  rm -f "$lines"
+  if (( split_rc != 0 )); then
+    return "$split_rc"
+  fi
+  if [[ -n $chunk ]]; then
+    comment_pr "$repo" "$pr" "$chunk" "" || return 1
+  fi
+  if (( ! DRY )); then
+    marker="${STATE}/ireview-posted-${slug}-${pr}-${sha}"
+    printf '%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$marker"
+  fi
+  return 0
+}
+
 # Posts the saved verdict once per head (marker ireview-posted-*). No @ mentions.
 # Then replies on each unresolved thread with that finding's disposition.
+# A body over the length limit is split. Findings are not dropped.
 ir_post_comment() {
-  local repo=$1 pr=$2 sha=$3 f body slug
+  local repo=$1 pr=$2 sha=$3 f body slug limit split_rc=0
   slug=$(repo_slug "$repo")
   f=$(ir_result_file "$repo" "$pr" "$sha")
   [[ -s $f ]] || return 0
@@ -4574,8 +4820,18 @@ ir_post_comment() {
     + section("Needs a person:"; (.escalate // []))
   ' "$f") || return 1
   body=$(printf '%s' "$body" | redact) || return 1
-  comment_pr "$repo" "$pr" "$body" "ireview-posted-${slug}-${pr}-${sha}" || return 1
+  limit=$(ir_comment_limit)
+  if (( ${#body} <= limit )); then
+    comment_pr "$repo" "$pr" "$body" "ireview-posted-${slug}-${pr}-${sha}" || return 1
+    ir_reply_threads "$repo" "$pr" "$f"
+    return $?
+  fi
+  ir_post_split "$repo" "$pr" "$sha" "$f" "$limit" || split_rc=$?
+  if (( split_rc != 0 )); then
+    return "$split_rc"
+  fi
   ir_reply_threads "$repo" "$pr" "$f"
+  return $?
 }
 
 # Untrusted review pack: PR text, linked work orders or issues, CI, CodeRabbit
@@ -4616,7 +4872,7 @@ ir_build_pack() {
 }
 
 step_fix_fallback() {
-  # Grok job, 3 rounds per PR, within the day/week/loop caps.
+  # Grok job, 5 rounds per PR, within the day/week/loop caps.
   # Ordinary PRs: after a CodeRabbit fix request for this head, when 60
   # minutes passed with no new push or CodeRabbit said it cannot fix.
   # Sensitive PRs (pr_is_sensitive): straight here on CHANGES_REQUESTED, once
@@ -4652,7 +4908,7 @@ step_fix_fallback() {
     fi
     rounds_file="${STATE}/rounds-${slug}-${pr}"
     rounds=$(read_rounds "$rounds_file")
-    if (( rounds >= 3 )); then
+    if (( rounds >= 5 )); then
       log "fix fallback skip ${repo}#${pr}: round cap ${rounds}"
       continue
     fi
@@ -4741,7 +4997,7 @@ step_fix_fallback() {
       continue
     fi
     if (( DRY )); then
-      note "DRY-RUN would grok-fix (${mode}$( (( sens )) && echo ", scoped to the PR's own files")) ${repo}#${pr} head ${GATE_SHORT} round $((rounds + 1))/3, then commit, push, and comment @coderabbitai full review"
+      note "DRY-RUN would grok-fix (${mode}$( (( sens )) && echo ", scoped to the PR's own files")) ${repo}#${pr} head ${GATE_SHORT} round $((rounds + 1))/5, then commit, push, and comment @coderabbitai full review"
       mark_grok_job "$repo" "$pr" 1
       continue
     fi

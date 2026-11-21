@@ -186,5 +186,5 @@ Labels record state; they never grant permission. A merge still needs every
    - **PASS on a non-protected PR** merges under the standing permission (§6).
    - **PASS on a protected PR** goes to **the maintainer**.
    - **Outdated CodeRabbit blocks.** On an ordinary `factory/` pull request, and on an allowlisted sensitive pull request (one that closes an issue listed in the budget `.merge_protected_issues`), an independent PASS with green checks and `mergeStateStatus` `BLOCKED` caused only by outdated `coderabbitai[bot]` `CHANGES_REQUESTED` reviews is dismissed by the watcher and then re-checked. Those reviews may sit on any commit, including one older than the head. The watcher merges only when that re-check is the ordinary merge decision. A human `CHANGES_REQUESTED` review stays, and while one is present the watcher dismisses nobody. A protected pull request that goes to the maintainer stays with the maintainer, including when the bot has requested changes. A failed dismiss is reported to the maintainer.
-   - **FIX** goes to the fix path with a **3-round cap** (§4).
+   - **FIX** goes to the fix path with a **5-round cap** for review comments. The builder CI fix-loop stays at 3 (§4).
    - **ESCALATE** goes to **the maintainer**.

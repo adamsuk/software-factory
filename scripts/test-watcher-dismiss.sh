@@ -157,6 +157,31 @@ case "$cmd" in
     esac
     ;;
   api)
+    if [[ ${1:-} == graphql ]]; then
+      mkdir -p "${GH_ROOT}/counts"
+      ghn=0
+      ghc="${GH_ROOT}/counts/graphql"
+      if [[ -f $ghc ]]; then
+        ghn=$(tr -cd '0-9' < "$ghc")
+        ghn=${ghn:-0}
+      fi
+      ghn=$((ghn + 1))
+      printf '%s\n' "$ghn" > "$ghc"
+      if [[ -f $GH_ROOT/fail-graphql-after ]]; then
+        ghafter=$(tr -cd '0-9' < "$GH_ROOT/fail-graphql-after")
+        ghafter=${ghafter:-0}
+        if (( ghn > ghafter )); then
+          echo "graphql failed" >&2
+          exit 1
+        fi
+      fi
+      if [[ -f $GH_ROOT/graphql-threads.json ]]; then
+        cat "$GH_ROOT/graphql-threads.json"
+        exit 0
+      fi
+      printf '%s\n' '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}}'
+      exit 0
+    fi
     method=GET
     filter=""
     path=""
@@ -214,6 +239,18 @@ case "$cmd" in
     if [[ $path =~ ^repos/([^/]+/[^/]+)/pulls/([0-9]+)/commits$ ]]; then
       printf '%s\n' '[]' > "$GH_ROOT/empty.json"
       emit "$GH_ROOT/empty.json" "$filter"
+      exit 0
+    fi
+    if [[ $path =~ ^repos/([^/]+/[^/]+)/pulls/([0-9]+)/comments$ ]]; then
+      repo=${BASH_REMATCH[1]}
+      num=${BASH_REMATCH[2]}
+      slug=${repo//\//_}
+      file="$GH_ROOT/pull-comments/${slug}_${num}.json"
+      if [[ ! -f $file ]]; then
+        printf '%s\n' '[]'
+        exit 0
+      fi
+      emit "$file" "$filter"
       exit 0
     fi
     echo "fake gh: unhandled api $path" >&2
@@ -401,8 +438,8 @@ bot() {
 }
 
 human() {
-  local id=$1 state=$2
-  printf '{"id":%s,"user":{"login":"acme"},"state":"%s","commit_id":"%s","submitted_at":"2026-11-01T00:00:00Z"}' "$id" "$state" "$SHA_HEAD"
+  local id=$1 state=$2 commit=${3:-$SHA_HEAD}
+  printf '{"id":%s,"user":{"login":"acme"},"state":"%s","commit_id":"%s","submitted_at":"2026-11-01T00:00:00Z"}' "$id" "$state" "$commit"
 }
 
 t_gate_matrix() {
@@ -410,7 +447,9 @@ t_gate_matrix() {
   t_budget 0 '[]' '["acme/software-factory#199"]'
   local one two
   one=$(bot 101 CHANGES_REQUESTED "$SHA_OLD")
-  two="[${one},$(bot 102 CHANGES_REQUESTED "$SHA_HEAD"),$(bot 103 COMMENTED "$SHA_HEAD"),$(human 303 COMMENTED)]"
+  # Current-head COMMENTED or CHANGES_REQUESTED reviews block a saved PASS.
+  # These sit on an earlier commit so this case still expects the dismiss path.
+  two="[${one},$(bot 102 CHANGES_REQUESTED "$SHA_OLD"),$(bot 103 COMMENTED "$SHA_OLD"),$(human 303 COMMENTED "$SHA_OLD")]"
   t_arm "$repo" 11 BLOCKED README.md "[${one}]" "ordinary older review"
   t_gate 6 "$repo" 11
   t_arm "$repo" 12 BLOCKED README.md "$two" "ordinary two bot reviews"
@@ -454,20 +493,22 @@ t_prepare_merge() {
   PR_IDS=("${repo}|${pr}")
 }
 
+# Bot CHANGES_REQUESTED reviews on an earlier commit still dismiss. COMMENTED
+# reviews on an earlier commit do not. A current-head review is a separate case.
 t_bot_pair() {
   printf '[%s,%s,%s,%s]' \
     "$(bot 101 CHANGES_REQUESTED "$SHA_OLD")" \
-    "$(bot 102 CHANGES_REQUESTED "$SHA_HEAD")" \
-    "$(bot 103 COMMENTED "$SHA_HEAD")" \
-    "$(human 303 COMMENTED)"
+    "$(bot 102 CHANGES_REQUESTED "$SHA_OLD")" \
+    "$(bot 103 COMMENTED "$SHA_OLD")" \
+    "$(human 303 COMMENTED "$SHA_OLD")"
 }
 
 t_bot_clear() {
   printf '[%s,%s,%s,%s]' \
     "$(bot 101 DISMISSED "$SHA_OLD")" \
-    "$(bot 102 DISMISSED "$SHA_HEAD")" \
-    "$(bot 103 COMMENTED "$SHA_HEAD")" \
-    "$(human 303 COMMENTED)"
+    "$(bot 102 DISMISSED "$SHA_OLD")" \
+    "$(bot 103 COMMENTED "$SHA_OLD")" \
+    "$(human 303 COMMENTED "$SHA_OLD")"
 }
 
 t_merge_ordinary() {
@@ -544,7 +585,7 @@ t_merge_allow_blocked() {
 t_merge_allow_clean() {
   local repo=acme/software-factory
   t_budget 0 '[]' '["acme/software-factory#199"]'
-  t_prepare_merge "$repo" 10 CLEAN "" AGENTS.md $'Closes #199\n' "[$(bot 101 CHANGES_REQUESTED "$SHA_HEAD")]" ""
+  t_prepare_merge "$repo" 10 CLEAN "" AGENTS.md $'Closes #199\n' "[$(bot 101 CHANGES_REQUESTED "$SHA_OLD")]" ""
   step_merge
   t_no_dismiss 101
   t_yes_merge
@@ -718,8 +759,8 @@ t_gate_work_focus() {
   : > "$LOG"
   t_ir "$repo_a" 31 "$SHA_HEAD" FIX
   t_ir "$repo_b" 32 "$SHA_HEAD" FIX
-  printf '%s\n' 3 > "${STATE}/rounds-$(t_slug "$repo_a")-31"
-  printf '%s\n' 3 > "${STATE}/rounds-$(t_slug "$repo_b")-32"
+  printf '%s\n' 5 > "${STATE}/rounds-$(t_slug "$repo_a")-31"
+  printf '%s\n' 5 > "${STATE}/rounds-$(t_slug "$repo_b")-32"
   step_fix_fallback
   t_logged "fix fallback skip ${repo_a}#31: not in focus"
   t_logged "fix fallback skip ${repo_b}#32: round cap"
@@ -953,6 +994,117 @@ t_ready_gate_refuses() {
   READY_GATE_CMD=$real
 }
 
+# Four rounds is still under the review-comment cap. Five is the cap.
+# A dependabot branch stops at the lockfile check when the cap has not been hit,
+# so round 4 must not log "round cap" and round 5 must.
+t_fix_round_cap_is_five() {
+  local repo=acme/software-factory
+  t_budget 0 '[]' '[]'
+  t_recent
+  t_arm "$repo" 71 CLEAN README.md '[]' "cap" "bump" dependabot/npm/left
+  t_ir "$repo" 71 "$SHA_HEAD" FIX
+  printf '%s\n' 4 > "${STATE}/rounds-$(t_slug "$repo")-71"
+  PR_IDS=("${repo}|71")
+  step_fix_fallback
+  t_not_logged "round cap"
+  t_logged "fix fallback skip ${repo}#71: dependabot or lockfile-only"
+  : > "$LOG"
+  printf '%s\n' 5 > "${STATE}/rounds-$(t_slug "$repo")-71"
+  step_fix_fallback
+  t_logged "fix fallback skip ${repo}#71: round cap"
+  t_not_logged "dependabot or lockfile-only"
+}
+
+t_blocking_thread() {
+  local id=$1 body=$2 sha=${3:-$SHA_HEAD}
+  jq -n --arg sha "$sha" --arg body "$body" --argjson id "$id" \
+    '{data:{repository:{pullRequest:{reviewThreads:{pageInfo:{hasNextPage:false},nodes:[{
+      isResolved:false, isOutdated:false, path:"README.md",
+      comments:{nodes:[{databaseId:$id, author:{login:"octocat"}, body:$body, originalCommit:{oid:$sha}}]}
+    }]}}}}}' > "$GH_ROOT/graphql-threads.json"
+}
+
+# A saved PASS cannot merge or count as ready while this head still has open
+# review feedback, from any reviewer. Empty threads and an earlier commit do
+# not block; that is what the older merge cases cover.
+t_pass_rechecks_open_findings() {
+  local repo=acme/software-factory slug
+  slug=$(t_slug "$repo")
+  t_budget 0 '[]' '[]'
+  t_arm "$repo" 81 CLEAN README.md "[$(bot 801 COMMENTED "$SHA_HEAD")]" "commented head"
+  PR_IDS=("${repo}|81")
+  step_merge
+  t_no_merge
+  t_logged "open review findings on ${SHA_HEAD:0:7} block PASS"
+  : > "$LOG"
+  : > "$GH_LOG"
+  rm -f "$GH_ROOT/graphql-threads.json"
+  t_arm "$repo" 82 CLEAN README.md '[]' "thread head"
+  t_blocking_thread 8201 "Please rename the helper."
+  PR_IDS=("${repo}|82")
+  step_merge
+  t_no_merge
+  t_logged "open review findings on ${SHA_HEAD:0:7} block PASS"
+  : > "$LOG"
+  : > "$GH_LOG"
+  rm -f "$GH_ROOT/graphql-threads.json"
+  t_arm "$repo" 83 CLEAN README.md '[]' "comment head"
+  mkdir -p "$GH_ROOT/pull-comments"
+  jq -n --arg sha "$SHA_HEAD" '[{id:8301, user:{login:"octocat"}, body:"Handle the empty list.", original_commit_id:$sha, commit_id:$sha, position:4}]' \
+    > "$GH_ROOT/pull-comments/${slug}_83.json"
+  PR_IDS=("${repo}|83")
+  step_merge
+  t_no_merge
+  t_logged "open review findings on ${SHA_HEAD:0:7} block PASS"
+}
+
+t_pass_recheck_read_fails() {
+  local repo=acme/software-factory
+  t_budget 0 '[]' '[]'
+  printf '%s\n' 0 > "$GH_ROOT/fail-graphql-after"
+  t_arm "$repo" 84 CLEAN README.md '[]' "read fail"
+  t_gate 3 "$repo" 84
+  [[ $GATE_REASON == *"could not verify open review findings"* ]] || fail "reason: ${GATE_REASON}"
+  PR_IDS=("${repo}|84")
+  step_merge
+  t_no_merge
+}
+
+# The posted marker stops a second independent-review comment. It does not
+# skip the open-finding guard, so a PASS saved earlier becomes FIX.
+t_posted_marker_does_not_skip_guard() {
+  local repo=acme/software-factory slug f
+  slug=$(t_slug "$repo")
+  t_budget 0 '[]' '[]'
+  t_arm "$repo" 85 CLEAN README.md '[]' "marker"
+  printf '%s\n' posted > "${STATE}/ireview-posted-${slug}-85-${SHA_HEAD}"
+  t_blocking_thread 8501 "Please rename the helper."
+  PR_IDS=("${repo}|85")
+  step_independent_review
+  f="${STATE}/ireview-result-${slug}-85-${SHA_HEAD}.json"
+  [[ $(jq -r '.verdict' "$f") == FIX ]] || fail "marker skipped the guard: $(jq -r '.verdict' "$f")"
+}
+
+# A failed open-finding read is retryable: no PASS comment and no posted marker.
+t_guard_read_failure_does_not_post() {
+  local repo=acme/software-factory slug f
+  slug=$(t_slug "$repo")
+  t_budget 0 '[]' '[]'
+  t_arm "$repo" 86 CLEAN README.md '[]' "guard fail"
+  # Two merge_gate reads succeed. The guard's own read is the third and fails.
+  printf '%s\n' 2 > "$GH_ROOT/fail-graphql-after"
+  PR_IDS=("${repo}|86")
+  : > "$GH_LOG"
+  step_independent_review
+  f="${STATE}/ireview-result-${slug}-86-${SHA_HEAD}.json"
+  [[ $(jq -r '.verdict' "$f") == PASS ]] || fail "failed read changed the verdict: $(jq -r '.verdict' "$f")"
+  [[ ! -e ${STATE}/ireview-posted-${slug}-86-${SHA_HEAD} ]] || fail "posted marker written after a failed read"
+  if grep -F -q -- "pr comment" "$GH_LOG"; then
+    fail "PASS was posted after a failed read"
+  fi
+  t_logged "not posting"
+}
+
 cases=(
   t_helpers
   t_dismiss_set
@@ -970,6 +1122,11 @@ cases=(
   t_plan_focus
   t_cap
   t_gate_work_focus
+  t_fix_round_cap_is_five
+  t_pass_rechecks_open_findings
+  t_pass_recheck_read_fails
+  t_posted_marker_does_not_skip_guard
+  t_guard_read_failure_does_not_post
   t_ir_record
 )
 for script in "$root/scripts/watcher/watch.sh" "$root/scripts/watcher/watch.new.sh"; do

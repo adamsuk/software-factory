@@ -99,6 +99,46 @@ if grep -F -q 'changes-requested alone does **not** force FIX/ESCALATE' "$root/a
 fi
 pass "reviewer brief states the rule"
 
+for lane in watch watch.new; do
+  f="$root/scripts/watcher/${lane}.sh"
+  if grep -F -q 'rounds >= 3' "$f"; then
+    fail "$lane still caps review-comment rounds at 3"
+  fi
+  if grep -F -q '3 rounds per PR' "$f"; then
+    fail "$lane still says 3 rounds per PR"
+  fi
+  if grep -F -q -- "\$((rounds + 1))/3" "$f"; then
+    fail "$lane still prints a round m/3"
+  fi
+  grep -F -q 'rounds >= 5' "$f" || fail "$lane does not cap review-comment rounds at 5"
+  grep -F -q '5 rounds per PR' "$f" || fail "$lane does not say 5 rounds per PR"
+  [[ $(grep -c 'if ! ir_guard_open_coderabbit' "$f") -eq 2 ]] \
+    || fail "$lane does not keep a failed open-finding read from posting"
+  awk '
+    /^merge_gate\(\)/ { in_fn = 1 }
+    in_fn && /ir_pass_still_blocked / { found = 1 }
+    in_fn && /^}/ { exit found ? 0 : 1 }
+  ' "$f" || fail "$lane merge_gate does not re-check open review findings"
+done
+grep -F -q '5-round cap' "$root/agents/roles/reviewer.md" \
+  || fail "reviewer brief does not state the 5-round review-comment cap"
+if grep -F -q '3-round cap' "$root/agents/roles/reviewer.md"; then
+  fail "reviewer brief still states a 3-round review-comment cap"
+fi
+grep -F -q 'at most 3' "$root/AGENTS.md" \
+  || fail "AGENTS.md lost the builder CI fix-loop cap of 3"
+grep -F -q '5-round cap' "$root/AGENTS.md" \
+  || fail "AGENTS.md does not state the 5-round review-comment cap"
+pass "review-comment cap is 5"
+
+for fn in ir_clear_guard_fix ir_pass_still_blocked ir_comment_limit ir_outstanding_lines ir_comment_prefix ir_post_split; do
+  extract_fn "$root/scripts/watcher/watch.sh" "$fn" > "$work/fn.${fn}.watch"
+  extract_fn "$root/scripts/watcher/watch.new.sh" "$fn" > "$work/fn.${fn}.watch.new"
+  [[ -s $work/fn.${fn}.watch ]] || fail "$fn missing"
+  cmp -s "$work/fn.${fn}.watch" "$work/fn.${fn}.watch.new" || fail "$fn copies differ"
+done
+pass "new independent-review helpers match"
+
 export FACTORY_HOME="$work/home"
 export FACTORY_WATCH_ROOT="$work/root"
 export FACTORY_BUDGET_FILE="$work/budget.json"
@@ -115,6 +155,9 @@ if [[ ${1:-} == pr && ${2:-} == comment ]]; then
   while [[ $# -gt 0 ]]; do
     if [[ $1 == --body && $# -ge 2 ]]; then
       printf '%s\n' "$2" > "${GH_BODY:?}"
+      if [[ -n ${GH_ALL:-} ]]; then
+        jq -nc --arg body "$2" '{body:$body}' >> "$GH_ALL"
+      fi
       exit 0
     fi
     shift
@@ -243,7 +286,9 @@ run_in() {
     export LANE_NAME=$lane
     export GH_BODY="$work/body.${fn}.${lane}"
     export GH_REPLIES="$work/replies.${fn}.${lane}"
+    export GH_ALL="$work/all.${fn}.${lane}"
     : > "$GH_REPLIES"
+    : > "$GH_ALL"
     # shellcheck disable=SC1090
     source "$root/scripts/watcher/${lane}.sh"
     "$fn"
@@ -563,6 +608,161 @@ case_reply_already_present() {
   cp "$GH_REPLIES" "$work/${name}.${LANE_NAME}.replies"
 }
 
+threads_on_head() {
+  local name=$1 prefix=$2 count=$3
+  jq -n --arg sha "$HEAD" --arg prefix "$prefix" --argjson count "$count" '
+    [range(1; $count + 1) | . as $n | {
+      isResolved:false, isOutdated:false, path:"scripts/a.sh",
+      comments:{nodes:[{
+        databaseId:(1000 + $n),
+        author:{login:"coderabbitai[bot]"},
+        body:($prefix + (if $n < 10 then "0" else "" end) + ($n | tostring)),
+        originalCommit:{oid:$sha}
+      }]}
+    }] as $nodes
+    | {data:{repository:{pullRequest:{reviewThreads:{pageInfo:{hasNextPage:false},nodes:$nodes}}}}}
+  ' > "$work/${name}.threads.json"
+}
+
+case_keep_model_fix() {
+  local name=${FUNCNAME[0]}
+  threads_on_head "$name" "coderabbit finding " 10
+  no_comments > "$work/${name}.comments.json"
+  no_reviews > "$work/${name}.reviews.json"
+  write_result "$work/${name}.result.json" PASS '[]' '[]'
+  jq '.fix = ["Review: keep the model finding"]' "$work/${name}.result.json" > "$work/${name}.result.tmp"
+  mv "$work/${name}.result.tmp" "$work/${name}.result.json"
+  apply_case "$name"
+  jq -e '
+    (.fix | length) == 11
+    and ([.fix[] | select(. == "Review: keep the model finding")] | length) == 1
+    and ([.fix[] | select(startswith("CodeRabbit: coderabbit finding "))] | length) == 10
+  ' "$work/${name}.${LANE_NAME}.json" >/dev/null || fail "$name ($LANE_NAME): the model Review fix was dropped"
+}
+
+case_sixteen_outstanding() {
+  local name=${FUNCNAME[0]} i f
+  threads_on_head "$name" "outstanding finding " 16
+  no_comments > "$work/${name}.comments.json"
+  no_reviews > "$work/${name}.reviews.json"
+  write_result "$work/${name}.result.json" PASS '[]' '[]'
+  apply_case "$name"
+  jq -e '
+    (.outstanding | length) == 16
+    and (.fix | length) == 16
+    and any(.outstanding[]; .text == "outstanding finding 16" and .disposition == "addressed")
+  ' "$work/${name}.${LANE_NAME}.json" >/dev/null || fail "$name ($LANE_NAME): a sixteenth outstanding finding was dropped"
+  rm -f "${STATE}/ireview-posted-acme_software-factory-7-${HEAD}"
+  f=$(ir_result_file acme/software-factory 7 "$HEAD")
+  cp "$work/${name}.${LANE_NAME}.json" "$f"
+  ir_post_comment acme/software-factory 7 "$HEAD" || fail "$name ($LANE_NAME): ir_post_comment failed"
+  for i in 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16; do
+    grep -F -q -- "outstanding finding ${i} — addressed" "$GH_BODY" \
+      || fail "$name ($LANE_NAME): posted comment lacks outstanding finding ${i}"
+  done
+}
+
+case_split_outstanding() {
+  local name=${FUNCNAME[0]} n f before after joined
+  empty_threads > "$work/${name}.threads.json"
+  no_comments > "$work/${name}.comments.json"
+  jq -n --arg sha "$HEAD" '
+    [range(1; 9) | . as $n | {
+      user:{login:"octocat"},
+      state:"COMMENTED",
+      commit_id:$sha,
+      body:("split finding " + (if $n < 10 then "0" else "" end) + ($n | tostring)),
+      outdated:false
+    }]
+  ' > "$work/${name}.reviews.json"
+  write_result "$work/${name}.result.json" PASS '[]' '[]'
+  apply_case "$name"
+  export IR_COMMENT_LIMIT=400
+  rm -f "${STATE}/ireview-posted-acme_software-factory-8-${HEAD}"
+  f=$(ir_result_file acme/software-factory 8 "$HEAD")
+  cp "$work/${name}.${LANE_NAME}.json" "$f"
+  ir_post_comment acme/software-factory 8 "$HEAD" || fail "$name ($LANE_NAME): split post failed"
+  before=$(jq -s 'length' "$GH_ALL")
+  [[ $before -gt 1 ]] || fail "$name ($LANE_NAME): report was not split (comments=${before})"
+  joined=$(jq -rs '.[].body' "$GH_ALL")
+  for n in 01 02 03 04 05 06 07 08; do
+    grep -F -q -- "split finding ${n}" <<< "$joined" \
+      || fail "$name ($LANE_NAME): split report dropped split finding ${n}"
+  done
+  [[ -e ${STATE}/ireview-posted-acme_software-factory-8-${HEAD} ]] \
+    || fail "$name ($LANE_NAME): posted marker missing after the split"
+  ir_post_comment acme/software-factory 8 "$HEAD" || fail "$name ($LANE_NAME): second post failed"
+  after=$(jq -s 'length' "$GH_ALL")
+  [[ $after -eq $before ]] || fail "$name ($LANE_NAME): second post added a comment (${before} -> ${after})"
+  cp "$GH_ALL" "$work/${name}.${LANE_NAME}.all"
+}
+
+case_guard_fix_clears() {
+  local name=${FUNCNAME[0]} text="Temporary open finding."
+  one_thread false false scripts/foo.sh 901 'coderabbitai[bot]' "$text" "$HEAD" > "$work/${name}.threads.json"
+  one_comment 901 'coderabbitai[bot]' "$text" "$HEAD" "$HEAD" 3 > "$work/${name}.comments.json"
+  no_reviews > "$work/${name}.reviews.json"
+  write_result "$work/${name}.result.json" PASS '[]' '[]'
+  apply_case "$name"
+  jq -e --arg t "$text" '
+    .verdict == "FIX"
+    and .model_verdict == "PASS"
+    and (.outstanding | length) == 1
+    and .outstanding[0].text == $t
+  ' "$work/${name}.${LANE_NAME}.json" >/dev/null || fail "$name ($LANE_NAME): open finding did not become a guard FIX"
+  printf '[]\n' > "$work/${name}.empty.json"
+  ir_apply_open_coderabbit "$work/${name}.result.json" "$work/${name}.empty.json" \
+    || fail "$name ($LANE_NAME): clearing an empty block failed"
+  jq -e '
+    .verdict == "PASS"
+    and .model_verdict == "PASS"
+    and (.outstanding | length) == 0
+    and (.fix | length) == 0
+  ' "$work/${name}.result.json" >/dev/null || fail "$name ($LANE_NAME): guard FIX stayed after the finding cleared"
+  cp "$work/${name}.result.json" "$work/${name}.${LANE_NAME}.json"
+}
+
+case_model_fix_stays() {
+  local name=${FUNCNAME[0]} text="A guard finding that later clears."
+  one_thread false false scripts/foo.sh 902 'coderabbitai[bot]' "$text" "$HEAD" > "$work/${name}.threads.json"
+  one_comment 902 'coderabbitai[bot]' "$text" "$HEAD" "$HEAD" 4 > "$work/${name}.comments.json"
+  no_reviews > "$work/${name}.reviews.json"
+  write_result "$work/${name}.result.json" FIX '[]' '[]'
+  jq '.fix = ["Review: keep the model finding"]' "$work/${name}.result.json" > "$work/${name}.result.tmp"
+  mv "$work/${name}.result.tmp" "$work/${name}.result.json"
+  apply_case "$name"
+  jq -e '
+    .verdict == "FIX"
+    and .model_verdict == "FIX"
+    and ([.fix[] | select(. == "Review: keep the model finding")] | length) == 1
+    and ([.fix[] | select(startswith("CodeRabbit:"))] | length) == 1
+  ' "$work/${name}.${LANE_NAME}.json" >/dev/null || fail "$name ($LANE_NAME): guard did not keep the model fix beside its own"
+  printf '[]\n' > "$work/${name}.empty.json"
+  ir_apply_open_coderabbit "$work/${name}.result.json" "$work/${name}.empty.json" \
+    || fail "$name ($LANE_NAME): clearing an empty block failed"
+  jq -e '
+    .verdict == "FIX"
+    and (.outstanding | length) == 0
+    and .fix == ["Review: keep the model finding"]
+  ' "$work/${name}.result.json" >/dev/null || fail "$name ($LANE_NAME): model FIX was cleared with the guard finding"
+  cp "$work/${name}.result.json" "$work/${name}.${LANE_NAME}.json"
+}
+
+case_guard_read_failure() {
+  local name=${FUNCNAME[0]} f rc=0
+  f=$(ir_result_file acme/software-factory 9 "$HEAD")
+  write_result "$f" PASS '[]' '[]'
+  : > "$LOG"
+  ir_guard_open_coderabbit acme/software-factory 9 "$f" "$HEAD" || rc=$?
+  [[ $rc -ne 0 ]] || fail "$name ($LANE_NAME): a failed read returned success"
+  jq -e '.verdict == "PASS" and ((.fix // []) | length) == 0' "$f" >/dev/null \
+    || fail "$name ($LANE_NAME): a failed read changed the saved PASS"
+  [[ ! -e ${STATE}/ireview-posted-acme_software-factory-9-${HEAD} ]] \
+    || fail "$name ($LANE_NAME): a failed read wrote the posted marker"
+  grep -F -q 'not posting' "$LOG" || fail "$name ($LANE_NAME): failed read was not logged as not posting"
+  cp "$f" "$work/${name}.${LANE_NAME}.json"
+}
+
 for fn in \
   case_dismissed_thread \
   case_addressed_thread \
@@ -580,7 +780,13 @@ for fn in \
   case_old_changes_requested \
   case_outdated_review \
   case_null_position_comment \
-  case_posts_dispositions
+  case_posts_dispositions \
+  case_keep_model_fix \
+  case_sixteen_outstanding \
+  case_split_outstanding \
+  case_guard_fix_clears \
+  case_model_fix_stays \
+  case_guard_read_failure
 do
   both_lanes "$fn"
   pass "$fn"
@@ -595,6 +801,8 @@ cmp -s "$work/case_human_thread_reply.watch.replies" "$work/case_human_thread_re
   || fail "human thread replies differ between lanes"
 cmp -s "$work/case_reply_already_present.watch.replies" "$work/case_reply_already_present.watch.new.replies" \
   || fail "already-present replies differ between lanes"
+cmp -s "$work/case_split_outstanding.watch.all" "$work/case_split_outstanding.watch.new.all" \
+  || fail "split reports differ between lanes"
 pass "thread replies match"
 
 echo "all open-coderabbit independent-review tests passed"
