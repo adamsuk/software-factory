@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - The watcher (`scripts/watcher/watch.sh`, `watch.new.sh`) no longer keeps an independent-review PASS while the current head has an unresolved, not-outdated CodeRabbit review thread, an unresolved CodeRabbit comment, or a CodeRabbit review in COMMENTED or CHANGES_REQUESTED. A model PASS that only files the finding under dismissed is rewritten to FIX when the finding is a small in-scope change, and to ESCALATE when a person must act. The posted comment lists each outstanding finding as addressed, dismissed with a reason, or escalated. Outdated threads, and threads only on earlier commits, do not by themselves change PASS, and the outdated-review dismiss path still runs after a valid PASS. `agents/roles/reviewer.md` states the rule. New `scripts/test-ir-open-coderabbit.sh` (#451).
+- The same gate counts every reviewer, not only CodeRabbit: an unresolved, not-outdated review thread, an unresolved review comment, or a COMMENTED or CHANGES_REQUESTED review on the current head blocks PASS whoever left it. After the disposition (addressed, dismissed with a reason, or escalated), the watcher replies on that unresolved thread and does not post a second identical reply. Outdated threads, earlier commits, resolved threads, and APPROVED reviews still do not rewrite PASS (#451).
 
 ## 2026-11-17 (a watcher host can turn building off)
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Independent review must not stay PASS while CodeRabbit still has a blocking
+# Independent review must not stay PASS while any reviewer still has a blocking
 # action on the current head (#451). Offline. A fake gh records the posted
-# comment. Both watcher lanes must agree. No network.
+# comment and thread replies. Both watcher lanes must agree. No network.
 # Case functions run inside the sourced subshell. LANE_NAME and GH_BODY are
 # exported there, and STATE comes from the watcher. ShellCheck sees those
 # assignments as local to the subshell.
@@ -45,6 +45,18 @@ extract_fn "$root/scripts/watcher/watch.new.sh" ir_post_comment > "$work/post.wa
 cmp -s "$work/post.watch" "$work/post.watch.new" || fail "ir_post_comment copies differ"
 pass "ir_post_comment copies match"
 
+extract_fn "$root/scripts/watcher/watch.sh" ir_reply_body > "$work/reply-body.watch"
+extract_fn "$root/scripts/watcher/watch.new.sh" ir_reply_body > "$work/reply-body.watch.new"
+[[ -s $work/reply-body.watch ]] || fail "ir_reply_body missing"
+cmp -s "$work/reply-body.watch" "$work/reply-body.watch.new" || fail "ir_reply_body copies differ"
+pass "ir_reply_body copies match"
+
+extract_fn "$root/scripts/watcher/watch.sh" ir_reply_threads > "$work/reply.watch"
+extract_fn "$root/scripts/watcher/watch.new.sh" ir_reply_threads > "$work/reply.watch.new"
+[[ -s $work/reply.watch ]] || fail "ir_reply_threads missing"
+cmp -s "$work/reply.watch" "$work/reply.watch.new" || fail "ir_reply_threads copies differ"
+pass "ir_reply_threads copies match"
+
 extract_fn "$root/scripts/watcher/watch.sh" ir_save_result > "$work/save.watch"
 extract_fn "$root/scripts/watcher/watch.new.sh" ir_save_result > "$work/save.watch.new"
 cmp -s "$work/save.watch" "$work/save.watch.new" || fail "ir_save_result copies differ"
@@ -65,17 +77,21 @@ for lane in watch watch.new; do
     /ir_post_comment / { if (guarded) ok = 1 }
     END { exit !ok }
   ' || fail "$lane: an unposted saved result is posted without the open-coderabbit guard"
-  grep -F -q 'Do not return PASS while a CodeRabbit review thread on this head is unresolved and not outdated' <<< "$body" \
-    || fail "$lane: independent-review prompt does not refuse PASS for an open CodeRabbit finding"
+  grep -F -q 'Do not return PASS while a review thread on this head is unresolved and not outdated' <<< "$body" \
+    || fail "$lane: independent-review prompt does not refuse PASS for an open review finding"
+  grep -F -q 'from any reviewer' <<< "$body" \
+    || fail "$lane: independent-review prompt does not count every reviewer"
   grep -F -q 'CodeRabbit does not review pull requests this size; you are the only review before merge' <<< "$body" \
     || fail "$lane: small-pull-request prompt was dropped"
 done
 pass "both lanes call the guard before posting"
 
-grep -F -q 'no outstanding blocking CodeRabbit action remains on that head' "$root/agents/roles/reviewer.md" \
-  || fail "reviewer brief does not refuse PASS while a CodeRabbit action is open"
+grep -F -q 'no outstanding blocking review action remains on that head' "$root/agents/roles/reviewer.md" \
+  || fail "reviewer brief does not refuse PASS while a review action is open"
 grep -F -q 'dismissed with a reason, or escalated' "$root/agents/roles/reviewer.md" \
   || fail "reviewer brief does not require a disposition for each outstanding finding"
+grep -F -q 'replies on each unresolved thread' "$root/agents/roles/reviewer.md" \
+  || fail "reviewer brief does not require a reply on each unresolved thread"
 grep -F -q 'ir_guard_open_coderabbit' "$root/agents/roles/reviewer.md" \
   || fail "reviewer brief does not name the guard"
 if grep -F -q 'changes-requested alone does **not** force FIX/ESCALATE' "$root/agents/roles/reviewer.md"; then
@@ -103,6 +119,39 @@ if [[ ${1:-} == pr && ${2:-} == comment ]]; then
     fi
     shift
   done
+fi
+if [[ ${1:-} == api ]]; then
+  method=""
+  url=""
+  body=""
+  shift
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --method)
+        method=${2:-}
+        shift 2
+        ;;
+      -f)
+        if [[ ${2:-} == body=* ]]; then
+          body=${2#body=}
+        fi
+        shift 2
+        ;;
+      -*)
+        shift
+        ;;
+      *)
+        if [[ -z $url ]]; then
+          url=$1
+        fi
+        shift
+        ;;
+    esac
+  done
+  if [[ $method == POST && $url == *"/comments/"*"/replies" ]]; then
+    jq -nc --arg url "$url" --arg body "$body" '{url:$url, body:$body}' >> "${GH_REPLIES:?}"
+    exit 0
+  fi
 fi
 printf 'unexpected gh: %s\n' "$*" >&2
 exit 99
@@ -193,6 +242,8 @@ run_in() {
   if ! (
     export LANE_NAME=$lane
     export GH_BODY="$work/body.${fn}.${lane}"
+    export GH_REPLIES="$work/replies.${fn}.${lane}"
+    : > "$GH_REPLIES"
     # shellcheck disable=SC1090
     source "$root/scripts/watcher/${lane}.sh"
     "$fn"
@@ -326,13 +377,26 @@ case_resolved_thread() {
 }
 
 case_human_comment() {
-  local name=${FUNCNAME[0]} text="Please rename the helper."
+  local name=${FUNCNAME[0]} text="Please rename the helper." review="A walkthrough from octocat."
   empty_threads > "$work/${name}.threads.json"
   one_comment 304 octocat "$text" "$HEAD" "$HEAD" 3 > "$work/${name}.comments.json"
-  one_review octocat COMMENTED "$HEAD" "$text" false > "$work/${name}.reviews.json"
+  one_review octocat COMMENTED "$HEAD" "$review" false > "$work/${name}.reviews.json"
   write_result "$work/${name}.result.json" PASS '[]' '[]'
   apply_case "$name"
-  assert_unchanged "$name"
+  jq -e --arg t "$text" --arg r "$review" '
+    .verdict == "FIX"
+    and (.outstanding | length) == 2
+    and .outstanding[0].text == $t
+    and .outstanding[0].disposition == "addressed"
+    and .outstanding[0].kind == "comment"
+    and .outstanding[0].id == "304"
+    and .outstanding[0].tag == "Review"
+    and .outstanding[1].text == $r
+    and .outstanding[1].disposition == "addressed"
+    and .outstanding[1].kind == "review"
+    and .outstanding[1].tag == "Review"
+    and ([.fix[]? | select(. == "Review: " + $t or . == "Review: " + $r)] | length) == 2
+  ' "$work/${name}.${LANE_NAME}.json" >/dev/null || fail "$name ($LANE_NAME): an octocat comment or review on the head stayed PASS"
 }
 
 case_approved_review() {
@@ -395,7 +459,9 @@ case_posts_dispositions() {
     and .outstanding[1].text == $secret
     and .outstanding[1].disposition == "escalated"
   ' "$work/${name}.${LANE_NAME}.json" >/dev/null || fail "$name ($LANE_NAME): mixed findings were not escalated with both dispositions"
-  rm -f "${STATE}/ireview-posted-acme_software-factory-7-${HEAD}"
+  rm -f "${STATE}/ireview-posted-acme_software-factory-7-${HEAD}" \
+    "${STATE}/ireview-reply-acme_software-factory-7-401" \
+    "${STATE}/ireview-reply-acme_software-factory-7-402"
   local f
   f=$(ir_result_file acme/software-factory 7 "$HEAD")
   cp "$work/${name}.${LANE_NAME}.json" "$f"
@@ -412,7 +478,89 @@ case_posts_dispositions() {
   if grep -F -q 'CodeRabbit findings not blocking:' "$GH_BODY"; then
     fail "$name ($LANE_NAME): an open finding is still listed as not blocking"
   fi
+  jq -e '
+    length == 2
+    and .[0].url == "repos/acme/software-factory/pulls/7/comments/401/replies"
+    and .[0].body == "Independent review disposition: dismissed: the name is internal"
+    and .[1].url == "repos/acme/software-factory/pulls/7/comments/402/replies"
+    and .[1].body == "Independent review disposition: escalated"
+    and ([.[].body | select(contains("@"))] | length) == 0
+  ' <(jq -s '.' "$GH_REPLIES") >/dev/null || fail "$name ($LANE_NAME): thread replies missing or wrong"
   cp "$GH_BODY" "$work/${name}.${LANE_NAME}.comment"
+  cp "$GH_REPLIES" "$work/${name}.${LANE_NAME}.replies"
+}
+
+case_human_thread_reply() {
+  local name=${FUNCNAME[0]} text="Please rename the helper."
+  one_thread false false scripts/foo.sh 501 octocat "$text" "$HEAD" > "$work/${name}.threads.json"
+  one_comment 501 octocat "$text" "$HEAD" "$HEAD" 3 > "$work/${name}.comments.json"
+  no_reviews > "$work/${name}.reviews.json"
+  write_result "$work/${name}.result.json" PASS "$(jq -n --arg t "$text" '[$t + " - not @coderabbitai"]')" '[]'
+  apply_case "$name"
+  jq -e --arg t "$text" '
+    .verdict == "FIX"
+    and .outstanding[0].kind == "thread"
+    and .outstanding[0].id == "501"
+    and .outstanding[0].tag == "Review"
+    and .outstanding[0].text == $t
+    and .outstanding[0].disposition == "dismissed: not @coderabbitai"
+  ' "$work/${name}.${LANE_NAME}.json" >/dev/null || fail "$name ($LANE_NAME): octocat thread was not blocking"
+  rm -f "${STATE}/ireview-posted-acme_software-factory-7-${HEAD}" \
+    "${STATE}/ireview-reply-acme_software-factory-7-501"
+  local f
+  f=$(ir_result_file acme/software-factory 7 "$HEAD")
+  cp "$work/${name}.${LANE_NAME}.json" "$f"
+  ir_post_comment acme/software-factory 7 "$HEAD" || fail "$name ($LANE_NAME): ir_post_comment failed"
+  jq -e '
+    length == 1
+    and .[0].url == "repos/acme/software-factory/pulls/7/comments/501/replies"
+    and .[0].body == "Independent review disposition: dismissed: not coderabbitai"
+    and (.[0].body | contains("@") | not)
+  ' <(jq -s '.' "$GH_REPLIES") >/dev/null || fail "$name ($LANE_NAME): disposition reply missing or still mentions @"
+  ir_post_comment acme/software-factory 7 "$HEAD" || fail "$name ($LANE_NAME): second ir_post_comment failed"
+  jq -e 'length == 1' <(jq -s '.' "$GH_REPLIES") >/dev/null \
+    || fail "$name ($LANE_NAME): a second identical reply was posted"
+  cp "$GH_REPLIES" "$work/${name}.${LANE_NAME}.replies"
+}
+
+case_reply_already_present() {
+  local name=${FUNCNAME[0]}
+  local text="Please rename the helper."
+  local reply="Independent review disposition: addressed"
+  jq -n --arg head "$HEAD" --arg text "$text" --arg reply "$reply" \
+    '{data:{repository:{pullRequest:{reviewThreads:{pageInfo:{hasNextPage:false},nodes:[{
+      isResolved:false, isOutdated:false, path:"scripts/foo.sh",
+      comments:{nodes:[
+        {databaseId:701, author:{login:"octocat"}, body:$text, originalCommit:{oid:$head}},
+        {databaseId:702, author:{login:"factory-bot"}, body:$reply, originalCommit:{oid:$head}}
+      ]}
+    }]}}}}}' > "$work/${name}.threads.json"
+  jq -n --arg head "$HEAD" --arg text "$text" --arg reply "$reply" '[
+    {id:701, user:{login:"octocat"}, body:$text, original_commit_id:$head, commit_id:$head, position:4},
+    {id:702, user:{login:"factory-bot"}, body:$reply, original_commit_id:$head, commit_id:$head, position:5}
+  ]' > "$work/${name}.comments.json"
+  no_reviews > "$work/${name}.reviews.json"
+  write_result "$work/${name}.result.json" PASS '[]' '[]'
+  apply_case "$name"
+  jq -e --arg t "$text" --arg reply "$reply" '
+    .verdict == "FIX"
+    and (.outstanding | length) == 1
+    and .outstanding[0].text == $t
+    and .outstanding[0].disposition == "addressed"
+    and .outstanding[0].id == "701"
+    and (.outstanding[0].seen | index($reply) != null)
+  ' "$work/${name}.${LANE_NAME}.json" >/dev/null || fail "$name ($LANE_NAME): existing reply changed the finding"
+  rm -f "${STATE}/ireview-posted-acme_software-factory-7-${HEAD}" \
+    "${STATE}/ireview-reply-acme_software-factory-7-701" \
+    "${STATE}/ireview-reply-acme_software-factory-7-702"
+  local f
+  f=$(ir_result_file acme/software-factory 7 "$HEAD")
+  cp "$work/${name}.${LANE_NAME}.json" "$f"
+  ir_post_comment acme/software-factory 7 "$HEAD" || fail "$name ($LANE_NAME): ir_post_comment failed"
+  [[ -s $GH_BODY ]] || fail "$name ($LANE_NAME): issue comment was not posted"
+  jq -e 'length == 0' <(jq -s '.' "$GH_REPLIES") >/dev/null \
+    || fail "$name ($LANE_NAME): posted a reply that was already on the thread"
+  cp "$GH_REPLIES" "$work/${name}.${LANE_NAME}.replies"
 }
 
 for fn in \
@@ -426,6 +574,8 @@ for fn in \
   case_earlier_commit \
   case_resolved_thread \
   case_human_comment \
+  case_human_thread_reply \
+  case_reply_already_present \
   case_approved_review \
   case_old_changes_requested \
   case_outdated_review \
@@ -439,5 +589,12 @@ done
 cmp -s "$work/case_posts_dispositions.watch.comment" "$work/case_posts_dispositions.watch.new.comment" \
   || fail "posted comments differ between lanes"
 pass "posted comments match"
+cmp -s "$work/case_posts_dispositions.watch.replies" "$work/case_posts_dispositions.watch.new.replies" \
+  || fail "thread replies differ between lanes"
+cmp -s "$work/case_human_thread_reply.watch.replies" "$work/case_human_thread_reply.watch.new.replies" \
+  || fail "human thread replies differ between lanes"
+cmp -s "$work/case_reply_already_present.watch.replies" "$work/case_reply_already_present.watch.new.replies" \
+  || fail "already-present replies differ between lanes"
+pass "thread replies match"
 
 echo "all open-coderabbit independent-review tests passed"
