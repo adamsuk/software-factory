@@ -3,11 +3,11 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 2026-11-20 (local watcher preflight)
+## 2026-11-21 (local watcher preflight)
 
 ### Added
 
-- `docs/runbooks/local-watcher.md` and `scripts/watcher-preflight.sh` (with `scripts/test-watcher-preflight.sh`) give a maintainer the variables, checks and start steps for both watcher lanes on one machine. The preflight names missing items and never prints secret values. `FACTORY_GROK_ON_HOST=host-is-a-disposable-sandbox` skips the container runtime check (#390).
+- `docs/runbooks/local-watcher.md` and `scripts/watcher-preflight.sh` (with `scripts/test-watcher-preflight.sh`) give a maintainer the variables, checks and start steps for both watcher lanes (`scripts/watcher/watch.sh`, and `scripts/watcher/watch.new.sh` with `LANE=build`) as a `systemd --user` unit or a start command. The preflight exits non-zero naming each missing variable, command or path (`gh auth status`, the selected provider's CLI and credential, `FACTORY_CONTAINER_RUNTIME` or the first of `podman`, `docker` and `nerdctl` on `PATH`, `FACTORY_CONTAINER_IMAGE`, and `$FACTORY_WATCH_ROOT/state`) and prints names only (#390).
 
 ## 2026-11-17 (a watcher host can turn building off)
 
