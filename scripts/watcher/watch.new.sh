@@ -93,7 +93,7 @@
 # dismiss is reported to the maintainer.
 # FIX goes to the fix path: ordinary PRs get @coderabbitai fix comments, then
 # Grok fallback; sensitive PRs go straight to scoped Grok. Review-comment
-# repairs stop at REVIEW_COMMENT_FIX_ROUNDS (3). Failing-CI repairs stop at
+# repairs stop at REVIEW_COMMENT_FIX_ROUNDS (5). Failing-CI repairs stop at
 # CI_FIX_ROUNDS (3). Those two counters are separate.
 # ESCALATE goes to the maintainer (needs_scott). Exception (maintainer 27 Oct 16:34):
 # factory/ PRs that close an issue in .merge_protected_issues of the budget
@@ -189,7 +189,7 @@ WORK="${ROOT}/work"
 # REVIEW_COMMENT_FIX_ROUNDS caps mode=review, step_cr_fix_comment, and
 # independent-review or reviewer-thread repairs.
 CI_FIX_ROUNDS=3
-REVIEW_COMMENT_FIX_ROUNDS=3
+REVIEW_COMMENT_FIX_ROUNDS=5
 ORDERS="${ROOT}/orders"
 # main (default) or build. Build is a second process with its own lock and log.
 LANE=${LANE:-main}
