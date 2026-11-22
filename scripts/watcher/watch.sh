@@ -4908,7 +4908,7 @@ step_fix_fallback() {
     fi
     rounds_file="${STATE}/rounds-${slug}-${pr}"
     rounds=$(read_rounds "$rounds_file")
-    if (( rounds >= 3 )); then
+    if (( rounds >= 5 )); then
       log "fix fallback skip ${repo}#${pr}: round cap ${rounds}"
       continue
     fi
@@ -4997,7 +4997,7 @@ step_fix_fallback() {
       continue
     fi
     if (( DRY )); then
-      note "DRY-RUN would grok-fix (${mode}$( (( sens )) && echo ", scoped to the PR's own files")) ${repo}#${pr} head ${GATE_SHORT} round $((rounds + 1))/3, then commit, push, and comment @coderabbitai full review"
+      note "DRY-RUN would grok-fix (${mode}$( (( sens )) && echo ", scoped to the PR's own files")) ${repo}#${pr} head ${GATE_SHORT} round $((rounds + 1))/5, then commit, push, and comment @coderabbitai full review"
       mark_grok_job "$repo" "$pr" 1
       continue
     fi
