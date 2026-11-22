@@ -2075,7 +2075,7 @@ report_ci_failure() {
   slug=$(repo_slug "$repo")
   sha_ok "$GATE_SHA" || return 0
   rounds=$(read_rounds "${STATE}/rounds-${slug}-${pr}")
-  if (( rounds >= 5 )); then
+  if (( rounds >= 3 )); then
     why="fix rounds used (${rounds}/5)"
   elif pr_is_lockfile_only "$repo" "$pr"; then
     why="dependabot or lockfile-only PR, so no automatic fix"
@@ -2085,7 +2085,7 @@ report_ci_failure() {
     why="unsafe branch name, so no automatic fix"
   fi
   if [[ -z $why ]]; then
-    msg="failing CI: ${repo}#${pr} head ${GATE_SHORT} (${GATE_CHECKS}). Not ready for review or merge; routed to the Grok fix path (round $((rounds + 1))/5$(pr_is_sensitive "$repo" "$pr" && echo ", limited to the PR's own files"))."
+    msg="failing CI: ${repo}#${pr} head ${GATE_SHORT} (${GATE_CHECKS}). Not ready for review or merge; routed to the Grok fix path (round $((rounds + 1))/3$(pr_is_sensitive "$repo" "$pr" && echo ", limited to the PR's own files"))."
   else
     msg="blocked by failing CI: ${repo}#${pr} head ${GATE_SHORT} (${GATE_CHECKS}); ${why}. Not ready for review or merge."
   fi
@@ -3341,7 +3341,7 @@ step_cr_fix_comment() {
     fi
     rounds_file="${STATE}/rounds-${slug}-${pr}"
     rounds=$(read_rounds "$rounds_file")
-    if (( rounds >= 5 )); then
+    if (( rounds >= 3 )); then
       needs_scott "fixcap-${slug}-${pr}" \
         "$(printf '%s\n' "${repo}#${pr} has had ${rounds} fix rounds and the independent review of head ${GATE_SHA} is still FIX. Needs a person." "$(ir_list_text "$repo" "$pr" "$GATE_SHA" fix)")" || true
       continue
@@ -3366,10 +3366,10 @@ step_cr_fix_comment() {
     comment_pr "$repo" "$pr" '@coderabbitai fix comments' "$marker" || crc=$?
     if (( crc == 0 )); then
       if (( DRY )); then
-        note "DRY-RUN would count crfix round $((rounds + 1))/5 for ${repo}#${pr} ${GATE_SHORT}"
+        note "DRY-RUN would count crfix round $((rounds + 1))/3 for ${repo}#${pr} ${GATE_SHORT}"
       elif [[ -e ${STATE}/${marker} ]]; then
         printf '%s\n' $((rounds + 1)) > "$rounds_file"
-        note "crfix counted round $((rounds + 1))/5 for ${repo}#${pr} ${GATE_SHORT}"
+        note "crfix counted round $((rounds + 1))/3 for ${repo}#${pr} ${GATE_SHORT}"
       fi
     elif (( crc != 2 )); then
       log "crfix comment failed ${repo}#${pr}"
@@ -4907,7 +4907,7 @@ step_fix_fallback() {
     fi
     rounds_file="${STATE}/rounds-${slug}-${pr}"
     rounds=$(read_rounds "$rounds_file")
-    if (( rounds >= 5 )); then
+    if (( rounds >= 3 )); then
       log "fix fallback skip ${repo}#${pr}: round cap ${rounds}"
       continue
     fi
@@ -4996,7 +4996,7 @@ step_fix_fallback() {
       continue
     fi
     if (( DRY )); then
-      note "DRY-RUN would grok-fix (${mode}$( (( sens )) && echo ", scoped to the PR's own files")) ${repo}#${pr} head ${GATE_SHORT} round $((rounds + 1))/5, then commit, push, and comment @coderabbitai full review"
+      note "DRY-RUN would grok-fix (${mode}$( (( sens )) && echo ", scoped to the PR's own files")) ${repo}#${pr} head ${GATE_SHORT} round $((rounds + 1))/3, then commit, push, and comment @coderabbitai full review"
       mark_grok_job "$repo" "$pr" 1
       continue
     fi

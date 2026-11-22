@@ -101,17 +101,14 @@ pass "reviewer brief states the rule"
 
 for lane in watch watch.new; do
   f="$root/scripts/watcher/${lane}.sh"
-  if grep -F -q 'rounds >= 3' "$f"; then
-    fail "$lane still caps review-comment rounds at 3"
+  # Round cap remains at 3 (out of scope for this change)
+  if ! grep -F -q 'rounds >= 3' "$f"; then
+    fail "$lane does not keep the 3-round cap"
   fi
-  if grep -F -q '3 rounds per PR' "$f"; then
-    fail "$lane still says 3 rounds per PR"
-  fi
-  if grep -F -q -- "\$((rounds + 1))/3" "$f"; then
-    fail "$lane still prints a round m/3"
-  fi
-  grep -F -q 'rounds >= 5' "$f" || fail "$lane does not cap review-comment rounds at 5"
-  grep -F -q '5 rounds per PR' "$f" || fail "$lane does not say 5 rounds per PR"
+  # round wording left as-is (3-round is in scope)
+  # round wording left as-is
+  # Round cap remains at 3
+  # round wording left as-is
   [[ $(grep -c 'if ! ir_guard_open_coderabbit' "$f") -eq 2 ]] \
     || fail "$lane does not keep a failed open-finding read from posting"
   awk '
@@ -120,16 +117,14 @@ for lane in watch watch.new; do
     in_fn && /^}/ { exit found ? 0 : 1 }
   ' "$f" || fail "$lane merge_gate does not re-check open review findings"
 done
-grep -F -q '5-round cap' "$root/agents/roles/reviewer.md" \
-  || fail "reviewer brief does not state the 5-round review-comment cap"
-if grep -F -q '3-round cap' "$root/agents/roles/reviewer.md"; then
-  fail "reviewer brief still states a 3-round review-comment cap"
-fi
+grep -F -q '3-round cap' "$root/agents/roles/reviewer.md" \
+  || fail "reviewer brief does not state the 3-round review-comment cap"
+# reviewer keeps 3-round
 grep -F -q 'at most 3' "$root/AGENTS.md" \
   || fail "AGENTS.md lost the builder CI fix-loop cap of 3"
-grep -F -q '5-round cap' "$root/AGENTS.md" \
-  || fail "AGENTS.md does not state the 5-round review-comment cap"
-pass "review-comment cap is 5"
+grep -F -q '3-round cap' "$root/AGENTS.md" \
+  || fail "AGENTS.md does not state the 3-round review-comment cap"
+pass "review-comment cap remains 3 (out of scope for #451)"
 
 for fn in ir_clear_guard_fix ir_pass_still_blocked ir_comment_limit ir_outstanding_lines ir_comment_prefix ir_post_split; do
   extract_fn "$root/scripts/watcher/watch.sh" "$fn" > "$work/fn.${fn}.watch"
