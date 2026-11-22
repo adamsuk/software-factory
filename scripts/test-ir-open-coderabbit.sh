@@ -102,7 +102,7 @@ pass "reviewer brief states the rule"
 for lane in watch watch.new; do
   f="$root/scripts/watcher/${lane}.sh"
   grep -F -q 'CI_FIX_ROUNDS=3' "$f" || fail "$lane does not set CI_FIX_ROUNDS=3"
-  grep -F -q 'REVIEW_COMMENT_FIX_ROUNDS=5' "$f" || fail "$lane does not set REVIEW_COMMENT_FIX_ROUNDS=5"
+  grep -F -q 'REVIEW_COMMENT_FIX_ROUNDS=3' "$f" || fail "$lane does not set REVIEW_COMMENT_FIX_ROUNDS=3"
   # Literal watcher source: the dollars are part of the file text.
   grep -F -q "\"\${STATE}/ci-rounds-" "$f" || fail "$lane does not count failing-CI rounds apart"
   grep -F -q "\"\${STATE}/review-rounds-" "$f" || fail "$lane does not count review-comment rounds apart"
@@ -122,14 +122,14 @@ for lane in watch watch.new; do
     in_fn && /^}/ { exit found ? 0 : 1 }
   ' "$f" || fail "$lane merge_gate does not re-check open review findings"
 done
-grep -F -q '5-round cap' "$root/agents/roles/reviewer.md" \
-  || fail "reviewer brief does not state the 5-round review-comment cap"
+grep -F -q '3-round cap' "$root/agents/roles/reviewer.md" \
+  || fail "reviewer brief does not state the 3-round review-comment cap"
 grep -F -q 'CI fix-loop stays at 3' "$root/agents/roles/reviewer.md" \
   || fail "reviewer brief does not keep the CI fix-loop at 3"
 grep -F -q 'at most 3' "$root/AGENTS.md" \
   || fail "AGENTS.md lost the builder CI fix-loop cap of 3"
-grep -F -q '5-round cap' "$root/AGENTS.md" \
-  || fail "AGENTS.md does not state the 5-round review-comment cap"
+grep -F -q '3-round cap' "$root/AGENTS.md" \
+  || fail "AGENTS.md does not state the 3-round review-comment cap"
 grep -F -q 'CI fix-loop stays at 3' "$root/AGENTS.md" \
   || fail "AGENTS.md does not keep the CI fix-loop at 3"
 pass "review-comment cap is 5 and the CI fix-loop stays at 3"
