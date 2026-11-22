@@ -3,6 +3,14 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-22 (review-comment fixes and failing CI use separate round caps)
+
+### Fixed
+
+- The watcher (`scripts/watcher/watch.sh`, `watch.new.sh`) counts review-comment fix rounds and failing-CI fix rounds apart. Review-comment repairs (`REVIEW_COMMENT_FIX_ROUNDS`, mode=review, `step_cr_fix_comment`) stop at 5. Failing-CI repairs (`CI_FIX_ROUNDS`, mode=ci, `report_ci_failure`, `cifix-*`) stop at 3. A fourth CI repair does not run, and a fourth review-comment repair is not stopped early. AGENTS.md section 4 keeps the builder cap of 3; section 10 and `agents/roles/reviewer.md` state both caps (#451).
+- An empty COMMENTED review from `software-factory-line[bot]` (a thread-reply wrapper) no longer blocks an independent-review PASS. A human review, or another bot's COMMENTED or CHANGES_REQUESTED review with a real body, still blocks (#451).
+- Clearing a guard-only independent-review rewrite restores the model's verdict and the model's own fix list. A model FIX stays FIX when that list is empty (#451).
+
 ## 2026-11-21 (independent review refuses PASS while CodeRabbit threads stay open)
 
 ### Fixed

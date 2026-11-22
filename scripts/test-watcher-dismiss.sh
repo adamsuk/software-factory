@@ -759,8 +759,8 @@ t_gate_work_focus() {
   : > "$LOG"
   t_ir "$repo_a" 31 "$SHA_HEAD" FIX
   t_ir "$repo_b" 32 "$SHA_HEAD" FIX
-  printf '%s\n' 5 > "${STATE}/rounds-$(t_slug "$repo_a")-31"
-  printf '%s\n' 5 > "${STATE}/rounds-$(t_slug "$repo_b")-32"
+  printf '%s\n' 5 > "${STATE}/review-rounds-$(t_slug "$repo_a")-31"
+  printf '%s\n' 5 > "${STATE}/review-rounds-$(t_slug "$repo_b")-32"
   step_fix_fallback
   t_logged "fix fallback skip ${repo_a}#31: not in focus"
   t_logged "fix fallback skip ${repo_b}#32: round cap"
@@ -1003,16 +1003,47 @@ t_fix_round_cap_is_five() {
   t_recent
   t_arm "$repo" 71 CLEAN README.md '[]' "cap" "bump" dependabot/npm/left
   t_ir "$repo" 71 "$SHA_HEAD" FIX
-  printf '%s\n' 4 > "${STATE}/rounds-$(t_slug "$repo")-71"
+  printf '%s\n' 4 > "${STATE}/review-rounds-$(t_slug "$repo")-71"
   PR_IDS=("${repo}|71")
   step_fix_fallback
   t_not_logged "round cap"
   t_logged "fix fallback skip ${repo}#71: dependabot or lockfile-only"
   : > "$LOG"
-  printf '%s\n' 5 > "${STATE}/rounds-$(t_slug "$repo")-71"
+  printf '%s\n' 5 > "${STATE}/review-rounds-$(t_slug "$repo")-71"
   step_fix_fallback
   t_logged "fix fallback skip ${repo}#71: round cap"
   t_not_logged "dependabot or lockfile-only"
+}
+
+# Three recorded failing-CI rounds stop another CI repair. Two do not.
+# A full review-comment counter does not consume the CI cap, and a full CI
+# counter does not stop a fourth review-comment repair.
+t_ci_fix_round_cap_is_three() {
+  local repo=acme/software-factory slug
+  slug=$(t_slug "$repo")
+  t_budget 0 '[]' '[]'
+  t_recent
+  t_arm "$repo" 72 CLEAN README.md '[]' "ci cap" "bump" dependabot/npm/left "$CHECKS_BAD"
+  printf '%s\n' 2 > "${STATE}/ci-rounds-${slug}-72"
+  printf '%s\n' 5 > "${STATE}/review-rounds-${slug}-72"
+  PR_IDS=("${repo}|72")
+  step_fix_fallback
+  t_not_logged "round cap"
+  t_logged "fix fallback skip ${repo}#72: dependabot or lockfile-only"
+  : > "$LOG"
+  printf '%s\n' 3 > "${STATE}/ci-rounds-${slug}-72"
+  step_fix_fallback
+  t_logged "fix fallback skip ${repo}#72: round cap"
+  t_not_logged "dependabot or lockfile-only"
+  : > "$LOG"
+  t_arm "$repo" 73 CLEAN README.md '[]' "review under ci cap" "bump" dependabot/npm/left
+  t_ir "$repo" 73 "$SHA_HEAD" FIX
+  printf '%s\n' 4 > "${STATE}/review-rounds-${slug}-73"
+  printf '%s\n' 3 > "${STATE}/ci-rounds-${slug}-73"
+  PR_IDS=("${repo}|73")
+  step_fix_fallback
+  t_not_logged "round cap"
+  t_logged "fix fallback skip ${repo}#73: dependabot or lockfile-only"
 }
 
 t_blocking_thread() {
@@ -1123,6 +1154,7 @@ cases=(
   t_cap
   t_gate_work_focus
   t_fix_round_cap_is_five
+  t_ci_fix_round_cap_is_three
   t_pass_rechecks_open_findings
   t_pass_recheck_read_fails
   t_posted_marker_does_not_skip_guard

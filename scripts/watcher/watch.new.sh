@@ -58,7 +58,10 @@
 # and Grok caps; out of budget means wait. Before that comment is posted,
 # ir_guard_open_coderabbit rewrites a PASS when this head still has an
 # unresolved, not-outdated review thread, an unresolved review comment, or a
-# review in COMMENTED or CHANGES_REQUESTED, from any reviewer. The
+# review in COMMENTED or CHANGES_REQUESTED, from any reviewer. An empty
+# COMMENTED review from the factory bot (software-factory-line[bot], a
+# thread-reply wrapper) does not count. A human review, or another bot's
+# COMMENTED or CHANGES_REQUESTED review with a real body, still does. The
 # saved verdict is FIX for a small in-scope finding and ESCALATE when a
 # person must act, and the comment lists each outstanding finding as
 # addressed, dismissed with a reason, or escalated. Every outstanding finding
@@ -89,7 +92,9 @@
 # dismissed. A protected PR that goes to the maintainer stays with the maintainer. A failed
 # dismiss is reported to the maintainer.
 # FIX goes to the fix path: ordinary PRs get @coderabbitai fix comments, then
-# Grok fallback; sensitive PRs go straight to scoped Grok; 5 rounds per PR.
+# Grok fallback; sensitive PRs go straight to scoped Grok. Review-comment
+# repairs stop at REVIEW_COMMENT_FIX_ROUNDS (5). Failing-CI repairs stop at
+# CI_FIX_ROUNDS (3). Those two counters are separate.
 # ESCALATE goes to the maintainer (needs_scott). Exception (maintainer 27 Oct 16:34):
 # factory/ PRs that close an issue in .merge_protected_issues of the budget
 # file (same repo) merge on PASS + green + CLEAN even when sensitive.
@@ -115,7 +120,8 @@
 #   crstall-<repo>-<N>-<short head>  no review an hour after full review; event sent
 #   crconflict-sens-<repo>-<N>-<head>-<base>  needs-scott: sensitive PR is DIRTY
 #   fixscope-<repo>-<N>-<head>       needs-scott: scoped Grok fix rejected
-#   rounds-<repo>-<N>
+#   ci-rounds-<repo>-<N>             failing-CI fix rounds (cap CI_FIX_ROUNDS)
+#   review-rounds-<repo>-<N>         review-comment fix rounds (cap REVIEW_COMMENT_FIX_ROUNDS)
 #   review-result-<repo>-<N>-<head>  legacy CodeRabbit-commit review (scope CONCERNS)
 #   ireview-<repo>-<N>-<head>        independent Grok review started on this head
 #   ireview-result-<repo>-<N>-<head>.json  {verdict PASS|FIX|ESCALATE, summary, fix, dismissed, escalate}
@@ -178,6 +184,12 @@ source "$factory_env_file"
 ROOT="$FACTORY_WATCH_ROOT"
 STATE="${ROOT}/state"
 WORK="${ROOT}/work"
+# Review-comment repairs and failing-CI repairs do not share a counter.
+# CI_FIX_ROUNDS caps mode=ci, report_ci_failure, and the cifix-* path.
+# REVIEW_COMMENT_FIX_ROUNDS caps mode=review, step_cr_fix_comment, and
+# independent-review or reviewer-thread repairs.
+CI_FIX_ROUNDS=3
+REVIEW_COMMENT_FIX_ROUNDS=5
 ORDERS="${ROOT}/orders"
 # main (default) or build. Build is a second process with its own lock and log.
 LANE=${LANE:-main}
@@ -2074,9 +2086,9 @@ report_ci_failure() {
   local repo=$1 pr=$2 slug rounds marker msg why=""
   slug=$(repo_slug "$repo")
   sha_ok "$GATE_SHA" || return 0
-  rounds=$(read_rounds "${STATE}/rounds-${slug}-${pr}")
-  if (( rounds >= 3 )); then
-    why="fix rounds used (${rounds}/5)"
+  rounds=$(read_rounds "${STATE}/ci-rounds-${slug}-${pr}")
+  if (( rounds >= CI_FIX_ROUNDS )); then
+    why="CI fix rounds used (${rounds}/${CI_FIX_ROUNDS})"
   elif pr_is_lockfile_only "$repo" "$pr"; then
     why="dependabot or lockfile-only PR, so no automatic fix"
   elif [[ $GATE_PROTECTED != n && $GATE_PROTECTED != y ]]; then
@@ -2085,7 +2097,7 @@ report_ci_failure() {
     why="unsafe branch name, so no automatic fix"
   fi
   if [[ -z $why ]]; then
-    msg="failing CI: ${repo}#${pr} head ${GATE_SHORT} (${GATE_CHECKS}). Not ready for review or merge; routed to the Grok fix path (round $((rounds + 1))/3$(pr_is_sensitive "$repo" "$pr" && echo ", limited to the PR's own files"))."
+    msg="failing CI: ${repo}#${pr} head ${GATE_SHORT} (${GATE_CHECKS}). Not ready for review or merge; routed to the Grok fix path (round $((rounds + 1))/${CI_FIX_ROUNDS}$(pr_is_sensitive "$repo" "$pr" && echo ", limited to the PR's own files"))."
   else
     msg="blocked by failing CI: ${repo}#${pr} head ${GATE_SHORT} (${GATE_CHECKS}); ${why}. Not ready for review or merge."
   fi
@@ -3315,7 +3327,8 @@ step_cr_conflict_comment() {
 step_cr_fix_comment() {
   # Comment action. Does not use the grok slot. Ordinary PRs only: sensitive
   # PRs (pr_is_sensitive) go straight to step_fix_fallback (Grok, scoped).
-  # Each new comment counts as one combined CodeRabbit + Grok round.
+  # Each new comment counts as one review-comment fix round
+  # (REVIEW_COMMENT_FIX_ROUNDS). It does not count as a failing-CI round.
   # While autopilot is on, only after the head commit is at least 60 minutes old.
   local item repo pr rc slug rounds_file rounds marker crc
   for item in "${PR_IDS[@]}"; do
@@ -3339,11 +3352,11 @@ step_cr_fix_comment() {
       log "crfix skip ${repo}#${pr}: missing head sha"
       continue
     fi
-    rounds_file="${STATE}/rounds-${slug}-${pr}"
+    rounds_file="${STATE}/review-rounds-${slug}-${pr}"
     rounds=$(read_rounds "$rounds_file")
-    if (( rounds >= 3 )); then
+    if (( rounds >= REVIEW_COMMENT_FIX_ROUNDS )); then
       needs_scott "fixcap-${slug}-${pr}" \
-        "$(printf '%s\n' "${repo}#${pr} has had ${rounds} fix rounds and the independent review of head ${GATE_SHA} is still FIX. Needs a person." "$(ir_list_text "$repo" "$pr" "$GATE_SHA" fix)")" || true
+        "$(printf '%s\n' "${repo}#${pr} has had ${rounds} review-comment fix rounds and the independent review of head ${GATE_SHA} is still FIX. Needs a person." "$(ir_list_text "$repo" "$pr" "$GATE_SHA" fix)")" || true
       continue
     fi
     marker="crfix-${slug}-${pr}-${GATE_SHA}"
@@ -3366,10 +3379,10 @@ step_cr_fix_comment() {
     comment_pr "$repo" "$pr" '@coderabbitai fix comments' "$marker" || crc=$?
     if (( crc == 0 )); then
       if (( DRY )); then
-        note "DRY-RUN would count crfix round $((rounds + 1))/3 for ${repo}#${pr} ${GATE_SHORT}"
+        note "DRY-RUN would count crfix round $((rounds + 1))/${REVIEW_COMMENT_FIX_ROUNDS} for ${repo}#${pr} ${GATE_SHORT}"
       elif [[ -e ${STATE}/${marker} ]]; then
         printf '%s\n' $((rounds + 1)) > "$rounds_file"
-        note "crfix counted round $((rounds + 1))/3 for ${repo}#${pr} ${GATE_SHORT}"
+        note "crfix counted round $((rounds + 1))/${REVIEW_COMMENT_FIX_ROUNDS} for ${repo}#${pr} ${GATE_SHORT}"
       fi
     elif (( crc != 2 )); then
       log "crfix comment failed ${repo}#${pr}"
@@ -4143,14 +4156,18 @@ def login($u):
 # review comment on this head (original commit, not a re-anchored commit_id;
 # position null means outdated), or a review in COMMENTED or CHANGES_REQUESTED
 # on this head. Outdated threads, resolved threads, APPROVED reviews, and
-# threads whose comments sit only on earlier commits are left out. A
+# threads whose comments sit only on earlier commits are left out. An empty
+# COMMENTED review from the factory bot (software-factory-line[bot], or
+# FACTORY_LOGIN) is a thread-reply wrapper and is left out. A human review,
+# or another bot's COMMENTED or CHANGES_REQUESTED review with a real body,
+# still blocks. A
 # disposition reply already posted on the thread is not itself a finding.
 # Each thread or comment finding carries the comment databaseId to reply to
 # (in_reply_to) and the bodies already on that thread. Prints [] when nothing
 # blocks, and an empty array does not rewrite PASS. Does not call gh.
 ir_blocking_findings() {
   local sha=$1 payload=$2
-  jq -c --arg sha "$sha" '
+  jq -c --arg sha "$sha" --arg factory_login "${FACTORY_LOGIN:-}" '
 def who($u):
   if ($u | type) == "object" then ($u.login // "")
   elif ($u | type) == "string" then $u
@@ -4171,6 +4188,16 @@ def first_id($cs):
   ([ $cs[] | cid(.) | select(. != "") ] | first // "");
 def tag_of($names):
   if any($names[]; rabbit(.)) then "CodeRabbit" else "Review" end;
+def blank($s):
+  (($s // "") | tostring | gsub("[[:space:]]+"; "") | length) == 0;
+def factory_bot($login):
+  ($login | ascii_downcase) as $l
+  | $l == "software-factory-line"
+    or $l == "software-factory-line[bot]"
+    or ($factory_login != "" and (
+         $l == ($factory_login | ascii_downcase)
+         or $l == (($factory_login | ascii_downcase) + "[bot]")
+       ));
 [ (.threads // [])[]
   | select(.isResolved != true and .isOutdated != true)
   | . as $t
@@ -4207,6 +4234,13 @@ def tag_of($names):
     | select((.state // "") | ascii_upcase | (. == "COMMENTED" or . == "CHANGES_REQUESTED"))
     | select(same(.commit_id))
     | select(.outdated != true)
+    | select(
+        (
+          ((.state // "") | ascii_upcase) == "COMMENTED"
+          and blank(.body)
+          and factory_bot(who(.author // .user))
+        ) | not
+      )
     | one(body_or(.body; "CodeRabbit review " + ((.state // "") | ascii_upcase) + " on this head")) as $text
     | select($text != "")
     | {
@@ -4224,7 +4258,9 @@ def tag_of($names):
 
 # $1 saved result file. When the guard rewrote this file and nothing blocking
 # remains, restore the model verdict and the model's own lists and clear
-# outstanding. A file with no model snapshot is left byte for byte.
+# outstanding. A model FIX stays FIX when its own fix list is empty, and
+# after the guard's entries are removed. Clearing never rewrites that
+# verdict to PASS. A file with no model snapshot is left byte for byte.
 ir_clear_guard_fix() {
   local dest=$1 tmp
   [[ -s $dest ]] || return 1
@@ -4871,7 +4907,9 @@ ir_build_pack() {
 }
 
 step_fix_fallback() {
-  # Grok job, 5 rounds per PR, within the day/week/loop caps.
+  # Grok job, within the day/week/loop caps. Review-comment repairs
+  # (mode=review) stop at REVIEW_COMMENT_FIX_ROUNDS. Failing-CI repairs
+  # (mode=ci, the cifix-* path) stop at CI_FIX_ROUNDS. The counters are separate.
   # Ordinary PRs: after a CodeRabbit fix request for this head, when 60
   # minutes passed with no new push or CodeRabbit said it cannot fix.
   # Sensitive PRs (pr_is_sensitive): straight here on CHANGES_REQUESTED, once
@@ -4879,7 +4917,7 @@ step_fix_fallback() {
   # files and checked by scoped_fix_enforce. No Grok budget means wait.
   # Any PR with failing CI: once per head (cifix- marker), same scoping rules.
   # Dependabot or lockfile-only PRs: never.
-  local item repo pr rc slug rounds_file rounds marker age since due threads dir before prompt prot mode cimarker
+  local item repo pr rc slug rounds_file rounds marker age since due threads dir before prompt prot mode cimarker round_cap
   local sens gmarker allowed viol allowed_list
   local -a crshas=()
   for item in "${PR_IDS[@]}"; do
@@ -4905,16 +4943,6 @@ step_fix_fallback() {
     if ! sha_ok "$GATE_SHA"; then
       continue
     fi
-    rounds_file="${STATE}/rounds-${slug}-${pr}"
-    rounds=$(read_rounds "$rounds_file")
-    if (( rounds >= 5 )); then
-      log "fix fallback skip ${repo}#${pr}: round cap ${rounds}"
-      continue
-    fi
-    if pr_is_lockfile_only "$repo" "$pr"; then
-      log "fix fallback skip ${repo}#${pr}: dependabot or lockfile-only; no automatic fix (dependabot triage reports to the maintainer)"
-      continue
-    fi
     sens=0
     pr_is_sensitive "$repo" "$pr" && sens=1
     marker="${STATE}/crfix-${slug}-${pr}-${GATE_SHA}"
@@ -4923,6 +4951,9 @@ step_fix_fallback() {
     mode=""
     due=0
     age=""
+    rounds=0
+    round_cap=0
+    rounds_file=""
     # A pull request that does not get CodeRabbit (pr_needs_coderabbit) has no
     # CodeRabbit fix request to wait for, so it goes straight to the Grok fix
     # once per head, like a sensitive one. The live watcher skipped the
@@ -4960,6 +4991,28 @@ step_fix_fallback() {
         mode=ci
       fi
     fi
+    # The cap is the one for the path this pass would take, checked before the
+    # lockfile skip so an exhausted cap logs "round cap" rather than the
+    # lockfile reason. Review rounds do not count toward the CI cap, and CI
+    # rounds do not count toward the review-comment cap.
+    if [[ $mode == ci ]]; then
+      rounds_file="${STATE}/ci-rounds-${slug}-${pr}"
+      round_cap=$CI_FIX_ROUNDS
+    elif [[ $mode == review ]]; then
+      rounds_file="${STATE}/review-rounds-${slug}-${pr}"
+      round_cap=$REVIEW_COMMENT_FIX_ROUNDS
+    fi
+    if [[ -n $mode ]]; then
+      rounds=$(read_rounds "$rounds_file")
+      if (( rounds >= round_cap )); then
+        log "fix fallback skip ${repo}#${pr}: round cap ${rounds}"
+        continue
+      fi
+    fi
+    if pr_is_lockfile_only "$repo" "$pr"; then
+      log "fix fallback skip ${repo}#${pr}: dependabot or lockfile-only; no automatic fix (dependabot triage reports to the maintainer)"
+      continue
+    fi
     if [[ -z $mode ]]; then
       [[ $GATE_IR == FIX && -f $marker ]] && log "fix fallback wait ${repo}#${pr}: ${age:-?}s since CodeRabbit request"
       continue
@@ -4996,7 +5049,7 @@ step_fix_fallback() {
       continue
     fi
     if (( DRY )); then
-      note "DRY-RUN would grok-fix (${mode}$( (( sens )) && echo ", scoped to the PR's own files")) ${repo}#${pr} head ${GATE_SHORT} round $((rounds + 1))/5, then commit, push, and comment @coderabbitai full review"
+      note "DRY-RUN would grok-fix (${mode}$( (( sens )) && echo ", scoped to the PR's own files")) ${repo}#${pr} head ${GATE_SHORT} round $((rounds + 1))/${round_cap}, then commit, push, and comment @coderabbitai full review"
       mark_grok_job "$repo" "$pr" 1
       continue
     fi

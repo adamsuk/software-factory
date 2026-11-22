@@ -101,14 +101,19 @@ pass "reviewer brief states the rule"
 
 for lane in watch watch.new; do
   f="$root/scripts/watcher/${lane}.sh"
-  # Round cap remains at 3 (out of scope for this change)
-  if ! grep -F -q 'rounds >= 3' "$f"; then
-    fail "$lane does not keep the 3-round cap"
+  grep -F -q 'CI_FIX_ROUNDS=3' "$f" || fail "$lane does not set CI_FIX_ROUNDS=3"
+  grep -F -q 'REVIEW_COMMENT_FIX_ROUNDS=5' "$f" || fail "$lane does not set REVIEW_COMMENT_FIX_ROUNDS=5"
+  # Literal watcher source: the dollars are part of the file text.
+  grep -F -q "\"\${STATE}/ci-rounds-" "$f" || fail "$lane does not count failing-CI rounds apart"
+  grep -F -q "\"\${STATE}/review-rounds-" "$f" || fail "$lane does not count review-comment rounds apart"
+  if grep -F -q "\"\${STATE}/rounds-" "$f"; then
+    fail "$lane still uses one shared rounds- counter"
   fi
-  # round wording left as-is (3-round is in scope)
-  # round wording left as-is
-  # Round cap remains at 3
-  # round wording left as-is
+  grep -F -q 'rounds >= CI_FIX_ROUNDS' "$f" || fail "$lane does not cap failing CI at CI_FIX_ROUNDS"
+  grep -F -q 'rounds >= REVIEW_COMMENT_FIX_ROUNDS' "$f" || fail "$lane does not cap review comments at REVIEW_COMMENT_FIX_ROUNDS"
+  grep -F -q "round_cap=\$CI_FIX_ROUNDS" "$f" || fail "$lane mode=ci does not use CI_FIX_ROUNDS"
+  grep -F -q "round_cap=\$REVIEW_COMMENT_FIX_ROUNDS" "$f" || fail "$lane mode=review does not use REVIEW_COMMENT_FIX_ROUNDS"
+  grep -F -q 'rounds >= round_cap' "$f" || fail "$lane step_fix_fallback does not use the mode cap"
   [[ $(grep -c 'if ! ir_guard_open_coderabbit' "$f") -eq 2 ]] \
     || fail "$lane does not keep a failed open-finding read from posting"
   awk '
@@ -117,14 +122,17 @@ for lane in watch watch.new; do
     in_fn && /^}/ { exit found ? 0 : 1 }
   ' "$f" || fail "$lane merge_gate does not re-check open review findings"
 done
-grep -F -q '3-round cap' "$root/agents/roles/reviewer.md" \
-  || fail "reviewer brief does not state the 3-round review-comment cap"
-# reviewer keeps 3-round
+grep -F -q '5-round cap' "$root/agents/roles/reviewer.md" \
+  || fail "reviewer brief does not state the 5-round review-comment cap"
+grep -F -q 'CI fix-loop stays at 3' "$root/agents/roles/reviewer.md" \
+  || fail "reviewer brief does not keep the CI fix-loop at 3"
 grep -F -q 'at most 3' "$root/AGENTS.md" \
   || fail "AGENTS.md lost the builder CI fix-loop cap of 3"
-grep -F -q '3-round cap' "$root/AGENTS.md" \
-  || fail "AGENTS.md does not state the 3-round review-comment cap"
-pass "review-comment cap remains 3 (out of scope for #451)"
+grep -F -q '5-round cap' "$root/AGENTS.md" \
+  || fail "AGENTS.md does not state the 5-round review-comment cap"
+grep -F -q 'CI fix-loop stays at 3' "$root/AGENTS.md" \
+  || fail "AGENTS.md does not keep the CI fix-loop at 3"
+pass "review-comment cap is 5 and the CI fix-loop stays at 3"
 
 for fn in ir_clear_guard_fix ir_pass_still_blocked ir_comment_limit ir_outstanding_lines ir_comment_prefix ir_post_split; do
   extract_fn "$root/scripts/watcher/watch.sh" "$fn" > "$work/fn.${fn}.watch"
@@ -717,6 +725,76 @@ case_guard_fix_clears() {
   cp "$work/${name}.result.json" "$work/${name}.${LANE_NAME}.json"
 }
 
+case_factory_bot_empty_commented() {
+  local name=${FUNCNAME[0]}
+  empty_threads > "$work/${name}.threads.json"
+  no_comments > "$work/${name}.comments.json"
+  jq -n --arg sha "$HEAD" '[
+    {user:{login:"software-factory-line[bot]"}, state:"COMMENTED", commit_id:$sha, body:"", outdated:false},
+    {user:{login:"software-factory-line[bot]"}, state:"COMMENTED", commit_id:$sha, body:"  \n", outdated:false}
+  ]' > "$work/${name}.reviews.json"
+  write_result "$work/${name}.result.json" PASS '[]' '[]'
+  apply_case "$name"
+  assert_unchanged "$name"
+}
+
+case_factory_bot_real_body_blocks() {
+  local name=${FUNCNAME[0]} text="The cap split is wrong."
+  empty_threads > "$work/${name}.threads.json"
+  no_comments > "$work/${name}.comments.json"
+  one_review 'software-factory-line[bot]' COMMENTED "$HEAD" "$text" false > "$work/${name}.reviews.json"
+  write_result "$work/${name}.result.json" PASS '[]' '[]'
+  apply_case "$name"
+  jq -e --arg t "$text" '.verdict == "FIX" and .outstanding[0].text == $t and .outstanding[0].kind == "review"' \
+    "$work/${name}.${LANE_NAME}.json" >/dev/null || fail "$name ($LANE_NAME): a factory-bot review with a real body stayed PASS"
+}
+
+case_real_reviews_block_beside_factory_wrapper() {
+  local name=${FUNCNAME[0]} human="Please rename the helper." bot="Handle the empty list."
+  empty_threads > "$work/${name}.threads.json"
+  no_comments > "$work/${name}.comments.json"
+  jq -n --arg sha "$HEAD" --arg human "$human" --arg bot "$bot" '[
+    {user:{login:"software-factory-line[bot]"}, state:"COMMENTED", commit_id:$sha, body:"", outdated:false},
+    {user:{login:"octocat"}, state:"COMMENTED", commit_id:$sha, body:$human, outdated:false},
+    {user:{login:"coderabbitai[bot]"}, state:"CHANGES_REQUESTED", commit_id:$sha, body:$bot, outdated:false}
+  ]' > "$work/${name}.reviews.json"
+  write_result "$work/${name}.result.json" PASS '[]' '[]'
+  apply_case "$name"
+  jq -e --arg human "$human" --arg bot "$bot" '
+    .verdict == "FIX"
+    and (.outstanding | length) == 2
+    and .outstanding[0].text == $human
+    and .outstanding[0].tag == "Review"
+    and .outstanding[1].text == $bot
+    and .outstanding[1].tag == "CodeRabbit"
+    and ([.outstanding[].text | select(test("COMMENTED on this head"))] | length) == 0
+  ' "$work/${name}.${LANE_NAME}.json" >/dev/null || fail "$name ($LANE_NAME): empty factory wrapper blocked, or a real review did not"
+}
+
+case_model_fix_empty_stays() {
+  local name=${FUNCNAME[0]} text="A guard finding that later clears."
+  one_thread false false scripts/foo.sh 903 'coderabbitai[bot]' "$text" "$HEAD" > "$work/${name}.threads.json"
+  one_comment 903 'coderabbitai[bot]' "$text" "$HEAD" "$HEAD" 5 > "$work/${name}.comments.json"
+  no_reviews > "$work/${name}.reviews.json"
+  write_result "$work/${name}.result.json" FIX '[]' '[]'
+  apply_case "$name"
+  jq -e '
+    .verdict == "FIX"
+    and .model_verdict == "FIX"
+    and (.model_fix | length) == 0
+    and ([.fix[] | select(startswith("CodeRabbit:"))] | length) == 1
+  ' "$work/${name}.${LANE_NAME}.json" >/dev/null || fail "$name ($LANE_NAME): guard did not keep an empty model fix list"
+  printf '[]\n' > "$work/${name}.empty.json"
+  ir_apply_open_coderabbit "$work/${name}.result.json" "$work/${name}.empty.json" \
+    || fail "$name ($LANE_NAME): clearing an empty block failed"
+  jq -e '
+    .verdict == "FIX"
+    and (.outstanding | length) == 0
+    and (.fix | length) == 0
+  ' "$work/${name}.result.json" >/dev/null || fail "$name ($LANE_NAME): empty model FIX was coerced away from FIX"
+  cp "$work/${name}.result.json" "$work/${name}.${LANE_NAME}.json"
+}
+
 case_model_fix_stays() {
   local name=${FUNCNAME[0]} text="A guard finding that later clears."
   one_thread false false scripts/foo.sh 902 'coderabbitai[bot]' "$text" "$HEAD" > "$work/${name}.threads.json"
@@ -779,7 +857,11 @@ for fn in \
   case_keep_model_fix \
   case_sixteen_outstanding \
   case_split_outstanding \
+  case_factory_bot_empty_commented \
+  case_factory_bot_real_body_blocks \
+  case_real_reviews_block_beside_factory_wrapper \
   case_guard_fix_clears \
+  case_model_fix_empty_stays \
   case_model_fix_stays \
   case_guard_read_failure
 do
