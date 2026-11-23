@@ -23,7 +23,7 @@
 # gh failing exits 1. FACTORY_CRITERIA_RESOLVE=0 skips this step (#345).
 #
 # The closed set is FACTORY_REPOS (space-separated owner/repo). Unset or
-# empty keeps the five-repo default. An answer counts only when author.login
+# empty keeps the seven-repo default. An answer counts only when author.login
 # is FACTORY_APPROVER_LOGIN, which defaults to the owner of the first repo
 # in that set. The already-asked marker also counts from that approver and
 # from the factory app: software-factory-line, with or without a trailing
@@ -50,7 +50,7 @@ import re
 import sys
 
 # Closed sets. Target repo is one entry of FACTORY_REPOS. Unset or empty
-# keeps the five-repo default so an operator who has not set the variable
+# keeps the seven-repo default so an operator who has not set the variable
 # still matches the historical list. Size is S, M or L, with an optional
 # trailing full stop (the factory writes "Size: M.").
 DEFAULT_REPOS = (
@@ -59,6 +59,8 @@ DEFAULT_REPOS = (
     "adamsuk/activity-feed",
     "adamsuk/line",
     "adamsuk/adamsuk",
+    "adamsuk/viva",
+    "adamsuk/viva-skills",
 )
 REPO_TOKEN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 SIZES = ("S", "M", "L")
