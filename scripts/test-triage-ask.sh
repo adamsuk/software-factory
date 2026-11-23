@@ -811,7 +811,7 @@ for name in adamsuk/software-factory adamsuk/gh-factory adamsuk/activity-feed ad
   grep -F -q -- "   - ${name}" "$OUT" || fail "default list lost ${name}"
 done
 for name in adamsuk/viva adamsuk/viva-skills; do
-  grep -F -q -- "   - ${name}" "$OUT" || fail "default list missing enrolled ${name}"
+  grep -qxF -- "   - ${name}" "$OUT" || fail "default list missing enrolled ${name}"
 done
 assert_no_label
 printf '%s\n' "ok: $tname"
