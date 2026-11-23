@@ -194,8 +194,24 @@ if [[ ${1:-} == api ]]; then
         ;;
     esac
   done
+  if [[ $url == graphql && -n ${GH_OPEN_THREADS:-} && -f ${GH_OPEN_THREADS} ]]; then
+    cat "$GH_OPEN_THREADS"
+    exit 0
+  fi
+  if [[ -z $method || $method == GET ]]; then
+    if [[ $url =~ ^repos/.+/pulls/[0-9]+/comments$ && -n ${GH_OPEN_COMMENTS:-} && -f ${GH_OPEN_COMMENTS} ]]; then
+      cat "$GH_OPEN_COMMENTS"
+      exit 0
+    fi
+    if [[ $url =~ ^repos/.+/pulls/[0-9]+/reviews$ && -n ${GH_OPEN_REVIEWS:-} && -f ${GH_OPEN_REVIEWS} ]]; then
+      cat "$GH_OPEN_REVIEWS"
+      exit 0
+    fi
+  fi
   if [[ $method == POST && $url == *"/comments/"*"/replies" ]]; then
     jq -nc --arg url "$url" --arg body "$body" '{url:$url, body:$body}' >> "${GH_REPLIES:?}"
+    # Real gh prints the created comment, including diff_hunk. The watcher must not.
+    printf '%s\n' '{"id":1,"diff_hunk":"@@ leak-marker","body":"x"}'
     exit 0
   fi
 fi
@@ -836,6 +852,235 @@ case_guard_read_failure() {
   cp "$f" "$work/${name}.${LANE_NAME}.json"
 }
 
+case_later_page_blocks() {
+  local name=${FUNCNAME[0]}
+  local comment="Comment that exists only on page two."
+  local review="Review that exists only on page two."
+  empty_threads > "$work/${name}.threads.json"
+  printf '%s\n' '[]' > "$work/${name}.comments.json"
+  jq -n --arg sha "$HEAD" --arg body "$comment" \
+    '[{id:901, path:"scripts/foo.sh", user:{login:"octocat"}, body:$body, original_commit_id:$sha, commit_id:$sha, position:3}]' \
+    >> "$work/${name}.comments.json"
+  printf '%s\n' '[]' > "$work/${name}.reviews.json"
+  jq -n --arg sha "$HEAD" --arg body "$review" \
+    '[{user:{login:"octocat"}, state:"CHANGES_REQUESTED", commit_id:$sha, body:$body, outdated:false}]' \
+    >> "$work/${name}.reviews.json"
+  write_result "$work/${name}.result.json" PASS '[]' '[]'
+  apply_case "$name"
+  jq -e --arg c "$comment" --arg r "$review" '
+    .verdict == "FIX"
+    and (.outstanding | length) == 2
+    and .outstanding[0].kind == "comment"
+    and .outstanding[0].text == $c
+    and .outstanding[0].path == "scripts/foo.sh"
+    and .outstanding[0].disposition == "addressed"
+    and .outstanding[1].kind == "review"
+    and .outstanding[1].text == $r
+    and .outstanding[1].disposition == "addressed"
+  ' "$work/${name}.${LANE_NAME}.json" >/dev/null \
+    || fail "$name ($LANE_NAME): a later paginated page was dropped"
+}
+
+case_bad_payload_fails() {
+  local name=${FUNCNAME[0]} f rc
+  f=$(ir_result_file acme/software-factory 12 "$HEAD")
+  write_result "$f" PASS '[]' '[]'
+  cp "$f" "$work/${name}.before.json"
+  empty_threads > "$work/${name}.threads.json"
+  printf '%s\n' '{"message":"not a list"}' > "$work/${name}.comments.json"
+  no_reviews > "$work/${name}.reviews.json"
+  if ir_normalize_open "$work/${name}.threads.json" "$work/${name}.comments.json" "$work/${name}.reviews.json" >/dev/null 2>&1; then
+    fail "$name ($LANE_NAME): normalize accepted a non-array comments payload"
+  fi
+  jq -n '{data:{repository:{pullRequest:{reviewThreads:{pageInfo:{hasNextPage:true},nodes:[]}}}}}' \
+    > "$work/${name}.next.json"
+  if ir_normalize_open "$work/${name}.next.json" "$work/${name}.reviews.json" "$work/${name}.reviews.json" >/dev/null 2>&1; then
+    fail "$name ($LANE_NAME): normalize accepted reviewThreads.pageInfo.hasNextPage"
+  fi
+  export GH_OPEN_THREADS=$work/${name}.threads.json
+  export GH_OPEN_COMMENTS=$work/${name}.comments.json
+  export GH_OPEN_REVIEWS=$work/${name}.reviews.json
+  rc=0
+  ir_guard_open_coderabbit acme/software-factory 12 "$f" "$HEAD" || rc=$?
+  [[ $rc -ne 0 ]] || fail "$name ($LANE_NAME): a non-array comments payload was not a failed read"
+  cmp -s "$work/${name}.before.json" "$f" || fail "$name ($LANE_NAME): a non-array comments payload rewrote the saved verdict"
+  no_comments > "$work/${name}.comments.json"
+  printf '%s\n' '{"message":"not a list"}' > "$work/${name}.reviews.json"
+  rc=0
+  ir_guard_open_coderabbit acme/software-factory 12 "$f" "$HEAD" || rc=$?
+  [[ $rc -ne 0 ]] || fail "$name ($LANE_NAME): a non-array reviews payload was not a failed read"
+  cmp -s "$work/${name}.before.json" "$f" || fail "$name ($LANE_NAME): a non-array reviews payload rewrote the saved verdict"
+  jq -n --arg sha "$HEAD" '{data:{repository:{pullRequest:{reviewThreads:{pageInfo:{hasNextPage:true},nodes:[{
+    isResolved:false, isOutdated:false, path:"scripts/foo.sh",
+    comments:{nodes:[{databaseId:1, author:{login:"octocat"}, body:"page one finding", originalCommit:{oid:$sha}}]}
+  }]}}}}}' > "$work/${name}.threads.json"
+  no_reviews > "$work/${name}.reviews.json"
+  rc=0
+  ir_guard_open_coderabbit acme/software-factory 12 "$f" "$HEAD" || rc=$?
+  [[ $rc -ne 0 ]] || fail "$name ($LANE_NAME): hasNextPage was not a failed read"
+  cmp -s "$work/${name}.before.json" "$f" || fail "$name ($LANE_NAME): hasNextPage rewrote the saved verdict"
+  unset GH_OPEN_THREADS GH_OPEN_COMMENTS GH_OPEN_REVIEWS
+  cp "$f" "$work/${name}.${LANE_NAME}.json"
+}
+
+case_review_body_splits() {
+  local name=${FUNCNAME[0]}
+  local pad text second reason body disp f
+  printf -v pad '%250s' ''
+  pad=${pad// /A}
+  text=${pad:0:240}
+  second="Second actionable finding must remain."
+  reason="kept intact on the posted line past the three hundred character cut"
+  body="- ${pad}"$'\n'"- ${second}"
+  empty_threads > "$work/${name}.threads.json"
+  no_comments > "$work/${name}.comments.json"
+  one_review 'coderabbitai[bot]' COMMENTED "$HEAD" "$body" false > "$work/${name}.reviews.json"
+  write_result "$work/${name}.result.json" PASS \
+    "$(jq -n --arg t "$text" --arg r "$reason" '[$t + " - " + $r]')" '[]'
+  apply_case "$name"
+  jq -e --arg text "$text" --arg second "$second" --arg reason "$reason" '
+    .verdict == "FIX"
+    and (.outstanding | length) == 2
+    and .outstanding[0].text == $text
+    and .outstanding[0].disposition == ("dismissed: " + $reason)
+    and .outstanding[1].text == $second
+    and .outstanding[1].disposition == "addressed"
+  ' "$work/${name}.${LANE_NAME}.json" >/dev/null \
+    || fail "$name ($LANE_NAME): review body was not split before the 240-character cut"
+  rm -f "${STATE}/ireview-posted-acme_software-factory-13-${HEAD}"
+  f=$(ir_result_file acme/software-factory 13 "$HEAD")
+  cp "$work/${name}.${LANE_NAME}.json" "$f"
+  ir_post_comment acme/software-factory 13 "$HEAD" || fail "$name ($LANE_NAME): ir_post_comment failed"
+  disp="dismissed: ${reason}"
+  grep -F -q -- "${text} — ${disp}" "$GH_BODY" \
+    || fail "$name ($LANE_NAME): posted line cut the disposition"
+  grep -F -q -- "${second} — addressed" "$GH_BODY" \
+    || fail "$name ($LANE_NAME): posted comment dropped the second finding"
+  ir_outstanding_lines "$f" > "$work/${name}.${LANE_NAME}.lines"
+  grep -F -q -- "${text} — ${disp}" "$work/${name}.${LANE_NAME}.lines" \
+    || fail "$name ($LANE_NAME): outstanding line cut the disposition"
+}
+
+case_same_text_two_ids() {
+  local name=${FUNCNAME[0]} text="Use a named constant for the limit."
+  two_threads 801 'coderabbitai[bot]' "$text" "$HEAD" 802 'coderabbitai[bot]' "$text" "$HEAD" \
+    > "$work/${name}.threads.json"
+  jq -n --arg sha "$HEAD" --arg text "$text" '[
+    {id:801, path:"scripts/a.sh", user:{login:"coderabbitai[bot]"}, body:$text, original_commit_id:$sha, commit_id:$sha, position:1},
+    {id:802, path:"scripts/b.sh", user:{login:"coderabbitai[bot]"}, body:$text, original_commit_id:$sha, commit_id:$sha, position:2}
+  ]' > "$work/${name}.comments.json"
+  no_reviews > "$work/${name}.reviews.json"
+  write_result "$work/${name}.result.json" PASS '[]' '[]'
+  apply_case "$name"
+  jq -e --arg t "$text" '
+    .verdict == "FIX"
+    and (.outstanding | length) == 2
+    and .outstanding[0].id == "801"
+    and .outstanding[1].id == "802"
+    and .outstanding[0].text == $t
+    and .outstanding[1].text == $t
+    and .outstanding[0].disposition == "addressed"
+    and .outstanding[1].disposition == "addressed"
+  ' "$work/${name}.${LANE_NAME}.json" >/dev/null \
+    || fail "$name ($LANE_NAME): same-text threads were deduped into one finding"
+  rm -f "${STATE}/ireview-posted-acme_software-factory-14-${HEAD}" \
+    "${STATE}/ireview-reply-acme_software-factory-14-801" \
+    "${STATE}/ireview-reply-acme_software-factory-14-802"
+  local f
+  f=$(ir_result_file acme/software-factory 14 "$HEAD")
+  cp "$work/${name}.${LANE_NAME}.json" "$f"
+  ir_post_comment acme/software-factory 14 "$HEAD" || fail "$name ($LANE_NAME): ir_post_comment failed"
+  jq -e '
+    length == 2
+    and .[0].url == "repos/acme/software-factory/pulls/14/comments/801/replies"
+    and .[0].body == "Independent review disposition: addressed"
+    and .[1].url == "repos/acme/software-factory/pulls/14/comments/802/replies"
+    and .[1].body == "Independent review disposition: addressed"
+  ' <(jq -s '.' "$GH_REPLIES") >/dev/null \
+    || fail "$name ($LANE_NAME): same-text threads were not both dispositioned"
+}
+
+case_reply_omits_diff_hunk() {
+  local name=${FUNCNAME[0]} text="Please rename the helper." f
+  one_thread false false scripts/foo.sh 501 octocat "$text" "$HEAD" > "$work/${name}.threads.json"
+  one_comment 501 octocat "$text" "$HEAD" "$HEAD" 3 > "$work/${name}.comments.json"
+  no_reviews > "$work/${name}.reviews.json"
+  write_result "$work/${name}.result.json" PASS '[]' '[]'
+  apply_case "$name"
+  rm -f "${STATE}/ireview-posted-acme_software-factory-15-${HEAD}" \
+    "${STATE}/ireview-reply-acme_software-factory-15-501"
+  f=$(ir_result_file acme/software-factory 15 "$HEAD")
+  cp "$work/${name}.${LANE_NAME}.json" "$f"
+  ir_post_comment acme/software-factory 15 "$HEAD" > "$work/${name}.${LANE_NAME}.stdout"
+  if grep -F -q 'diff_hunk' "$work/${name}.${LANE_NAME}.stdout"; then
+    fail "$name ($LANE_NAME): disposition reply wrote diff_hunk to stdout"
+  fi
+  jq -e '
+    length == 1
+    and .[0].body == "Independent review disposition: addressed"
+  ' <(jq -s '.' "$GH_REPLIES") >/dev/null \
+    || fail "$name ($LANE_NAME): disposition reply was not posted"
+}
+
+case_protected_path_escalates() {
+  local name=${FUNCNAME[0]} text="Name the limit in one place."
+  empty_threads > "$work/${name}.threads.json"
+  jq -n --arg sha "$HEAD" --arg text "$text" '[{
+    id:812, path:".github/factory.yml", user:{login:"coderabbitai[bot]"},
+    body:$text, original_commit_id:$sha, commit_id:$sha, position:2
+  }]' > "$work/${name}.comments.json"
+  no_reviews > "$work/${name}.reviews.json"
+  write_result "$work/${name}.result.json" PASS '[]' '[]'
+  apply_case "$name"
+  jq -e --arg t "$text" '
+    .verdict == "ESCALATE"
+    and .outstanding[0].text == $t
+    and .outstanding[0].path == ".github/factory.yml"
+    and .outstanding[0].disposition == "escalated"
+    and ([.fix[]? | select(startswith("CodeRabbit:"))] | length) == 0
+    and ([.escalate[]? | select(. == "CodeRabbit: " + $t)] | length) == 1
+  ' "$work/${name}.${LANE_NAME}.json" >/dev/null \
+    || fail "$name ($LANE_NAME): a protected comment took the FIX path"
+  text="Rename the helper so it reads clearly."
+  one_thread false false AGENTS.md 811 'coderabbitai[bot]' "$text" "$HEAD" > "$work/${name}.threads.json"
+  one_comment 811 'coderabbitai[bot]' "$text" "$HEAD" "$HEAD" 4 > "$work/${name}.comments.json"
+  no_reviews > "$work/${name}.reviews.json"
+  write_result "$work/${name}.result.json" PASS '[]' '[]'
+  apply_case "$name"
+  jq -e --arg t "$text" '
+    .verdict == "ESCALATE"
+    and .outstanding[0].text == $t
+    and .outstanding[0].path == "AGENTS.md"
+    and .outstanding[0].kind == "thread"
+    and .outstanding[0].disposition == "escalated"
+    and ([.fix[]? | select(startswith("CodeRabbit:"))] | length) == 0
+    and ([.escalate[]? | select(. == "CodeRabbit: " + $t)] | length) == 1
+  ' "$work/${name}.${LANE_NAME}.json" >/dev/null \
+    || fail "$name ($LANE_NAME): a protected-path thread took the FIX path"
+}
+
+case_dry_guard_leaves_saved() {
+  local name=${FUNCNAME[0]} f
+  f=$(ir_result_file acme/software-factory 11 "$HEAD")
+  write_result "$f" PASS '[]' '[]'
+  cp "$f" "$work/${name}.before.json"
+  one_thread false false scripts/foo.sh 111 'coderabbitai[bot]' "Later finding." "$HEAD" \
+    > "$work/${name}.threads.json"
+  no_comments > "$work/${name}.comments.json"
+  no_reviews > "$work/${name}.reviews.json"
+  export GH_OPEN_THREADS=$work/${name}.threads.json
+  export GH_OPEN_COMMENTS=$work/${name}.comments.json
+  export GH_OPEN_REVIEWS=$work/${name}.reviews.json
+  # shellcheck disable=SC2034  # read by ir_guard_open_coderabbit in the sourced watcher
+  DRY=1
+  ir_guard_open_coderabbit acme/software-factory 11 "$f" "$HEAD" \
+    || fail "$name ($LANE_NAME): dry-run guard failed"
+  unset GH_OPEN_THREADS GH_OPEN_COMMENTS GH_OPEN_REVIEWS
+  cmp -s "$work/${name}.before.json" "$f" \
+    || fail "$name ($LANE_NAME): dry-run guard rewrote the saved verdict"
+  cp "$f" "$work/${name}.${LANE_NAME}.json"
+}
+
 for fn in \
   case_dismissed_thread \
   case_addressed_thread \
@@ -863,7 +1108,14 @@ for fn in \
   case_guard_fix_clears \
   case_model_fix_empty_stays \
   case_model_fix_stays \
-  case_guard_read_failure
+  case_guard_read_failure \
+  case_later_page_blocks \
+  case_bad_payload_fails \
+  case_review_body_splits \
+  case_same_text_two_ids \
+  case_reply_omits_diff_hunk \
+  case_protected_path_escalates \
+  case_dry_guard_leaves_saved
 do
   both_lanes "$fn"
   pass "$fn"

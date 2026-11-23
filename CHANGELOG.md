@@ -9,6 +9,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - `adamsuk/viva` and `adamsuk/viva-skills` join the default repo list in `scripts/triage-ask.sh` and `scripts/triage-apply-answers.sh` (used when `FACTORY_REPOS` is unset), so a triage answer naming either is applied. The README lists both as delivery repos. Each repo gets its own `.github/factory.yml` in its onboarding PR. Operator follow-up: add both to `FACTORY_REPOS` on the factory host and install the GitHub App on them (#454).
 
+## 2026-11-23 (open findings stay complete)
+
+### Fixed
+
+- The watcher (`scripts/watcher/watch.sh`, `watch.new.sh`) keeps every `gh api --paginate` page of pull comments and reviews. A non-array page, or `reviewThreads.pageInfo.hasNextPage`, is a failed read. A current-head COMMENTED or CHANGES_REQUESTED review is split into its actionable findings before the 240-character cut, and each posted line keeps that finding's disposition. Open findings are deduped by thread or comment id. The disposition reply does not print the response body. A finding on a protected path is escalated. A dry run does not rewrite the saved verdict (#451).
+
 ## 2026-11-22 (review-comment fixes and failing CI use separate round caps)
 
 ### Fixed
