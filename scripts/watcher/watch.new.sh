@@ -81,7 +81,9 @@
 # merge_gate checks the same open findings again before a saved PASS can count
 # as ready or merge. That pass also replies
 # on each unresolved thread with the finding's disposition and does not post
-# a second identical reply. Outdated threads and threads only on earlier
+# a second identical reply. A current-head COMMENTED or CHANGES_REQUESTED
+# review with no thread id gets that disposition as a pull-request comment,
+# and that comment is not posted twice. Outdated threads and threads only on earlier
 # commits do not rewrite PASS. The outdated-review
 # dismiss below still runs only after a valid PASS. The script scope check on
 # CodeRabbit commits forces ESCALATE without Grok. (3) merge_gate: ready only
@@ -133,6 +135,7 @@
 #   ireview-result-<repo>-<N>-<head>.json  {verdict PASS|FIX|ESCALATE, summary, fix, dismissed, escalate}
 #   ireview-posted-<repo>-<N>-<head> verdict comment posted
 #   ireview-reply-<repo>-<N>-<commentid>  disposition reply already posted on that thread
+#   ireview-reply-<repo>-<N>-note-<cksum> disposition pull-request comment for a finding with no thread id
 #   ireview-esc-<repo>-<N>-<head>    needs-scott: ESCALATE
 #   ready-<repo>-<N>-<head>          needs-scott: sensitive PR is PASS + green, ready for the maintainer
 #   crblock-<repo>-<N>-<head>        needs-scott: dismissing CodeRabbit CHANGES_REQUESTED failed
@@ -4798,6 +4801,72 @@ ir_reply_body() {
   printf 'Independent review disposition: %s' "$d"
 }
 
+# $1 disposition, $2 finding text. One line, no @. A review with no thread id
+# is posted as a pull-request comment with this body. The disposition sentence
+# is the same one a thread reply uses, then the finding, so two reviews that
+# share a disposition stay distinct.
+ir_unthreaded_body() {
+  local d=$1 text=$2 body
+  body=$(ir_reply_body "$d")
+  text=${text//$'\r'/ }
+  text=${text//$'\n'/ }
+  text=${text//@/}
+  text=$(printf '%s' "$text" | tr -s '[:space:]' ' ' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
+  text=${text:0:240}
+  if [[ -n ${text// /} ]]; then
+    printf '%s — %s' "$body" "$text"
+  else
+    printf '%s' "$body"
+  fi
+}
+
+# $1 repo, $2 pr, $3 saved result file. Posts one pull-request comment per
+# outstanding finding that has a disposition and no thread or comment id.
+# A finding that already has a numeric id is left to ir_reply_threads.
+# The same body recorded for that finding is not posted again. No @ mentions.
+ir_post_unthreaded_dispositions() {
+  local repo=$1 pr=$2 f=$3
+  local slug kind text disp body marker key line rc=0
+  repo_ok "$repo" || return 1
+  [[ -s $f ]] || return 0
+  slug=$(repo_slug "$repo")
+  while IFS= read -r line; do
+    [[ -n $line ]] || continue
+    kind=$(jq -r '.kind // ""' <<< "$line")
+    text=$(jq -r '.text // ""' <<< "$line")
+    disp=$(jq -r '.disposition // "addressed"' <<< "$line")
+    body=$(ir_unthreaded_body "$disp" "$text")
+    body=$(printf '%s' "$body" | redact) || return 1
+    [[ -n $body ]] || continue
+    key=$(printf '%s' "${kind}"$'\n'"${text}"$'\n'"${body}" | cksum | awk '{print $1}')
+    [[ $key =~ ^[0-9]+$ ]] || { rc=1; continue; }
+    marker="${STATE}/ireview-reply-${slug}-${pr}-note-${key}"
+    if [[ -f $marker ]] && [[ $(cat "$marker") == "$body" ]]; then
+      continue
+    fi
+    if (( DRY )); then
+      note "DRY-RUN would comment on ${repo}#${pr}: ${body}"
+      continue
+    fi
+    if comment_pr "$repo" "$pr" "$body" ""; then
+      printf '%s\n' "$body" > "$marker"
+    else
+      log "review disposition comment failed ${repo}#${pr}"
+      rc=1
+    fi
+  done < <(jq -c '
+    (.outstanding // [])[]
+    | select(((.id // "") | tostring | test("^[0-9]+$")) | not)
+    | select(((.text // "") | tostring | gsub("[[:space:]]+"; "")) != "")
+    | {
+        kind: ((.kind // "") | tostring),
+        text: ((.text // "") | tostring),
+        disposition: ((.disposition // "addressed") | tostring)
+      }
+  ' "$f")
+  return "$rc"
+}
+
 # $1 repo, $2 pr, $3 saved result file. Replies on each unresolved thread or
 # review comment that has a disposition and a comment databaseId. The replies
 # route uses that id as in_reply_to. It does not resolve the thread. A body
@@ -4952,17 +5021,23 @@ ir_post_split() {
 }
 
 # Posts the saved verdict once per head (marker ireview-posted-*). No @ mentions.
+# A finding with no thread id gets its disposition as a pull-request comment
+# before that verdict, so the verdict stays the last comment of this call.
 # Then replies on each unresolved thread with that finding's disposition.
 # A body over the length limit is split. Findings are not dropped.
 ir_post_comment() {
-  local repo=$1 pr=$2 sha=$3 f body slug limit split_rc=0
+  local repo=$1 pr=$2 sha=$3 f body slug limit split_rc=0 disp_rc=0
   slug=$(repo_slug "$repo")
   f=$(ir_result_file "$repo" "$pr" "$sha")
   [[ -s $f ]] || return 0
   if [[ -e ${STATE}/ireview-posted-${slug}-${pr}-${sha} ]]; then
-    ir_reply_threads "$repo" "$pr" "$f"
-    return $?
+    ir_post_unthreaded_dispositions "$repo" "$pr" "$f" || disp_rc=$?
+    ir_reply_threads "$repo" "$pr" "$f" || disp_rc=$?
+    return "$disp_rc"
   fi
+  # Before the verdict, so a recorder that keeps the last pull-request
+  # comment still has the verdict after this call.
+  ir_post_unthreaded_dispositions "$repo" "$pr" "$f" || disp_rc=$?
   body=$(jq -r --arg sha "$sha" '
     def clean: tostring | gsub("[\r\n]+"; " ") | gsub("@"; "") | .[0:300];
     def clip($s; $n): ($s | tostring | gsub("[\r\n]+"; " ") | gsub("@"; "") | .[0:$n]);
@@ -4998,15 +5073,15 @@ ir_post_comment() {
   limit=$(ir_comment_limit)
   if (( ${#body} <= limit )); then
     comment_pr "$repo" "$pr" "$body" "ireview-posted-${slug}-${pr}-${sha}" || return 1
-    ir_reply_threads "$repo" "$pr" "$f"
-    return $?
+    ir_reply_threads "$repo" "$pr" "$f" || disp_rc=$?
+    return "$disp_rc"
   fi
   ir_post_split "$repo" "$pr" "$sha" "$f" "$limit" || split_rc=$?
   if (( split_rc != 0 )); then
     return "$split_rc"
   fi
-  ir_reply_threads "$repo" "$pr" "$f"
-  return $?
+  ir_reply_threads "$repo" "$pr" "$f" || disp_rc=$?
+  return "$disp_rc"
 }
 
 # Untrusted review pack: PR text, linked work orders or issues, CI, CodeRabbit

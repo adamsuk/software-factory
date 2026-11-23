@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-23 (disposition when a review has no thread)
+
+### Fixed
+
+- The watcher (`scripts/watcher/watch.sh`, `watch.new.sh`) posts an independent-review disposition as a pull-request comment when a current-head COMMENTED or CHANGES_REQUESTED review has no thread id. A finding that already has a thread or comment id still gets the thread reply, and an identical disposition comment is not posted twice (#451).
+
 ## 2026-11-23 (enrol viva and viva-skills)
 
 ### Changed

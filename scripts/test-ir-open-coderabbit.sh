@@ -92,6 +92,8 @@ grep -F -q 'dismissed with a reason, or escalated' "$root/agents/roles/reviewer.
   || fail "reviewer brief does not require a disposition for each outstanding finding"
 grep -F -q 'replies on each unresolved thread' "$root/agents/roles/reviewer.md" \
   || fail "reviewer brief does not require a reply on each unresolved thread"
+grep -F -q 'review with no thread id gets that disposition as a pull-request comment' "$root/agents/roles/reviewer.md" \
+  || fail "reviewer brief does not post a disposition when a review has no thread id"
 grep -F -q 'ir_guard_open_coderabbit' "$root/agents/roles/reviewer.md" \
   || fail "reviewer brief does not name the guard"
 if grep -F -q 'changes-requested alone does **not** force FIX/ESCALATE' "$root/agents/roles/reviewer.md"; then
@@ -134,7 +136,7 @@ grep -F -q 'CI fix-loop stays at 3' "$root/AGENTS.md" \
   || fail "AGENTS.md does not keep the CI fix-loop at 3"
 pass "review-comment cap is 5 and the CI fix-loop stays at 3"
 
-for fn in ir_clear_guard_fix ir_pass_still_blocked ir_comment_limit ir_outstanding_lines ir_comment_prefix ir_post_split; do
+for fn in ir_clear_guard_fix ir_pass_still_blocked ir_comment_limit ir_outstanding_lines ir_comment_prefix ir_post_split ir_unthreaded_body ir_post_unthreaded_dispositions; do
   extract_fn "$root/scripts/watcher/watch.sh" "$fn" > "$work/fn.${fn}.watch"
   extract_fn "$root/scripts/watcher/watch.new.sh" "$fn" > "$work/fn.${fn}.watch.new"
   [[ -s $work/fn.${fn}.watch ]] || fail "$fn missing"
@@ -698,6 +700,7 @@ case_split_outstanding() {
   apply_case "$name"
   export IR_COMMENT_LIMIT=400
   rm -f "${STATE}/ireview-posted-acme_software-factory-8-${HEAD}"
+  rm -f "${STATE}"/ireview-reply-acme_software-factory-8-*
   f=$(ir_result_file acme/software-factory 8 "$HEAD")
   cp "$work/${name}.${LANE_NAME}.json" "$f"
   ir_post_comment acme/software-factory 8 "$HEAD" || fail "$name ($LANE_NAME): split post failed"
@@ -948,6 +951,7 @@ case_review_body_splits() {
   ' "$work/${name}.${LANE_NAME}.json" >/dev/null \
     || fail "$name ($LANE_NAME): review body was not split before the 240-character cut"
   rm -f "${STATE}/ireview-posted-acme_software-factory-13-${HEAD}"
+  rm -f "${STATE}"/ireview-reply-acme_software-factory-13-*
   f=$(ir_result_file acme/software-factory 13 "$HEAD")
   cp "$work/${name}.${LANE_NAME}.json" "$f"
   ir_post_comment acme/software-factory 13 "$HEAD" || fail "$name ($LANE_NAME): ir_post_comment failed"
@@ -1059,6 +1063,69 @@ case_protected_path_escalates() {
     || fail "$name ($LANE_NAME): a protected-path thread took the FIX path"
 }
 
+case_review_without_thread_posts_comment() {
+  local name=${FUNCNAME[0]}
+  local thread="Rename the helper so the name matches the check."
+  local commented="Walkthrough of the new check."
+  local requested="Please handle the empty list."
+  one_thread false false scripts/foo.sh 601 'coderabbitai[bot]' "$thread" "$HEAD" > "$work/${name}.threads.json"
+  one_comment 601 'coderabbitai[bot]' "$thread" "$HEAD" "$HEAD" 4 > "$work/${name}.comments.json"
+  jq -n --arg sha "$HEAD" --arg commented "$commented" --arg requested "$requested" '[
+    {user:{login:"coderabbitai[bot]"}, state:"COMMENTED", commit_id:$sha, body:$commented, outdated:false},
+    {user:{login:"coderabbitai[bot]"}, state:"CHANGES_REQUESTED", commit_id:$sha, body:$requested, outdated:false}
+  ]' > "$work/${name}.reviews.json"
+  write_result "$work/${name}.result.json" PASS "$(jq -n --arg t "$requested" '[$t + " - out of scope"]')" '[]'
+  apply_case "$name"
+  jq -e --arg thread "$thread" --arg commented "$commented" --arg requested "$requested" '
+    .verdict == "FIX"
+    and (.outstanding | length) == 3
+    and .outstanding[0].kind == "thread"
+    and .outstanding[0].id == "601"
+    and .outstanding[0].text == $thread
+    and .outstanding[0].disposition == "addressed"
+    and .outstanding[1].kind == "review"
+    and .outstanding[1].id == ""
+    and .outstanding[1].text == $commented
+    and .outstanding[1].disposition == "addressed"
+    and .outstanding[2].kind == "review"
+    and .outstanding[2].id == ""
+    and .outstanding[2].text == $requested
+    and .outstanding[2].disposition == "dismissed: out of scope"
+  ' "$work/${name}.${LANE_NAME}.json" >/dev/null \
+    || fail "$name ($LANE_NAME): a review with no thread id did not rewrite the verdict"
+  rm -f "${STATE}/ireview-posted-acme_software-factory-16-${HEAD}"
+  rm -f "${STATE}"/ireview-reply-acme_software-factory-16-*
+  local f before after
+  f=$(ir_result_file acme/software-factory 16 "$HEAD")
+  cp "$work/${name}.${LANE_NAME}.json" "$f"
+  ir_post_comment acme/software-factory 16 "$HEAD" || fail "$name ($LANE_NAME): ir_post_comment failed"
+  grep -F -q '**Independent review (after CodeRabbit): FIX**' "$GH_BODY" \
+    || fail "$name ($LANE_NAME): verdict comment was replaced by the disposition comment"
+  jq -e --arg commented "$commented" --arg requested "$requested" '
+    [ .[] | .body | select(startswith("Independent review disposition:")) ] as $d
+    | ($d | length) == 2
+    and ($d | index("Independent review disposition: addressed — " + $commented) != null)
+    and ($d | index("Independent review disposition: dismissed: out of scope — " + $requested) != null)
+    and ([.[] | .body | select(contains("@"))] | length) == 0
+  ' <(jq -s '.' "$GH_ALL") >/dev/null \
+    || fail "$name ($LANE_NAME): disposition was not posted as a pull-request comment"
+  jq -e '
+    length == 1
+    and .[0].url == "repos/acme/software-factory/pulls/16/comments/601/replies"
+    and .[0].body == "Independent review disposition: addressed"
+    and (.[0].body | contains("@") | not)
+  ' <(jq -s '.' "$GH_REPLIES") >/dev/null \
+    || fail "$name ($LANE_NAME): the thread reply path was dropped or changed"
+  before=$(jq -s 'length' "$GH_ALL")
+  ir_post_comment acme/software-factory 16 "$HEAD" || fail "$name ($LANE_NAME): second ir_post_comment failed"
+  after=$(jq -s 'length' "$GH_ALL")
+  [[ $after -eq $before ]] || fail "$name ($LANE_NAME): a second identical disposition comment was posted"
+  jq -e 'length == 1' <(jq -s '.' "$GH_REPLIES") >/dev/null \
+    || fail "$name ($LANE_NAME): a second identical thread reply was posted"
+  cp "$GH_ALL" "$work/${name}.${LANE_NAME}.all"
+  cp "$GH_REPLIES" "$work/${name}.${LANE_NAME}.replies"
+}
+
 case_dry_guard_leaves_saved() {
   local name=${FUNCNAME[0]} f
   f=$(ir_result_file acme/software-factory 11 "$HEAD")
@@ -1115,6 +1182,7 @@ for fn in \
   case_same_text_two_ids \
   case_reply_omits_diff_hunk \
   case_protected_path_escalates \
+  case_review_without_thread_posts_comment \
   case_dry_guard_leaves_saved
 do
   both_lanes "$fn"
@@ -1130,6 +1198,10 @@ cmp -s "$work/case_human_thread_reply.watch.replies" "$work/case_human_thread_re
   || fail "human thread replies differ between lanes"
 cmp -s "$work/case_reply_already_present.watch.replies" "$work/case_reply_already_present.watch.new.replies" \
   || fail "already-present replies differ between lanes"
+cmp -s "$work/case_review_without_thread_posts_comment.watch.all" "$work/case_review_without_thread_posts_comment.watch.new.all" \
+  || fail "no-thread disposition comments differ between lanes"
+cmp -s "$work/case_review_without_thread_posts_comment.watch.replies" "$work/case_review_without_thread_posts_comment.watch.new.replies" \
+  || fail "no-thread case replies differ between lanes"
 cmp -s "$work/case_split_outstanding.watch.all" "$work/case_split_outstanding.watch.new.all" \
   || fail "split reports differ between lanes"
 pass "thread replies match"
