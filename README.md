@@ -46,6 +46,8 @@ when the audit ran.
 | The guide audits are scored against | [adamsuk/line](https://github.com/adamsuk/line) | public |
 | Audits, backlog and decisions | this repo, and your GitHub Project board | **private** |
 | Delivery repos | repos in other enrolled organisations | org |
+| Viva: research site and personal map | [adamsuk/viva](https://github.com/adamsuk/viva) | public, enrolled 2026-11-23 |
+| Viva agent skills (`viva`, `viva-assess`) | [adamsuk/viva-skills](https://github.com/adamsuk/viva-skills) | public, enrolled 2026-11-23 |
 | Agents | Grok Bot: Issue Shipper, PR Reviewer, Signal Issues, Research Scout | — |
 
 A backlog issue in this repo names one target repository. Issue Shipper does

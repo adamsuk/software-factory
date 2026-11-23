@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-23 (enrol viva and viva-skills)
+
+### Changed
+
+- `adamsuk/viva` and `adamsuk/viva-skills` join the default repo list in `scripts/triage-ask.sh` and `scripts/triage-apply-answers.sh` (used when `FACTORY_REPOS` is unset), so a triage answer naming either is applied. The README lists both as delivery repos. Each repo gets its own `.github/factory.yml` in its onboarding PR. Operator follow-up: add both to `FACTORY_REPOS` on the factory host and install the GitHub App on them (#454).
+
 ## 2026-11-22 (review-comment fixes and failing CI use separate round caps)
 
 ### Fixed
@@ -17,6 +23,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - The watcher (`scripts/watcher/watch.sh`, `watch.new.sh`) no longer keeps an independent-review PASS while the current head has an unresolved, not-outdated CodeRabbit review thread, an unresolved CodeRabbit comment, or a CodeRabbit review in COMMENTED or CHANGES_REQUESTED. A model PASS that only files the finding under dismissed is rewritten to FIX when the finding is a small in-scope change, and to ESCALATE when a person must act. The posted comment lists each outstanding finding as addressed, dismissed with a reason, or escalated. Outdated threads, and threads only on earlier commits, do not by themselves change PASS, and the outdated-review dismiss path still runs after a valid PASS. `agents/roles/reviewer.md` states the rule. New `scripts/test-ir-open-coderabbit.sh` (#451).
 - The same gate counts every reviewer, not only CodeRabbit: an unresolved, not-outdated review thread, an unresolved review comment, or a COMMENTED or CHANGES_REQUESTED review on the current head blocks PASS whoever left it. After the disposition (addressed, dismissed with a reason, or escalated), the watcher replies on that unresolved thread and does not post a second identical reply. Outdated threads, earlier commits, resolved threads, and APPROVED reviews still do not rewrite PASS (#451).
+
+## 2026-11-21 (local watcher preflight)
+
+### Added
+
+- `docs/runbooks/local-watcher.md` and `scripts/watcher-preflight.sh` (with `scripts/test-watcher-preflight.sh`) give a maintainer the variables, checks and start steps for both watcher lanes (`scripts/watcher/watch.sh`, and `scripts/watcher/watch.new.sh` with `LANE=build`) as a `systemd --user` unit or a start command. The preflight exits non-zero naming each missing variable, command or path (`gh auth status`, the selected provider's CLI and credential, the Grok CLI and credential unless `FACTORY_WATCHER_BUILDS=off` because the build foreman always runs through Grok, `FACTORY_CONTAINER_RUNTIME` or the first of `podman`, `docker` and `nerdctl` on `PATH`, `FACTORY_CONTAINER_IMAGE`, and a writable searchable `$FACTORY_WATCH_ROOT/state`) and prints names only. Grok's credential is `XAI_API_KEY` or `FACTORY_GROK_AUTH_FILE` on its own. The unit environment file sets `FACTORY_HOME_REPO` to the checkout's `owner/repo` (#390).
 
 ## 2026-11-17 (a watcher host can turn building off)
 

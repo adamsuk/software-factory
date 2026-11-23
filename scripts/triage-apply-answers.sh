@@ -13,7 +13,7 @@
 # An answer is a line in an approver comment that is, after an optional
 # `N.` or `N)` number, one of: `Target repo: <name>`, a bare <name> from the
 # closed set, `Size: <S|M|L>` or a bare S, M or L. The closed set is
-# FACTORY_REPOS (space-separated owner/repo), five-repo default when unset.
+# FACTORY_REPOS (space-separated owner/repo), seven-repo default when unset.
 # The latest answer wins. Anything else in a comment is ignored.
 #
 # The only lines this script writes are `Target repo:` and `Size:` in the
@@ -52,6 +52,8 @@ DEFAULT_REPOS = (
     "adamsuk/activity-feed",
     "adamsuk/line",
     "adamsuk/adamsuk",
+    "adamsuk/viva",
+    "adamsuk/viva-skills",
 )
 REPO_TOKEN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 APPLIED = "<!-- factory:triage-ask applied -->"
