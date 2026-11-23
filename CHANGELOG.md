@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-23 (enrol viva and viva-skills)
+
+### Changed
+
+- `adamsuk/viva` and `adamsuk/viva-skills` join the default repo list in `scripts/triage-ask.sh` and `scripts/triage-apply-answers.sh` (used when `FACTORY_REPOS` is unset), so a triage answer naming either is applied. The README lists both as delivery repos. Each repo gets its own `.github/factory.yml` in its onboarding PR. Operator follow-up: add both to `FACTORY_REPOS` on the factory host and install the GitHub App on them (#454).
+
 ## 2026-11-17 (a watcher host can turn building off)
 
 ### Added
