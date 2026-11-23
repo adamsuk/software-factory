@@ -8,7 +8,7 @@ base: factory/459-schema-compat
 test_command: "npm run typecheck && npm run lint && npm test"
 changelog: true
 merge_allowed: false
-review_bot: none
+review_bot: coderabbit
 attempt: 1
 created: 2026-11-23
 ---

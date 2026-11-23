@@ -8,7 +8,7 @@ base: factory/456-onboard-viva-skills
 test_command: "bash scripts/test-validate-skills.sh && bash scripts/validate-skills.sh"
 changelog: true
 merge_allowed: false
-review_bot: none
+review_bot: coderabbit
 attempt: 1
 created: 2026-11-23
 ---
