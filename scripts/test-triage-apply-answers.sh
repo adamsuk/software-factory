@@ -303,6 +303,16 @@ issue_body | grep -qxF 'Target repo: adamsuk/gh-factory' || fail "repo outside t
 issue_body | grep -qxF 'Size: M' || fail "size not written"
 printf '%s\n' "ok: $tname"
 
+tname="viva-skills is in the default set"
+printf '%s\n' '1. adamsuk/viva-skills' '2. S' > "$ROOT/viva.txt"
+comment_file "$ROOT/c7.json" adamsuk "$ROOT/viva.txt"
+write_issue "$ROOT/body.txt" "$ROOT/c7.json"
+run adamsuk/software-factory 454
+[[ $status -eq 0 ]] || fail "expected exit 0, got $status"
+issue_body | grep -qxF 'Target repo: adamsuk/viva-skills' || fail "viva-skills not written"
+issue_body | grep -qxF 'Size: S' || fail "size not written"
+printf '%s\n' "ok: $tname"
+
 tname="bad arguments"
 run notarepo 1
 [[ $status -eq 1 ]] || fail "bad repo: exit $status"

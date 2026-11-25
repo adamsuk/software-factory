@@ -3,6 +3,18 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-23 (enrol viva and viva-skills)
+
+### Changed
+
+- `adamsuk/viva` and `adamsuk/viva-skills` join the default repo list in `scripts/triage-ask.sh` and `scripts/triage-apply-answers.sh` (used when `FACTORY_REPOS` is unset), so a triage answer naming either is applied. The README lists both as delivery repos. Each repo gets its own `.github/factory.yml` in its onboarding PR. Operator follow-up: add both to `FACTORY_REPOS` on the factory host and install the GitHub App on them (#454).
+
+## 2026-11-21 (local watcher preflight)
+
+### Added
+
+- `docs/runbooks/local-watcher.md` and `scripts/watcher-preflight.sh` (with `scripts/test-watcher-preflight.sh`) give a maintainer the variables, checks and start steps for both watcher lanes (`scripts/watcher/watch.sh`, and `scripts/watcher/watch.new.sh` with `LANE=build`) as a `systemd --user` unit or a start command. The preflight exits non-zero naming each missing variable, command or path (`gh auth status`, the selected provider's CLI and credential, the Grok CLI and credential unless `FACTORY_WATCHER_BUILDS=off` because the build foreman always runs through Grok, `FACTORY_CONTAINER_RUNTIME` or the first of `podman`, `docker` and `nerdctl` on `PATH`, `FACTORY_CONTAINER_IMAGE`, and a writable searchable `$FACTORY_WATCH_ROOT/state`) and prints names only. Grok's credential is `XAI_API_KEY` or `FACTORY_GROK_AUTH_FILE` on its own. The unit environment file sets `FACTORY_HOME_REPO` to the checkout's `owner/repo` (#390).
+
 ## 2026-11-17 (a watcher host can turn building off)
 
 ### Added
