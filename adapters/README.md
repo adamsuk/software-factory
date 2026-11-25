@@ -77,6 +77,7 @@ not done yet.
 - `opencode/` - OpenCode CLI adapter
 - `grok/` - Grok CLI adapter (uses existing `scripts/run-work-order.sh` for builder)
 - `claudecode/` - Claude Code adapter (non-builder roles)
+- `stub/` - test-only adapter: no model CLI, one fixed output per role (`scripts/test-provider-smoke.sh`)
 
 ## Adding a New Provider
 

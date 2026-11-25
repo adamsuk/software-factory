@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-25 (Grok-free smoke test)
+
+### Added
+
+- `adapters/stub/run.sh` is a stub provider that starts no model CLI and makes one fixed, valid output per role (intake writes a brief, builder writes `stub-provider-change.txt`). `scripts/test-provider-smoke.sh` runs intake and a build for a fixture work order with `FACTORY_PROVIDER=stub`, no `grok` on `PATH`, and `gh`, `curl` and `wget` stubbed to fail, so the provider-agnostic design (#386) cannot regress unnoticed. The suite fails if the adapter is removed or makes no change. `lint.yml` picks it up through its `scripts/test-*.sh` glob; adding it to `agents.test_command` needs the maintainer (#391).
+
 ## 2026-11-23 (enrol viva and viva-skills)
 
 ### Changed
