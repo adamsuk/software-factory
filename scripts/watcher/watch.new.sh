@@ -385,8 +385,8 @@ refresh_clock() {
 
 refresh_counts() {
   refresh_clock
-  WEEK_CAP=$(jq -r '.max_grok_build_runs_per_week // 0' "$BUDGET" 2>/dev/null || echo 0)
-  DAY_CAP=$(jq -r '.max_grok_build_runs_per_day // 0' "$BUDGET" 2>/dev/null || echo 0)
+  WEEK_CAP=$(jq -r '.max_build_runs_per_week // .max_grok_build_runs_per_week // 0' "$BUDGET" 2>/dev/null || echo 0)
+  DAY_CAP=$(jq -r '.max_build_runs_per_day // .max_grok_build_runs_per_day // 0' "$BUDGET" 2>/dev/null || echo 0)
   LOOP_CAP=$(jq -r '.max_runs_per_loop // 1' "$BUDGET" 2>/dev/null || echo 1)
   CR_HOUR_CAP=$(jq -r '.max_coderabbit_requests_per_hour // 8' "$BUDGET" 2>/dev/null || echo 8)
   [[ $WEEK_CAP =~ ^[0-9]+$ ]] || WEEK_CAP=0
@@ -525,7 +525,7 @@ ledger_append() {
       return 1
     }
     if [[ ! -f $LEDGER ]]; then
-      printf '%s\n' 'date_utc,kind,repo,issue_or_pr,grok_sessions,api_equiv_usd,result' > "$LEDGER"
+      printf '%s\n' 'date_utc,kind,repo,issue_or_pr,sessions,api_equiv_usd,result' > "$LEDGER"
     fi
     printf '%s\n' "$line" >> "$LEDGER"
   } 8>>"${STATE}/append.lock" || {

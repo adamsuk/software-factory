@@ -48,11 +48,11 @@ State files live under `$FACTORY_WATCH_ROOT/state/` and are not committed. That 
 
 ## Budget file
 
-The budget file is JSON at `FACTORY_BUDGET_FILE`. The watcher reads `max_grok_build_runs_per_week`, `max_grok_build_runs_per_day`, `max_runs_per_loop`, `max_coderabbit_requests_per_hour`, and `merge_protected_issues`. Budget contents are not committed.
+The budget file is JSON at `FACTORY_BUDGET_FILE`. The watcher reads `max_build_runs_per_week`, `max_build_runs_per_day`, `max_runs_per_loop`, `max_coderabbit_requests_per_hour`, and `merge_protected_issues`. The older names `max_grok_build_runs_per_week` and `max_grok_build_runs_per_day` still work: they are read only when the new name is absent. Budget contents are not committed.
 
 ## Ledger
 
-The ledger is a CSV at `FACTORY_LEDGER_FILE` with header `date_utc,kind,repo,issue_or_pr,grok_sessions,api_equiv_usd,result`. Ledger contents are not committed.
+The ledger is a CSV at `FACTORY_LEDGER_FILE` with header `date_utc,kind,repo,issue_or_pr,sessions,api_equiv_usd,result`. Ledgers written with the older `grok_sessions` column (`date_utc,kind,repo,issue_or_pr,grok_sessions,api_equiv_usd,result`) are still read by the metrics scripts. Ledger contents are not committed.
 
 ## Swapping a script safely
 
