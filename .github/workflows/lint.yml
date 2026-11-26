@@ -137,3 +137,6 @@ jobs:
             echo "::error::${#failed[@]} suite(s) failed: ${failed[*]}"
             exit 1
           fi
+      - name: Run the Python unit tests
+        # The dashboard package (#510): standard library only, no network.
+        run: python3 -m unittest discover tests
