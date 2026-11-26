@@ -169,6 +169,15 @@ ENDGROK
   if [[ $with_grok == yes ]]; then chmod +x "$w/bin/grok"; else rm -f "$w/bin/grok"; fi
   printf '%s\n' '{"max_grok_build_runs_per_week":20,"max_grok_build_runs_per_day":20,"max_runs_per_loop":5}' > "$w/budget.json"
   printf '%s\n' 'review this' > "$w/prompt.txt"
+  # The plan call site's cwd is a fresh home-repo clone (#404), so its adapter is
+  # in cwd, unlike review's target checkout.
+  if [[ $kind == plan ]]; then
+    mkdir -p "$w/target/scripts" "$w/target/agents/roles"
+    cp "$root/scripts/container-env.sh" "$root/scripts/station-container.sh" "$w/target/scripts/"
+    cp -R "$root/adapters" "$w/target/adapters"
+    cp "$root/AGENTS.md" "$w/target/AGENTS.md"
+    printf '%s\n' '# foreman fixture' > "$w/target/agents/roles/foreman.md"
+  fi
   (
     cd "$w"
     export HOME="$w/home" TMPDIR="$w/tmp" XDG_CACHE_HOME="$w/cache" XDG_DATA_HOME="$w/xdg"
@@ -226,6 +235,32 @@ for lane in watch watch.new; do
       if grep -Fq -- "--volume $w/watch/work" "$w/calls/runtime.log"; then fail "$lane: $kind mounted the home-repo clone into grok's container"; fi
       echo "ok: $lane $kind still calls grok with --json-schema, FACTORY_PROVIDER='${p:-unset}'"
     done
+  done
+done
+# Plan call site (#404). It is a write-access run in a home-repo clone, so the
+# adapter is the one in cwd and the role is foreman, not intake.
+for lane in watch watch.new; do
+  w=$(GROK_TEST_GH_TOKEN=test-gh-token GROK_TEST_APP_ID=1 run_kind_case "$lane" claudecode plan "cc-plan" no)
+  [[ -s $w/calls/claude.calls ]] || fail "$lane: plan under claudecode did not run the adapter ($(tail -3 "$w/out.log" 2>/dev/null))"
+  [[ ! -e $w/calls/grok.calls ]] || fail "$lane: grok ran for plan under claudecode"
+  grep -Fq 'You are the foreman station' "$w/calls/claude.stdin" || fail "$lane: plan did not use the foreman role"
+  grep -Fq 'review this' "$w/calls/claude.stdin" || fail "$lane: plan prompt did not reach the provider"
+  [[ $(wc -l < "$w/calls/runtime.log") -eq 1 ]] || fail "$lane: plan did not start the adapter through the container runtime"
+  grep -Fq -- "--volume $w/target:$w/target " "$w/calls/runtime.log" || fail "$lane: plan did not mount the clone"
+  grep -Fq -- '--env GH_TOKEN' "$w/calls/runtime.log" || fail "$lane: plan under claudecode did not get the bot token by name"
+  if grep -Fq test-gh-token "$w/calls/runtime.log"; then fail "$lane: the token value is on the runtime argv"; fi
+  w=$(GROK_TEST_GH_TOKEN=test-gh-token run_kind_case "$lane" claudecode plan "cc-plan-noapp" no)
+  if grep -Fq -- 'GH_TOKEN' "$w/calls/runtime.log"; then fail "$lane: a token that is not the App's reached the plan provider"; fi
+  echo "ok: $lane plan runs the claudecode adapter as foreman, with no grok on PATH"
+  for p in "" grok; do
+    w=$(GROK_TEST_GH_TOKEN=test-gh-token GROK_TEST_APP_ID=1 run_kind_case "$lane" "$p" plan "gplan-${p:-unset}" yes)
+    [[ -s $w/calls/grok.calls ]] || fail "$lane: plan with FACTORY_PROVIDER='${p}' did not call grok"
+    [[ ! -e $w/calls/claude.calls ]] || fail "$lane: claude ran for plan with FACTORY_PROVIDER='${p}'"
+    expect="--prompt-file PROMPT --output-format json --max-turns 25 --always-approve --cwd $w/target --json-schema {\"type\":\"object\",\"required\":[\"verdict\"]}"
+    got=$(sed -E 's#--prompt-file [^ ]+#--prompt-file PROMPT#' "$w/calls/grok.args")
+    [[ $got == "$expect" ]] || fail "$lane: the grok command line for plan changed: [$got]"
+    grep -Fq -- '--env GH_TOKEN' "$w/calls/runtime.log" || fail "$lane: plan on grok lost the bot token"
+    echo "ok: $lane plan still calls grok with the same command line, FACTORY_PROVIDER='${p:-unset}'"
   done
 done
 # The GitHub token (#428). grok's container gets GH_TOKEN only for the kinds
