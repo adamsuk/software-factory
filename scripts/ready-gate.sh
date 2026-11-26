@@ -68,6 +68,8 @@ fi
 # 1. Independent review PASS for this exact head. Comments are in creation
 # order, so the last matching one is the latest. The verdict is read from the
 # marker's own second line only, never from the free-text summary below it.
+# Both verdict forms count: "**Independent review (after CodeRabbit): V** on" and the
+# shorter "**Independent review: V** on" (#512).
 # Only the approver (FACTORY_APPROVER_LOGIN, else the repo owner) and the
 # factory bot may post it; anyone else's comment is ignored and reported.
 approver=${FACTORY_APPROVER_LOGIN:-${repo%%/*}}
@@ -81,7 +83,7 @@ ir_json=$(printf '%s' "$view" | jq -c --arg head "$head" --arg approver "$approv
     | (($lines[0] | capture("sha=(?<s>[0-9a-fA-F]{7,40})").s) | ascii_downcase) as $s
     | select($head | startswith($s))
     | {trusted: ($who == $approver or $who == "software-factory-line" or $who == "software-factory-line[bot]" or $who == "app/software-factory-line"),
-       v: ((($lines[1] // "") | [scan("^\\*\\*Independent review \\(after CodeRabbit\\): (PASS|FIX|ESCALATE)\\*\\* on ")] | .[0][0]) // "unreadable")}
+       v: ((($lines[1] // "") | [scan("^\\*\\*Independent review(?: \\(after CodeRabbit\\))?: (PASS|FIX|ESCALATE)\\*\\* on ")] | .[0][0]) // "unreadable")}
   ] | {untrusted: ([.[] | select(.trusted | not)] | length),
        v: (([.[] | select(.trusted)] | last | .v) // "none")}') \
   || die 7 "could not read the comments on ${repo}#${pr}"
