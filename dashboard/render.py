@@ -55,13 +55,23 @@ def prio(i: Issue) -> str:
     return " ".join(out)
 
 
+STAGE_CHIP = {"blocked": "bad", "building": "wait", "gate": "wait", "review": "ok", "merge": "ok",
+              "release": "ok", "triage": "muted", "ready": "accent"}
+
+
 def action_row(a: Action) -> str:
     links = " ".join(link(t, u, "btn") for t, u in a.links)
     copy = ""
     if a.copy:
         copy = f'<button class="btn copy" type="button" data-copy="{esc(a.copy)}">Copy approval marker</button>'
-    return (f'<li class="action {esc(a.group)}"><div class="what"><strong>{esc(a.title)}</strong>'
-            f' {link(a.key, a.url, "key")}<div class="subject">{esc(a.subject)}</div>'
+    tags = [f'<span class="repo">{esc(a.repo)}</span>', chip(a.stage, STAGE_CHIP.get(a.stage, "muted"))]
+    if a.flagged:
+        tags.append(chip("next", "accent"))
+    tags.append(chip(f"P{a.priority}", "bad" if a.priority == 0 else "accent") if a.priority < 4 else chip("no priority"))
+    kind = "PR" if "/pull/" in a.url else "Issue"
+    return (f'<li class="action {esc(a.group)}"><div class="what"><div class="tags">{" ".join(tags)}</div>'
+            f'<strong>{esc(a.title)}</strong> {link(f"{kind} #{a.number}", a.url, "key")}'
+            f'<div class="subject">{esc(a.subject)}</div>'
             f'<div class="why">{esc(a.why)}</div></div>'
             f'<div class="links">{links}{copy}</div></li>')
 
@@ -88,7 +98,7 @@ h2{font-size:15px;margin:0 0 10px;display:flex;gap:8px;align-items:center}h3{fon
 .badge{background:var(--accent);color:#fff;border-radius:999px;padding:0 8px;font-size:12px}
 ul{list-style:none;margin:0;padding:0}.action{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;padding:8px 0;border-top:1px solid var(--line)}
 .action:first-child{border-top:0}.action.unblock{border-left:3px solid var(--bad);padding-left:10px}.action.review{border-left:3px solid var(--ok);padding-left:10px}
-.action.triage{border-left:3px solid var(--accent);padding-left:10px}.why{color:var(--muted);font-size:12px}.subject{overflow-wrap:anywhere}.what{min-width:0;flex:1 1 320px}.links{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.action.triage{border-left:3px solid var(--accent);padding-left:10px}.why{color:var(--muted);font-size:12px}.subject{overflow-wrap:anywhere}.tags{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-bottom:2px}.repo{font-family:ui-monospace,monospace;font-size:11px;font-weight:600;border:1px solid var(--line);border-radius:4px;padding:0 6px}.what{min-width:0;flex:1 1 320px}.links{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}a.key{font-family:ui-monospace,monospace;font-size:12px}
 .btn{border:1px solid var(--line);border-radius:6px;padding:2px 8px;font-size:12px;background:var(--bg);color:var(--fg);cursor:pointer}
 .chip{display:inline-block;border-radius:4px;padding:0 6px;font-size:11px;background:var(--line);color:var(--muted)}

@@ -131,6 +131,26 @@ class ModelTest(unittest.TestCase):
         held = next(a for a in self.v.actions if a.key == "acme/widgets#6")
         self.assertEqual(held.copy, model.APPROVE_MARKER)
 
+    def test_actions_priority_order_repo_and_stage(self):
+        unblock = [a for a in self.v.actions if a.group == "unblock"]
+        # P1 first, then unprioritised by repo and number.
+        self.assertEqual([a.number for a in unblock], [1, 6, 12])
+        first = unblock[0]
+        self.assertEqual((first.repo, first.stage, first.priority), ("acme/widgets", "blocked", 1))
+        dep = unblock[-1]
+        self.assertEqual((dep.stage, dep.priority), ("no linked issue", 4))
+        pr = next(a for a in self.v.actions if a.number == 11)
+        self.assertEqual(pr.stage, "review")  # a PR action takes its linked issue's stage
+
+    def test_flagged_action_comes_first(self):
+        snap = json.loads(FIXTURE.read_text())
+        six = snap["issues"]["nodes"][5]
+        six["labels"]["nodes"].append({"name": "priority: next"})
+        v = model.build_view({"acme/widgets": snap}, [], approver="owner", now=NOW)
+        unblock = [a for a in v.actions if a.group == "unblock"]
+        self.assertEqual([a.number for a in unblock], [6, 1, 12])
+        self.assertTrue(unblock[0].flagged)
+
     def test_escalate_and_failing_draft(self):
         snap = json.loads(FIXTURE.read_text())
         pr10 = snap["pullRequests"]["nodes"][0]
@@ -159,6 +179,13 @@ class RenderTest(unittest.TestCase):
         html = render.render(view())
         self.assertNotIn("<script>alert(1)</script>", html)
         self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;", html)
+
+    def test_action_rows_show_repo_stage_and_priority(self):
+        html = render.render(view())
+        row = html[html.index("Blocked: answer the ask") - 400:html.index("Blocked: answer the ask")]
+        self.assertIn('<span class="repo">acme/widgets</span>', row)
+        self.assertIn(">blocked</span>", row)
+        self.assertIn(">P1</span>", row)
 
     def test_only_github_links(self):
         self.assertEqual(render.safe_url("javascript:alert(1)"), "#")

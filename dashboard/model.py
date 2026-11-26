@@ -146,6 +146,11 @@ class Action:
     links: list[tuple[str, str]]
     copy: str = ""
     subject: str = ""
+    repo: str = ""
+    number: int = 0
+    stage: str = ""  # the issue's factory:* state; for a PR, its linked issue's
+    priority: int = 4  # 0..3 from priority: P0-P3, 4 unprioritised
+    flagged: bool = False  # priority: next
 
 
 @dataclass
@@ -328,7 +333,11 @@ def actions_for(issues: list[Issue], prs: list[PR]) -> list[Action]:
             out.append(Action("unblock", "Needs you", "labelled needs-scott", pr.key, pr.url, pr_links(pr)))
         else:
             continue
-        out[-1].subject = pr.title
+        a = out[-1]
+        a.subject, a.repo, a.number = pr.title, pr.repo, pr.number
+        a.stage = next((i.status for i in linked if i.status), "") or ("no factory stage" if linked else "no linked issue")
+        a.priority = min((i.priority for i in linked), default=4)
+        a.flagged = any(i.flagged for i in linked)
         acted.add(pr.key)
         acted.update(i.key for i in linked)
 
@@ -350,7 +359,12 @@ def actions_for(issues: list[Issue], prs: list[PR]) -> list[Action]:
             out.append(Action("triage", "Name the target repo", "needs-target", i.key, i.url, links))
         else:
             continue  # the triage queue is shown as a count, not one action per issue
-        out[-1].subject = i.title
+        a = out[-1]
+        a.subject, a.repo, a.number = i.title, i.repo, i.number
+        a.stage = i.status or ("several stages" if i.statuses else "no factory stage")
+        a.priority, a.flagged = i.priority, i.flagged
+    # Within each group: flagged (priority: next) first, then P0..P3, unprioritised, then repo and number.
+    out.sort(key=lambda a: (not a.flagged, a.priority, a.repo, a.number))
     return out
 
 
