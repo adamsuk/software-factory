@@ -84,6 +84,7 @@ def issue_card(i: Issue, now) -> str:
 
 
 GROUPS = [("unblock", "Unblock"), ("review", "Review and merge"), ("triage", "Decide")]
+GROUP_BY_REPO = {"review"}
 
 CSS = """
 :root{--bg:#f6f7f9;--panel:#fff;--fg:#1c2330;--muted:#677284;--line:#e2e6ec;--accent:#3b5bdb;
@@ -98,7 +99,7 @@ h2{font-size:15px;margin:0 0 10px;display:flex;gap:8px;align-items:center}h3{fon
 .badge{background:var(--accent);color:#fff;border-radius:999px;padding:0 8px;font-size:12px}
 ul{list-style:none;margin:0;padding:0}.action{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;padding:8px 0;border-top:1px solid var(--line)}
 .action:first-child{border-top:0}.action.unblock{border-left:3px solid var(--bad);padding-left:10px}.action.review{border-left:3px solid var(--ok);padding-left:10px}
-.action.triage{border-left:3px solid var(--accent);padding-left:10px}.why{color:var(--muted);font-size:12px}.subject{overflow-wrap:anywhere}.tags{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-bottom:2px}.repo{font-family:ui-monospace,monospace;font-size:11px;font-weight:600;border:1px solid var(--line);border-radius:4px;padding:0 6px}.what{min-width:0;flex:1 1 320px}.links{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.action.triage{border-left:3px solid var(--accent);padding-left:10px}.why{color:var(--muted);font-size:12px}.subject{overflow-wrap:anywhere}.repo-head{font:600 12px ui-monospace,monospace;margin:10px 0 2px;display:flex;gap:6px;align-items:center}.repo-head .count{color:var(--muted);font-weight:400}.tags{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-bottom:2px}.repo{font-family:ui-monospace,monospace;font-size:11px;font-weight:600;border:1px solid var(--line);border-radius:4px;padding:0 6px}.what{min-width:0;flex:1 1 320px}.links{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}a.key{font-family:ui-monospace,monospace;font-size:12px}
 .btn{border:1px solid var(--line);border-radius:6px;padding:2px 8px;font-size:12px;background:var(--bg);color:var(--fg);cursor:pointer}
 .chip{display:inline-block;border-radius:4px;padding:0 6px;font-size:11px;background:var(--line);color:var(--muted)}
@@ -127,8 +128,17 @@ def render(v: View, refresh: int | None = None) -> str:
     parts = []
     for g, label in GROUPS:
         rows = [a for a in v.actions if a.group == g]
-        if rows:
-            parts.append(f"<h3>{esc(label)} ({len(rows)})</h3><ul>{''.join(action_row(a) for a in rows)}</ul>")
+        if not rows:
+            continue
+        parts.append(f"<h3>{esc(label)} ({len(rows)})</h3>")
+        if g in GROUP_BY_REPO:
+            # One block per repo, repos in name order; rows keep their priority order.
+            for repo in sorted({a.repo for a in rows}):
+                mine = [a for a in rows if a.repo == repo]
+                parts.append(f'<h4 class="repo-head">{esc(repo)} <span class="count">{len(mine)}</span></h4>'
+                             f"<ul>{''.join(action_row(a) for a in mine)}</ul>")
+        else:
+            parts.append(f"<ul>{''.join(action_row(a) for a in rows)}</ul>")
     triage = len(v.board["triage"])
     if triage:
         parts.append(f'<h3>Triage queue</h3><div class="empty">{triage} issue(s) in factory:triage, '

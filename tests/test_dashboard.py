@@ -187,6 +187,17 @@ class RenderTest(unittest.TestCase):
         self.assertIn(">blocked</span>", row)
         self.assertIn(">P1</span>", row)
 
+    def test_review_group_is_split_by_repo(self):
+        snap = json.loads(FIXTURE.read_text())
+        other = json.loads(FIXTURE.read_text())
+        other["nameWithOwner"] = "acme/alpha"
+        v = model.build_view({"acme/widgets": snap, "acme/alpha": other}, [], approver="owner", now=NOW)
+        html = render.render(v)
+        review = html[html.index("Review and merge"):html.index("Decide")]
+        heads = [h.split("<")[0].strip() for h in review.split('<h4 class="repo-head">')[1:]]
+        self.assertEqual(heads, ["acme/alpha", "acme/widgets"])
+        self.assertNotIn('class="repo-head"', html[:html.index("Review and merge")])  # unblock stays one list
+
     def test_only_github_links(self):
         self.assertEqual(render.safe_url("javascript:alert(1)"), "#")
         self.assertEqual(render.safe_url("https://evil.example/x"), "#")
