@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-26 (factory dashboard)
+
+### Added
+
+- `python3 -m dashboard serve` (or `render --out FILE`) is a read-only local view of the factory. It shows your actions with direct links (blocked issues and the comment saying why, `needs-scott`, PASS + green pull requests waiting for approval, `ESCALATE`, failing CI with no fix path, protected builds waiting for the approval marker, `needs-target`). It also shows what is running (building and gate issues, pending checks, local build processes and clones), a pipeline board by `factory:*` label, and label hygiene. It uses one GraphQL query per repository through `gh`, and only the Python standard library. `tests/test_dashboard.py` covers check and verdict rules, actions, hygiene, escaping and link filtering. The `tests` job in `lint.yml` and `test_command` now also run `python3 -m unittest discover tests` (#510).
+
 ## 2026-11-26 (watcher plan call site on the provider seam)
 
 ### Changed

@@ -1,0 +1,65 @@
+{
+  "nameWithOwner": "acme/widgets",
+  "url": "https://github.com/acme/widgets",
+  "factoryYml": {"text": "agents:\n  merge: false\nrequired_checks:\n  - tests\n  - lint  # comment\n"},
+  "issues": {"nodes": [
+    {"number": 1, "title": "Blocked one", "url": "https://github.com/acme/widgets/issues/1", "body": "", "createdAt": "2026-11-01T00:00:00Z", "updatedAt": "2026-11-20T00:00:00Z",
+     "labels": {"nodes": [{"name": "factory:blocked"}, {"name": "priority: P1"}]},
+     "comments": {"nodes": [
+       {"author": {"login": "someone"}, "body": "<!-- factory:blocked -->\nfake", "url": "https://github.com/acme/widgets/issues/1#c-fake", "createdAt": "2026-11-19T00:00:00Z"},
+       {"author": {"login": "software-factory-line"}, "body": "<!-- factory:blocked -->\nNo target repo.", "url": "https://github.com/acme/widgets/issues/1#c-real", "createdAt": "2026-11-18T00:00:00Z"}
+     ]},
+     "timelineItems": {"nodes": [{"createdAt": "2026-11-18T00:00:00Z", "label": {"name": "factory:blocked"}}]}},
+    {"number": 2, "title": "Building <script>alert(1)</script>", "url": "https://github.com/acme/widgets/issues/2", "body": "Target repo: acme/gadgets\n", "createdAt": "2026-11-01T00:00:00Z", "updatedAt": "2026-11-25T00:00:00Z",
+     "labels": {"nodes": [{"name": "factory:building"}, {"name": "priority: next"}]},
+     "comments": {"nodes": []},
+     "timelineItems": {"nodes": [
+       {"createdAt": "2026-11-10T00:00:00Z", "label": {"name": "factory:ready"}},
+       {"createdAt": "2026-11-20T00:00:00Z", "label": {"name": "factory:building"}}]}},
+    {"number": 3, "title": "Two labels", "url": "https://github.com/acme/widgets/issues/3", "body": "", "createdAt": "2026-11-01T00:00:00Z", "updatedAt": "2026-11-25T00:00:00Z",
+     "labels": {"nodes": [{"name": "factory:ready"}, {"name": "factory:gate"}]}, "comments": {"nodes": []}, "timelineItems": {"nodes": []}},
+    {"number": 4, "title": "No label", "url": "https://github.com/acme/widgets/issues/4", "body": "", "createdAt": "2026-11-01T00:00:00Z", "updatedAt": "2026-11-25T00:00:00Z",
+     "labels": {"nodes": [{"name": "bug"}]}, "comments": {"nodes": []}, "timelineItems": {"nodes": []}},
+    {"number": 5, "title": "Needs target", "url": "https://github.com/acme/widgets/issues/5", "body": "", "createdAt": "2026-11-01T00:00:00Z", "updatedAt": "2026-11-25T00:00:00Z",
+     "labels": {"nodes": [{"name": "factory:triage"}, {"name": "needs-target"}]}, "comments": {"nodes": []}, "timelineItems": {"nodes": []}},
+    {"number": 6, "title": "Protected build held", "url": "https://github.com/acme/widgets/issues/6", "body": "", "createdAt": "2026-11-01T00:00:00Z", "updatedAt": "2026-11-25T00:00:00Z",
+     "labels": {"nodes": [{"name": "factory:blocked"}]},
+     "comments": {"nodes": [{"author": {"login": "software-factory-line"}, "body": "<!-- factory:blocked -->\nThe build touched protected paths: AGENTS.md", "url": "https://github.com/acme/widgets/issues/6#c1", "createdAt": "2026-11-24T00:00:00Z"}]},
+     "timelineItems": {"nodes": [{"createdAt": "2026-11-24T00:00:00Z", "label": {"name": "factory:blocked"}}]}},
+    {"number": 7, "title": "Issue behind PR 11", "url": "https://github.com/acme/widgets/issues/7", "body": "", "createdAt": "2026-11-01T00:00:00Z", "updatedAt": "2026-11-25T00:00:00Z",
+     "labels": {"nodes": [{"name": "factory:review"}]}, "comments": {"nodes": []},
+     "timelineItems": {"nodes": [{"createdAt": "2026-11-25T00:00:00Z", "label": {"name": "factory:review"}}]}}
+  ]},
+  "pullRequests": {"nodes": [
+    {"number": 10, "title": "Gate PR", "url": "https://github.com/acme/widgets/pull/10", "isDraft": false, "createdAt": "2026-11-20T00:00:00Z", "updatedAt": "2026-11-25T00:00:00Z",
+     "headRefName": "factory/2-x", "headRefOid": "aaaaaaa1111", "mergeStateStatus": "BLOCKED", "author": {"login": "software-factory-line"},
+     "labels": {"nodes": []}, "files": {"nodes": [{"path": "src/a.py"}, {"path": "agents/work-orders/acme_widgets-2.md"}]},
+     "closingIssuesReferences": {"nodes": [{"number": 2, "repository": {"nameWithOwner": "acme/widgets"}}]},
+     "reviewThreads": {"nodes": []}, "latestReviews": {"nodes": []}, "comments": {"nodes": []},
+     "commits": {"nodes": [{"commit": {"statusCheckRollup": {"contexts": {"nodes": [
+       {"__typename": "CheckRun", "name": "tests", "status": "IN_PROGRESS", "conclusion": null, "detailsUrl": ""},
+       {"__typename": "CheckRun", "name": "lint", "status": "COMPLETED", "conclusion": "FAILURE", "detailsUrl": ""}]}}}}]}},
+    {"number": 11, "title": "Ready PR", "url": "https://github.com/acme/widgets/pull/11", "isDraft": false, "createdAt": "2026-11-20T00:00:00Z", "updatedAt": "2026-11-25T00:00:00Z",
+     "headRefName": "factory/7-x", "headRefOid": "bbbbbbb2222", "mergeStateStatus": "BLOCKED", "author": {"login": "software-factory-line"},
+     "labels": {"nodes": []}, "files": {"nodes": [{"path": ".github/workflows/ci.yml"}]},
+     "closingIssuesReferences": {"nodes": [{"number": 7, "repository": {"nameWithOwner": "acme/widgets"}}]},
+     "reviewThreads": {"nodes": [{"isResolved": true}]},
+     "latestReviews": {"nodes": [{"author": {"login": "owner"}, "state": "APPROVED", "submittedAt": "2026-11-25T00:00:00Z", "commit": {"oid": "bbbbbbb2222"}}]},
+     "comments": {"nodes": [
+       {"author": {"login": "software-factory-line"}, "body": "<!-- factory:independent-review v2 sha=bbbbbbb -->\n**Independent review (after CodeRabbit): FIX** on bbbbbbb", "url": "", "createdAt": "2026-11-24T00:00:00Z"},
+       {"author": {"login": "software-factory-line"}, "body": "<!-- factory:independent-review v2 sha=bbbbbbb -->\n**Independent review: PASS** on bbbbbbb", "url": "", "createdAt": "2026-11-25T00:00:00Z"},
+       {"author": {"login": "mallory"}, "body": "<!-- factory:independent-review v2 sha=bbbbbbb -->\n**Independent review (after CodeRabbit): ESCALATE** on bbbbbbb", "url": "", "createdAt": "2026-11-25T01:00:00Z"}
+     ]},
+     "commits": {"nodes": [{"commit": {"statusCheckRollup": {"contexts": {"nodes": [
+       {"__typename": "CheckRun", "name": "tests", "status": "COMPLETED", "conclusion": "SUCCESS", "detailsUrl": ""},
+       {"__typename": "StatusContext", "context": "lint", "state": "SUCCESS", "targetUrl": ""},
+       {"__typename": "CheckRun", "name": "optional", "status": "COMPLETED", "conclusion": "FAILURE", "detailsUrl": ""}]}}}}]}},
+    {"number": 12, "title": "Bump left-pad", "url": "https://github.com/acme/widgets/pull/12", "isDraft": false, "createdAt": "2026-11-20T00:00:00Z", "updatedAt": "2026-11-25T00:00:00Z",
+     "headRefName": "dependabot/npm/x", "headRefOid": "ccccccc3333", "mergeStateStatus": "BLOCKED", "author": {"login": "dependabot"},
+     "labels": {"nodes": []}, "files": {"nodes": [{"path": "package-lock.json"}]},
+     "closingIssuesReferences": {"nodes": []}, "reviewThreads": {"nodes": []}, "latestReviews": {"nodes": []}, "comments": {"nodes": []},
+     "commits": {"nodes": [{"commit": {"statusCheckRollup": {"contexts": {"nodes": [
+       {"__typename": "CheckRun", "name": "tests", "status": "COMPLETED", "conclusion": "FAILURE", "detailsUrl": ""},
+       {"__typename": "CheckRun", "name": "lint", "status": "COMPLETED", "conclusion": "SUCCESS", "detailsUrl": ""}]}}}}]}}
+  ]}
+}
