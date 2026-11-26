@@ -84,7 +84,7 @@ def issue_card(i: Issue, now) -> str:
 
 
 GROUPS = [("unblock", "Unblock"), ("review", "Review and merge"), ("triage", "Decide")]
-GROUP_BY_REPO = {"unblock", "review"}
+GROUP_BY_REPO = {"unblock", "review", "triage"}
 
 CSS = """
 :root{--bg:#f6f7f9;--panel:#fff;--fg:#1c2330;--muted:#677284;--line:#e2e6ec;--accent:#3b5bdb;

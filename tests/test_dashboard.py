@@ -187,7 +187,7 @@ class RenderTest(unittest.TestCase):
         self.assertIn(">blocked</span>", row)
         self.assertIn(">P1</span>", row)
 
-    def test_unblock_and_review_groups_are_split_by_repo(self):
+    def test_every_action_group_is_split_by_repo(self):
         snap = json.loads(FIXTURE.read_text())
         other = json.loads(FIXTURE.read_text())
         other["nameWithOwner"] = "acme/alpha"
@@ -199,8 +199,9 @@ class RenderTest(unittest.TestCase):
         unblock = html[html.index("Unblock"):html.index("Review and merge")]
         heads = [h.split("<")[0].strip() for h in unblock.split('<h4 class="repo-head">')[1:]]
         self.assertEqual(heads, ["acme/alpha", "acme/widgets"])
-        decide = html[html.index("Decide"):]
-        self.assertNotIn('class="repo-head"', decide)  # Decide stays one list
+        decide = html[html.index("Decide ("):html.index("Running now")]
+        heads = [h.split("<")[0].strip() for h in decide.split('<h4 class="repo-head">')[1:]]
+        self.assertEqual(heads, ["acme/alpha", "acme/widgets"])
 
     def test_only_github_links(self):
         self.assertEqual(render.safe_url("javascript:alert(1)"), "#")

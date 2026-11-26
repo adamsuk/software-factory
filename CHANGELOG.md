@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `docker-compose.yml` and `dashboard/Dockerfile` run the dashboard in a read-only container, published on 127.0.0.1:8787, with `GH_TOKEN` passed through the environment. It uses `pid: host` so local build processes show under "Running now". `serve` gains `--host`, which defaults to 127.0.0.1 (#510).
 - Each group in Your actions is sorted by priority: `priority: next` first, then P0–P3, then unprioritised, then by repo and number. Every row shows its repo, its factory stage and its priority. A PR's row takes the stage and priority of the issue it closes (#510).
 - Review and merge in Your actions is split by repo, in name order, with a count per repo. Rows keep their priority order inside each repo (#510).
-- Unblock is split by repo the same way (#510).
+- Unblock and Decide are split by repo the same way, so every group in Your actions is (#510).
 
 ## 2026-11-26 (watcher plan call site on the provider seam)
 
