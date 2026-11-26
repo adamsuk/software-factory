@@ -185,8 +185,10 @@ GH_TOKEN=$(gh auth token) FACTORY_HOME_REPO=owner/repo docker compose up -d --bu
 The token is passed in through the environment, so no gh config is mounted. The
 two variables can also go in a git-ignored `.env` file. The port is published
 on 127.0.0.1 only. The container is read-only and drops all capabilities. Build
-clones are mounted read-only from `FACTORY_WORKSPACE`. Uncomment `pid: host` to
-also see host build processes.
+clones are mounted read-only from `FACTORY_WORKSPACE`. The container uses
+`pid: host`, so build processes on the host show under "Running now". That lets
+it see every host process's command line, though not its environment. Remove
+the line to keep the container's own process table.
 
 ## Working from the board
 

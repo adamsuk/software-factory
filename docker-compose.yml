@@ -31,7 +31,7 @@ services:
     cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true
-    # Build processes running on the host are only visible with the host's
-    # process table. Uncomment to show them in "Running now" (it lets the
-    # container see every host process's command line):
-    # pid: host
+    # The host's process table, so build processes running on the host show in
+    # "Running now". It lets the container see every host process's command
+    # line (never their environments); remove it to keep the container's own.
+    pid: host
