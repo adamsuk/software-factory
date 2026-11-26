@@ -175,6 +175,19 @@ per repository, never a mutation, and never writes to GitHub. Issue and pull
 request text is escaped, and only links to github.com are rendered. Tests:
 `python3 -m unittest discover tests`.
 
+To run it in a container instead, use `docker-compose.yml` (image built from
+`dashboard/Dockerfile`):
+
+```bash
+GH_TOKEN=$(gh auth token) FACTORY_HOME_REPO=owner/repo docker compose up -d --build
+```
+
+The token is passed in through the environment, so no gh config is mounted. The
+two variables can also go in a git-ignored `.env` file. The port is published
+on 127.0.0.1 only. The container is read-only and drops all capabilities. Build
+clones are mounted read-only from `FACTORY_WORKSPACE`. Uncomment `pid: host` to
+also see host build processes.
+
 ## Working from the board
 
 Your GitHub Project board is the place to work. To set one up, create a GitHub

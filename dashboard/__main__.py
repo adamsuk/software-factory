@@ -81,8 +81,8 @@ def serve(args, repos, discover) -> None:
         def log_message(self, fmt, *a):
             pass
 
-    httpd = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
-    print(f"factory dashboard on http://127.0.0.1:{args.port}/ ({', '.join(repos)})", flush=True)
+    httpd = ThreadingHTTPServer((args.host, args.port), Handler)
+    print(f"factory dashboard on http://{args.host}:{args.port}/ ({', '.join(repos)})", flush=True)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
@@ -97,6 +97,8 @@ def main(argv: list[str] | None = None) -> int:
         sp.add_argument("--repo", action="append", help="owner/repo; repeatable (default FACTORY_REPOS, "
                         "else FACTORY_HOME_REPO plus the target repos its open issues name)")
     sub.choices["serve"].add_argument("--port", type=int, default=8787)
+    sub.choices["serve"].add_argument("--host", default="127.0.0.1",
+                                      help="bind address; 0.0.0.0 only inside a container (docker-compose.yml)")
     sub.choices["serve"].add_argument("--ttl", type=int, default=60, help="seconds to cache GitHub reads")
     sub.choices["serve"].add_argument("--refresh", type=int, default=60, help="page auto-refresh seconds")
     sub.choices["render"].add_argument("--out", required=True, help="HTML file to write")
