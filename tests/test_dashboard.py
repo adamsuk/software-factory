@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 import time
 import unittest
@@ -40,6 +41,11 @@ class QueryTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             github.fetch_repo("a/b; rm -rf /", lambda a: "")
 
+    def test_default_repos_match_triage_ask(self):
+        src = (Path(__file__).parent.parent / "scripts" / "triage-ask.sh").read_text()
+        block = re.search(r"DEFAULT_REPOS = \((.*?)\)", src, re.S).group(1)
+        self.assertEqual(tuple(re.findall(r'"([^"]+)"', block)), github.DEFAULT_REPOS)
+
     def test_resolve_repos(self):
         env = dict(os.environ)
         try:
@@ -48,7 +54,12 @@ class QueryTest(unittest.TestCase):
             self.assertEqual(github.resolve_repos(["c/d"]), (["c/d"], False))
             del os.environ["FACTORY_REPOS"]
             os.environ["FACTORY_HOME_REPO"] = "h/r"
-            self.assertEqual(github.resolve_repos(None), (["h/r"], True))
+            self.assertEqual(github.resolve_repos(None), (["h/r", *github.DEFAULT_REPOS], True))
+            os.environ["FACTORY_HOME_REPO"] = "adamsuk/viva"
+            repos, _ = github.resolve_repos(None)
+            self.assertEqual(repos[0], "adamsuk/viva")
+            self.assertEqual(len(repos), len(set(repos)))
+            self.assertIn("adamsuk/viva-skills", repos)
         finally:
             os.environ.clear()
             os.environ.update(env)

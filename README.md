@@ -169,8 +169,10 @@ The page has four sections:
   issues with more than one `factory:*` label; issues with none.
 
 Repositories come from `--repo` (repeatable), then `FACTORY_REPOS`. Without
-either, it reads `FACTORY_HOME_REPO` (or this checkout's origin), plus the
-`Target repo:` repositories its open issues name. It sends one GraphQL query
+either, it reads `FACTORY_HOME_REPO` (or this checkout's origin) and the
+factory's enrolled repositories (the `DEFAULT_REPOS` list in
+`scripts/triage-ask.sh`), plus any other `Target repo:` repositories their open
+issues name. It sends one GraphQL query
 per repository, never a mutation, and never writes to GitHub. Issue and pull
 request text is escaped, and only links to github.com are rendered. Tests:
 `python3 -m unittest discover tests`.

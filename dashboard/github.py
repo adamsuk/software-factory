@@ -90,15 +90,34 @@ def home_repo() -> str:
     return os.environ.get("FACTORY_HOME_REPO") or os.environ.get("GITHUB_REPOSITORY") or _origin_repo()
 
 
+# The factory's enrolled repos: the same list as DEFAULT_REPOS in
+# scripts/triage-ask.sh (a test keeps the two in step). Used when neither
+# --repo nor FACTORY_REPOS is given.
+DEFAULT_REPOS = (
+    "adamsuk/software-factory",
+    "adamsuk/gh-factory",
+    "adamsuk/activity-feed",
+    "adamsuk/line",
+    "adamsuk/adamsuk",
+    "adamsuk/viva",
+    "adamsuk/viva-skills",
+)
+
 TARGET_RE = re.compile(r"^Target repo:\s*`?([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)`?\s*$", re.M)
 
 
 def resolve_repos(cli: list[str] | None) -> tuple[list[str], bool]:
-    """Repos to show and whether to also add target repos named by home-repo issues."""
+    """Repos to show and whether to also add target repos named by their issues.
+
+    --repo, then FACTORY_REPOS, are taken as given. Otherwise the home repo
+    plus DEFAULT_REPOS, and any target repo their issues name.
+    """
     if cli:
         return cli, False
     env = os.environ.get("FACTORY_REPOS", "").split()
     if env:
         return env, False
     home = home_repo()
-    return ([home] if home else []), True
+    repos = [home] if home else []
+    repos += [r for r in DEFAULT_REPOS if r not in repos]
+    return repos, True
