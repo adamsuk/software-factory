@@ -163,6 +163,7 @@ def render(v: View, refresh: int | None = None) -> str:
     local = "".join(
         f'<tr><td>{esc(lr["repo"] + "#" + str(lr["issue"]) if lr.get("issue") else "")}</td><td>{chip("local " + lr["kind"], "accent")}</td>'
         f'<td>{esc(age_s(lr.get("age_s")))}</td><td>{esc(lr.get("what") or lr.get("path") or "")}</td></tr>' for lr in v.local)
+    n_run = (run_rows + pend + local).count("<tr>")  # one row per running item
     running = (f"<table><tr><th>Item</th><th>State</th><th>For</th><th></th></tr>{run_rows}{pend}{local}</table>"
                if run_rows or pend or local else '<div class="empty">Nothing building, gating or checking.</div>')
 
@@ -201,7 +202,7 @@ def render(v: View, refresh: int | None = None) -> str:
 <header><h1>Software factory</h1><span class="meta">{esc(", ".join(v.repos))} · updated {esc(v.now.strftime("%Y-%m-%d %H:%M UTC"))}{" · refreshes every " + str(int(refresh)) + "s" if refresh else ""}</span>{errs}</header>
 <main>
 <section><details class="fold" data-fold="actions"><summary><h2>Your actions <span class="badge">{n}</span></h2></summary>{actions}</details></section>
-<div class="grid2"><section><h2>Running now</h2>{running}</section><section><details class="fold" data-fold="hygiene"><summary><h2>Hygiene <span class="badge">{n_hyg}</span></h2></summary>{hygiene}</details></section></div>
+<div class="grid2"><section><details class="fold" data-fold="running"><summary><h2>Running now <span class="badge">{n_run}</span></h2></summary>{running}</details></section><section><details class="fold" data-fold="hygiene"><summary><h2>Hygiene <span class="badge">{n_hyg}</span></h2></summary>{hygiene}</details></section></div>
 <section><h2>Pipeline</h2><div class="board">{cols}</div></section>
 <section><details class="fold" data-fold="prs"><summary><h2>Open pull requests <span class="badge">{len(v.prs)}</span></h2></summary>{prs}</details></section>
 </main><script>{JS}</script></body></html>"""

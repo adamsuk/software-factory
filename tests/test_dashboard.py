@@ -260,6 +260,8 @@ class RenderTest(unittest.TestCase):
                       f'<span class="badge">{len(v.actions)}</span></h2></summary>', html)
         self.assertIn(f'<details class="fold" data-fold="prs"><summary><h2>Open pull requests '
                       f'<span class="badge">{len(v.prs)}</span></h2></summary>', html)
+        self.assertRegex(html, r'<details class="fold" data-fold="running"><summary><h2>Running now '
+                               r'<span class="badge">[1-9]\d*</span></h2></summary>')
         # Open or closed state survives the auto-refresh, per browser.
         self.assertIn("localStorage.setItem(k,d.open?'1':'0')", html)
 
