@@ -54,6 +54,10 @@ class QueryTest(unittest.TestCase):
         html = render.render(model.build_view({"acme/widgets": snap}, [], approver="owner", now=NOW))
         self.assertIn("acme/widgets/issues/159", html)
         self.assertNotIn(" more</div>", html)
+        # Long columns scroll inside themselves, with the heading kept in view.
+        self.assertRegex(html, r"\.col\{[^}]*max-height:max\(320px,70vh\);overflow-y:auto")
+        self.assertRegex(html, r"\.col h3\{[^}]*position:sticky;top:0")
+        self.assertIn('<div class="col" tabindex="0" aria-label="triage">', html)
 
     def test_resolve_repos(self):
         env = dict(os.environ)

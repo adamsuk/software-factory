@@ -105,8 +105,8 @@ a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}a.k
 .chip{display:inline-block;border-radius:4px;padding:0 6px;font-size:11px;background:var(--line);color:var(--muted)}
 .chip.ok{background:var(--okbg);color:var(--ok)}.chip.bad{background:var(--badbg);color:var(--bad)}.chip.warn{background:var(--warnbg);color:var(--warn)}
 .chip.wait{background:var(--waitbg);color:var(--accent)}.chip.accent{background:var(--accent);color:#fff}
-.board{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}.col{background:var(--bg);border-radius:8px;padding:8px;min-height:60px}
-.col h3{margin:0 0 6px;display:flex;justify-content:space-between}.card{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 8px;margin-bottom:6px}
+.board{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}.col{background:var(--bg);border-radius:8px;padding:0 8px 8px;min-height:60px;max-height:max(320px,70vh);overflow-y:auto;overscroll-behavior:contain}
+.col h3{margin:0 0 6px;padding:8px 0 4px;display:flex;justify-content:space-between;position:sticky;top:0;background:var(--bg);z-index:1}.card{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 8px;margin-bottom:6px}
 .card .title{font-size:13px;overflow-wrap:anywhere}.card .sub{margin-top:4px;font-size:12px}.age{color:var(--muted);font-size:11px}
 table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:5px 6px;border-top:1px solid var(--line);font-size:13px;vertical-align:top}
 th{color:var(--muted);font-weight:600;font-size:12px}.empty{color:var(--muted);font-size:13px}.err{color:var(--bad)}
@@ -160,7 +160,7 @@ def render(v: View, refresh: int | None = None) -> str:
 
     # Board
     cols = "".join(
-        f'<div class="col"><h3><span>{esc(s)}</span><span>{len(v.board[s])}</span></h3>'
+        f'<div class="col" tabindex="0" aria-label="{esc(s)}"><h3><span>{esc(s)}</span><span>{len(v.board[s])}</span></h3>'
         f'{"".join(issue_card(i, now) for i in v.board[s])}</div>'
         for s in STATUSES if s != "done")
 
