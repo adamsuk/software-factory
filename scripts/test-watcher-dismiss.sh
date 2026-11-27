@@ -816,20 +816,13 @@ t_lanes() {
     c && g && /if \(\( ! paused \)\)/ { ok = 1; exit }
     END { exit (ok ? 0 : 1) }
   ' "$w" || fail "watch.sh already-reviewed skip is not before the not-paused branch"
-  if grep -F -q 'Never re-request a head CodeRabbit already reviewed' "$n"; then
-    fail "watch.new.sh picked up watch.sh already-reviewed comment"
-  fi
-  awk '
-    /if \(\( ! paused \)\)/ { p = 1 }
-    p && /GATE_CR_COUNT > 0/ { ok = 1; exit }
-    END { exit (ok ? 0 : 1) }
-  ' "$n" || fail "watch.new.sh already-reviewed skip is not inside the not-paused branch"
+  # #520: the build lane is the same script (watch.new.sh links to watch.sh),
+  # so the lanes can no longer drift apart.
+  [[ -L $n && $(readlink "$n") == watch.sh ]] || fail "watch.new.sh is not a symlink to watch.sh"
   grep -F -q 'step_build || log "build step error"' "$w" || fail "watch.sh does not call step_build"
   if grep -F -q 'if build_lane_alive; then' "$w"; then
     fail "watch.sh skips step_build while the build lock is held"
   fi
-  grep -F -q 'if build_lane_alive; then' "$n" || fail "watch.new.sh does not guard step_build"
-  grep -F -q 'skip step_build: build lane holds' "$n" || fail "watch.new.sh lost the build-lane skip"
 }
 
 # The independent-review comment carries the four review-record fields and

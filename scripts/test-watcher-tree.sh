@@ -15,6 +15,9 @@ fail() {
 
 [[ -d $watch ]] || fail "missing scripts/watcher"
 [[ -f $watch/watch.sh ]] || fail "missing scripts/watcher/watch.sh"
+# #520: the build lane's name is a symlink to the one watcher script.
+[[ -L $watch/watch.new.sh ]] || fail "scripts/watcher/watch.new.sh is not a symlink"
+[[ $(readlink "$watch/watch.new.sh") == watch.sh ]] || fail "scripts/watcher/watch.new.sh does not point at watch.sh"
 
 subs=$(find "$watch" -mindepth 1 -type d -printf '%P\n')
 [[ -z $subs ]] || fail "scripts/watcher has a subdirectory"
@@ -26,7 +29,6 @@ expected=$(printf '%s\n' \
   factory-env.sh \
   push-protected.sh \
   swap-early.sh \
-  watch.new.sh \
   watch.sh)
 actual=$(find "$watch" -type f -printf '%P\n' | sort)
 [[ $actual == "$expected" ]] || fail "scripts/watcher is not the expected tree"

@@ -5,6 +5,8 @@ Bring up the main lane and the build lane on a maintainer's machine.
 - Main lane: `scripts/watcher/watch.sh`
 - Build lane: `scripts/watcher/watch.new.sh` with `LANE=build`
 
+`watch.new.sh` is a symlink to `watch.sh` (#520): both lanes are the same script, chosen by `LANE`.
+
 `scripts/watcher-preflight.sh` checks the settings below. It exits 0 when every one is present. Otherwise it exits non-zero and prints `watcher-preflight: missing <name>` for each missing variable, command or path. Its output is names only.
 
 Part of #386. Lane behaviour is unchanged. See `scripts/watcher/README.md` for what the lanes do once they are running.

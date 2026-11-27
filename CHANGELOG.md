@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-27 (one watcher script for both lanes)
+
+### Changed
+
+- `scripts/watcher/watch.new.sh` is now a symlink to `scripts/watcher/watch.sh` instead of a second 5,972-line copy. Both lanes run the same script and differ only in `LANE`. The two copies differed in two places, and neither is reachable from the build lane (`LANE=build` runs only `collect_issues` and `step_build`), so both lanes behave as before: the main lane keeps `watch.sh`'s behaviour of building every cycle. The build-lane name stays so start commands, systemd units and `swap-early.sh` keep working. `scripts/test-watcher-tree.sh` checks the link; `scripts/watcher/README.md`, `docs/runbooks/local-watcher.md` and the `watch.sh` header describe the single script (#520, part of #516).
+
 ## 2026-11-26 (watcher plan call site on the provider seam)
 
 ### Changed

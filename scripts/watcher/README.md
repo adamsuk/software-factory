@@ -32,13 +32,15 @@ Both lanes are long-running bash processes. Each cycle ends with a 180-second cy
 - Main lane, `watch.sh`. No `LANE` override (committed default `main`). Lock `watch.lock`. Log `watch.log`.
 - Build lane, `watch.new.sh`. `LANE=build`. Lock `watch-build.lock`. Log `watch-build.log`.
 
+`watch.new.sh` is a symlink to `watch.sh` (#520), so both lanes run one script and differ only in `LANE`. The name stays so existing start commands, systemd units and `swap-early.sh` (which finds the build lane by the name `./watch.new.sh`) keep working. When copying the scripts to a flat `$FACTORY_WATCH_ROOT`, copy `watch.sh` to both names (plain `cp` follows the link), and stage the same file as `watch.sh.early` and `watch.new.sh.early`.
+
 `FACTORY_WATCHER_BUILDS=off` makes a watcher never build: the main lane skips
 its build step and the build lane exits at start without taking its lock. Use
 it on a host whose builds run elsewhere, for example a watcher host that cannot
 run the builder's container (`docs/runbooks/station-container.md`). Unset, or
 `on`, keeps building. Any other value stops the watcher at start (#447).
 
-On the CodeRabbit resume path, the main lane skips a head that already has a review before the pause check. The build lane does that skip only when the lane is not paused. In the main loop, the main lane always calls `step_build`. The build lane calls `step_build` only when `build_lane_alive` is false. No script sources another file.
+The build lane runs only `collect_issues` and `step_build`. The main lane runs every step, `step_build` included, each cycle; `state/build-claim.lock` and the label re-read stop the two lanes taking the same issue. No script sources another file.
 
 ## State files
 
