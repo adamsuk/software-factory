@@ -9,6 +9,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - The watcher's `plan` call site (`scripts/watcher/watch.sh`, `watch.new.sh`) runs the adapter for `FACTORY_PROVIDER` instead of always calling grok, with the same container, mounts and no-host-gh rules as the other call sites. The adapter is the one in the plan clone's own `adapters/` (the clone is the home repo), and the role is `foreman`, the write-capable planning role, not `intake`. When the GitHub App is configured the bot token is forwarded by name to the plan container for any provider, because the plan prompt files issues with `gh`. FACTORY_PROVIDER unset or `grok` keeps the grok command line unchanged. New cases in `scripts/test-watcher-provider.sh` (#404, part of #400).
 
+## 2026-11-25 (provider-neutral budget and ledger names)
+
+### Changed
+
+- The watcher budget reads `max_build_runs_per_week` and `max_build_runs_per_day`, and the ledger header names the column `sessions`. The old `max_grok_build_runs_per_week`, `max_grok_build_runs_per_day` and `grok_sessions` still work as fallbacks, so existing budget and ledger files keep working. `scripts/factory-delivery-metrics.sh` reads a ledger with either header (#389).
+
 ## 2026-11-23 (enrol viva and viva-skills)
 
 ### Changed
