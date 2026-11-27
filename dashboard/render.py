@@ -107,7 +107,7 @@ a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}a.k
 .chip.ok{background:var(--okbg);color:var(--ok)}.chip.bad{background:var(--badbg);color:var(--bad)}.chip.warn{background:var(--warnbg);color:var(--warn)}
 .chip.wait{background:var(--waitbg);color:var(--accent)}.chip.accent{background:var(--accent);color:#fff}
 .board{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;align-items:start}.col{background:var(--bg);border-radius:8px;padding:0 8px 8px;min-height:60px;max-height:max(320px,70vh);overflow-y:auto;overscroll-behavior:contain}
-.col:not([open]){min-height:0}.col summary{list-style:none;cursor:pointer;position:sticky;top:0;background:var(--bg);z-index:1}.col summary::-webkit-details-marker{display:none}.col h3{margin:0 0 6px;padding:8px 0 4px;display:flex;justify-content:space-between;gap:6px}.col h3 span:first-child::before{content:"\\25BE  ";color:var(--muted)}.col:not([open]) h3{margin:0}.col:not([open]) h3 span:first-child::before{content:"\\25B8  "}.card{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 8px;margin-bottom:6px}
+.fold>summary{list-style:none;cursor:pointer}.fold>summary::-webkit-details-marker{display:none}.fold>summary h2::before{content:"\\25BE";color:var(--muted)}.fold:not([open])>summary h2{margin:0}.fold:not([open])>summary h2::before{content:"\\25B8"}.col:not([open]){min-height:0}.col summary{list-style:none;cursor:pointer;position:sticky;top:0;background:var(--bg);z-index:1}.col summary::-webkit-details-marker{display:none}.col h3{margin:0 0 6px;padding:8px 0 4px;display:flex;justify-content:space-between;gap:6px}.col h3 span:first-child::before{content:"\\25BE  ";color:var(--muted)}.col:not([open]) h3{margin:0}.col:not([open]) h3 span:first-child::before{content:"\\25B8  "}.card{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 8px;margin-bottom:6px}
 .card .title{font-size:13px;overflow-wrap:anywhere}.card .sub{margin-top:4px;font-size:12px}.age{color:var(--muted);font-size:11px}
 table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:5px 6px;border-top:1px solid var(--line);font-size:13px;vertical-align:top}
 th{color:var(--muted);font-weight:600;font-size:12px}.empty{color:var(--muted);font-size:13px}.err{color:var(--bad)}
@@ -117,6 +117,10 @@ details summary{cursor:pointer;color:var(--muted)}.grid2{display:grid;grid-templ
 JS = """
 document.addEventListener('click',e=>{const b=e.target.closest('.copy');if(!b)return;
 navigator.clipboard.writeText(b.dataset.copy).then(()=>{b.textContent='Copied';setTimeout(()=>b.textContent='Copy approval marker',1500)})});
+// Keep what you opened or closed across the auto-refresh (this browser only).
+document.querySelectorAll('details[data-fold]').forEach(d=>{const k='fold:'+d.dataset.fold;
+try{const v=localStorage.getItem(k);if(v!==null)d.open=v==='1'}catch(e){}
+d.addEventListener('toggle',()=>{try{localStorage.setItem(k,d.open?'1':'0')}catch(e){}})});
 """
 
 
@@ -163,7 +167,7 @@ def render(v: View, refresh: int | None = None) -> str:
     # Each column is a <details>, so it opens and closes without script. Done and
     # release are finished work, so they start closed.
     cols = "".join(
-        f'<details class="col" tabindex="0" aria-label="{esc(s)}"{"" if s in COLLAPSED else " open"}>'
+        f'<details class="col" data-fold="col-{esc(s)}" tabindex="0" aria-label="{esc(s)}"{"" if s in COLLAPSED else " open"}>'
         f'<summary><h3><span>{esc(s)}</span><span>{len(v.board[s])}</span></h3></summary>'
         f'{"".join(issue_card(i, now) for i in v.board[s])}</details>'
         for s in STATUSES)
@@ -186,6 +190,7 @@ def render(v: View, refresh: int | None = None) -> str:
     if v.unlabelled:
         hyg.append(f"<details><summary>No factory:* label ({len(v.unlabelled)})</summary><ul>{ilist(v.unlabelled, '')}</ul></details>")
     hygiene = "".join(hyg) or '<div class="empty">Labels are clean.</div>'
+    n_hyg = len(v.stale) + len(v.multi) + len(v.unlabelled)
 
     n = len([a for a in v.actions])
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -193,7 +198,7 @@ def render(v: View, refresh: int | None = None) -> str:
 <header><h1>Software factory</h1><span class="meta">{esc(", ".join(v.repos))} · updated {esc(v.now.strftime("%Y-%m-%d %H:%M UTC"))}{" · refreshes every " + str(int(refresh)) + "s" if refresh else ""}</span>{errs}</header>
 <main>
 <section><h2>Your actions <span class="badge">{n}</span></h2>{actions}</section>
-<div class="grid2"><section><h2>Running now</h2>{running}</section><section><h2>Hygiene</h2>{hygiene}</section></div>
+<div class="grid2"><section><h2>Running now</h2>{running}</section><section><details class="fold" data-fold="hygiene"><summary><h2>Hygiene <span class="badge">{n_hyg}</span></h2></summary>{hygiene}</details></section></div>
 <section><h2>Pipeline</h2><div class="board">{cols}</div></section>
 <section><h2>Open pull requests <span class="badge">{len(v.prs)}</span></h2>{prs}</section>
 </main><script>{JS}</script></body></html>"""

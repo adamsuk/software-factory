@@ -57,10 +57,10 @@ class QueryTest(unittest.TestCase):
         # Long columns scroll inside themselves, with the heading kept in view.
         self.assertRegex(html, r"\.col\{[^}]*max-height:max\(320px,70vh\);overflow-y:auto")
         self.assertRegex(html, r"\.col summary\{[^}]*position:sticky;top:0")
-        self.assertIn('<details class="col" tabindex="0" aria-label="triage" open>', html)
+        self.assertIn('<details class="col" data-fold="col-triage" tabindex="0" aria-label="triage" open>', html)
         # Finished work starts collapsed; done is now on the board too.
-        self.assertIn('<details class="col" tabindex="0" aria-label="release">', html)
-        self.assertIn('<details class="col" tabindex="0" aria-label="done">', html)
+        self.assertIn('<details class="col" data-fold="col-release" tabindex="0" aria-label="release">', html)
+        self.assertIn('<details class="col" data-fold="col-done" tabindex="0" aria-label="done">', html)
 
     def test_resolve_repos(self):
         env = dict(os.environ)
@@ -241,6 +241,16 @@ class RenderTest(unittest.TestCase):
             self.assertIn(s, html)
         self.assertIn('http-equiv="refresh" content="30"', html)
         self.assertNotIn("http-equiv", render.render(view()))
+
+    def test_hygiene_starts_collapsed_with_count(self):
+        v = view()
+        n = len(v.stale) + len(v.multi) + len(v.unlabelled)
+        self.assertGreater(n, 0)
+        html = render.render(v)
+        self.assertIn('<details class="fold" data-fold="hygiene"><summary><h2>Hygiene '
+                      f'<span class="badge">{n}</span></h2></summary>', html)
+        # Open or closed state survives the auto-refresh, per browser.
+        self.assertIn("localStorage.setItem(k,d.open?'1':'0')", html)
 
     def test_errors_shown(self):
         v = model.build_view({}, [("a/b", "HTTP 404 <b>")], approver="o", now=NOW)

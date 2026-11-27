@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The pipeline board shows every card in each column; the 40-card cap and its "+N more" line are gone (#510).
 - Board columns scroll on their own past 70% of the window height (at least 320px), with the column heading kept in view, and take keyboard focus so they can be scrolled with the arrow keys (#510).
 - Board columns open and close on click (no script). The done column is now on the board, and done and release start collapsed (#510).
+- Hygiene starts collapsed, with a count of its items in the heading. Which sections and board columns you open or close is remembered in this browser across the auto-refresh (#510).
 
 ## 2026-11-26 (watcher plan call site on the provider seam)
 
