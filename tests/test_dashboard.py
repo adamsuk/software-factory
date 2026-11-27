@@ -57,6 +57,8 @@ class QueryTest(unittest.TestCase):
         # Long columns scroll inside themselves, with the heading kept in view.
         self.assertRegex(html, r"\.col\{[^}]*max-height:max\(320px,70vh\);overflow-y:auto")
         self.assertRegex(html, r"\.col summary\{[^}]*position:sticky;top:0")
+        order = re.findall(r'<details class="col" data-fold="col-([a-z]+)"', html)
+        self.assertEqual(order, ["triage", "blocked", "ready", "building", "gate", "review", "merge", "release", "done"])
         # All columns sit in one row that scrolls sideways, never wrapping under each other.
         self.assertRegex(html, r"\.board\{display:flex;[^}]*overflow-x:auto")
         self.assertNotRegex(html, r"\.board\{[^}]*flex-wrap:wrap")

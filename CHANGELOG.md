@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Board columns open and close on click (no script). The done column is now on the board, and done and release start collapsed (#510).
 - Hygiene starts collapsed, with a count of its items in the heading. Which sections and board columns you open or close is remembered in this browser across the auto-refresh (#510).
 - Board columns sit side by side in one row that scrolls sideways when the window is narrow, instead of wrapping under each other; collapsed columns are narrower (#510).
+- The blocked board column sits beside triage at the front, so both are in view without scrolling (#510).
 
 ## 2026-11-26 (watcher plan call site on the provider seam)
 

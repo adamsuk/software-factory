@@ -84,6 +84,9 @@ def issue_card(i: Issue, now) -> str:
 
 
 COLLAPSED = {"done", "release"}  # board columns that start closed
+# Board column order: section 9 order, but blocked sits beside triage at the
+# front, since both are where a person is most likely needed.
+BOARD_ORDER = ["triage", "blocked"] + [x for x in STATUSES if x not in ("triage", "blocked")]
 GROUPS = [("unblock", "Unblock"), ("review", "Review and merge"), ("triage", "Decide")]
 GROUP_BY_REPO = {"unblock", "review", "triage"}
 
@@ -170,7 +173,7 @@ def render(v: View, refresh: int | None = None) -> str:
         f'<details class="col" data-fold="col-{esc(s)}" tabindex="0" aria-label="{esc(s)}"{"" if s in COLLAPSED else " open"}>'
         f'<summary><h3><span>{esc(s)}</span><span>{len(v.board[s])}</span></h3></summary>'
         f'{"".join(issue_card(i, now) for i in v.board[s])}</details>'
-        for s in STATUSES)
+        for s in BOARD_ORDER)
 
     # Open PRs
     pr_rows = "".join(f'<tr><td>{link(p.key, p.url, "key")}</td><td>{esc(p.title)}</td><td>{pr_chips(p)}</td>'
