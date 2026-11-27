@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Review and merge in Your actions is split by repo, in name order, with a count per repo. Rows keep their priority order inside each repo (#510).
 - Unblock and Decide are split by repo the same way, so every group in Your actions is (#510).
 - With no `--repo` or `FACTORY_REPOS`, the dashboard reads the same seven enrolled repos as `scripts/triage-ask.sh` (viva-skills, activity-feed and adamsuk were missing), and a test keeps the two lists in step (#510).
+- The pipeline board shows every card in each column; the 40-card cap and its "+N more" line are gone (#510).
 
 ## 2026-11-26 (watcher plan call site on the provider seam)
 

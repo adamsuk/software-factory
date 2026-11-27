@@ -161,8 +161,7 @@ def render(v: View, refresh: int | None = None) -> str:
     # Board
     cols = "".join(
         f'<div class="col"><h3><span>{esc(s)}</span><span>{len(v.board[s])}</span></h3>'
-        f'{"".join(issue_card(i, now) for i in v.board[s][:40])}'
-        f'{"<div class=empty>+" + str(len(v.board[s]) - 40) + " more</div>" if len(v.board[s]) > 40 else ""}</div>'
+        f'{"".join(issue_card(i, now) for i in v.board[s])}</div>'
         for s in STATUSES if s != "done")
 
     # Open PRs

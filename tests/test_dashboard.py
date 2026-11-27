@@ -46,6 +46,15 @@ class QueryTest(unittest.TestCase):
         block = re.search(r"DEFAULT_REPOS = \((.*?)\)", src, re.S).group(1)
         self.assertEqual(tuple(re.findall(r'"([^"]+)"', block)), github.DEFAULT_REPOS)
 
+    def test_board_shows_every_card(self):
+        snap = json.loads(FIXTURE.read_text())
+        base = snap["issues"]["nodes"][4]  # factory:triage
+        for n in range(100, 160):
+            snap["issues"]["nodes"].append(dict(base, number=n, url=f"https://github.com/acme/widgets/issues/{n}"))
+        html = render.render(model.build_view({"acme/widgets": snap}, [], approver="owner", now=NOW))
+        self.assertIn("acme/widgets/issues/159", html)
+        self.assertNotIn(" more</div>", html)
+
     def test_resolve_repos(self):
         env = dict(os.environ)
         try:
