@@ -19,7 +19,7 @@ jobs:
     # The job takes about 15 seconds; this is headroom, not an expectation.
     timeout-minutes: 5
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           # Hosts from the Harden-Runner insights of lint run 43247802965; no wildcards.
           egress-policy: block
@@ -58,7 +58,7 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           # The job only checks out and fetches the base branch, both from github.com.
           # Proven by this job running in block mode on the pull request that set it (adamsuk/software-factory#379).
@@ -94,7 +94,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           # Hosts from the Harden-Runner insights of lint run 43247802965 (apt install step); exact hosts, no wildcards; port 80 only for the two ubuntu apt hosts.
           egress-policy: block
