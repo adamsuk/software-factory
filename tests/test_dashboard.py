@@ -56,8 +56,11 @@ class QueryTest(unittest.TestCase):
         self.assertNotIn(" more</div>", html)
         # Long columns scroll inside themselves, with the heading kept in view.
         self.assertRegex(html, r"\.col\{[^}]*max-height:max\(320px,70vh\);overflow-y:auto")
-        self.assertRegex(html, r"\.col h3\{[^}]*position:sticky;top:0")
-        self.assertIn('<div class="col" tabindex="0" aria-label="triage">', html)
+        self.assertRegex(html, r"\.col summary\{[^}]*position:sticky;top:0")
+        self.assertIn('<details class="col" tabindex="0" aria-label="triage" open>', html)
+        # Finished work starts collapsed; done is now on the board too.
+        self.assertIn('<details class="col" tabindex="0" aria-label="release">', html)
+        self.assertIn('<details class="col" tabindex="0" aria-label="done">', html)
 
     def test_resolve_repos(self):
         env = dict(os.environ)

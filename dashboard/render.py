@@ -83,6 +83,7 @@ def issue_card(i: Issue, now) -> str:
             f'<div class="title">{esc(i.title)}</div>{prs}</div>')
 
 
+COLLAPSED = {"done", "release"}  # board columns that start closed
 GROUPS = [("unblock", "Unblock"), ("review", "Review and merge"), ("triage", "Decide")]
 GROUP_BY_REPO = {"unblock", "review", "triage"}
 
@@ -105,8 +106,8 @@ a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}a.k
 .chip{display:inline-block;border-radius:4px;padding:0 6px;font-size:11px;background:var(--line);color:var(--muted)}
 .chip.ok{background:var(--okbg);color:var(--ok)}.chip.bad{background:var(--badbg);color:var(--bad)}.chip.warn{background:var(--warnbg);color:var(--warn)}
 .chip.wait{background:var(--waitbg);color:var(--accent)}.chip.accent{background:var(--accent);color:#fff}
-.board{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}.col{background:var(--bg);border-radius:8px;padding:0 8px 8px;min-height:60px;max-height:max(320px,70vh);overflow-y:auto;overscroll-behavior:contain}
-.col h3{margin:0 0 6px;padding:8px 0 4px;display:flex;justify-content:space-between;position:sticky;top:0;background:var(--bg);z-index:1}.card{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 8px;margin-bottom:6px}
+.board{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;align-items:start}.col{background:var(--bg);border-radius:8px;padding:0 8px 8px;min-height:60px;max-height:max(320px,70vh);overflow-y:auto;overscroll-behavior:contain}
+.col:not([open]){min-height:0}.col summary{list-style:none;cursor:pointer;position:sticky;top:0;background:var(--bg);z-index:1}.col summary::-webkit-details-marker{display:none}.col h3{margin:0 0 6px;padding:8px 0 4px;display:flex;justify-content:space-between;gap:6px}.col h3 span:first-child::before{content:"\\25BE  ";color:var(--muted)}.col:not([open]) h3{margin:0}.col:not([open]) h3 span:first-child::before{content:"\\25B8  "}.card{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 8px;margin-bottom:6px}
 .card .title{font-size:13px;overflow-wrap:anywhere}.card .sub{margin-top:4px;font-size:12px}.age{color:var(--muted);font-size:11px}
 table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:5px 6px;border-top:1px solid var(--line);font-size:13px;vertical-align:top}
 th{color:var(--muted);font-weight:600;font-size:12px}.empty{color:var(--muted);font-size:13px}.err{color:var(--bad)}
@@ -159,10 +160,13 @@ def render(v: View, refresh: int | None = None) -> str:
                if run_rows or pend or local else '<div class="empty">Nothing building, gating or checking.</div>')
 
     # Board
+    # Each column is a <details>, so it opens and closes without script. Done and
+    # release are finished work, so they start closed.
     cols = "".join(
-        f'<div class="col" tabindex="0" aria-label="{esc(s)}"><h3><span>{esc(s)}</span><span>{len(v.board[s])}</span></h3>'
-        f'{"".join(issue_card(i, now) for i in v.board[s])}</div>'
-        for s in STATUSES if s != "done")
+        f'<details class="col" tabindex="0" aria-label="{esc(s)}"{"" if s in COLLAPSED else " open"}>'
+        f'<summary><h3><span>{esc(s)}</span><span>{len(v.board[s])}</span></h3></summary>'
+        f'{"".join(issue_card(i, now) for i in v.board[s])}</details>'
+        for s in STATUSES)
 
     # Open PRs
     pr_rows = "".join(f'<tr><td>{link(p.key, p.url, "key")}</td><td>{esc(p.title)}</td><td>{pr_chips(p)}</td>'
