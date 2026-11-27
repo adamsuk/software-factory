@@ -287,9 +287,13 @@ HEADER = [
     "kind",
     "repo",
     "issue_or_pr",
-    "grok_sessions",
+    "sessions",
     "api_equiv_usd",
     "result",
+]
+# Older ledgers name the sessions column grok_sessions; both are accepted.
+LEGACY_HEADER = [
+    "grok_sessions" if name == "sessions" else name for name in HEADER
 ]
 FACTORY_RE = re.compile(r"^factory/([0-9]+)-")
 INSTANT_RE = re.compile(
@@ -389,7 +393,7 @@ def load_ledger(path):
         if names is None:
             return []
         cleaned = [(name or "").strip() for name in names]
-        if cleaned != HEADER:
+        if cleaned not in (HEADER, LEGACY_HEADER):
             raise SystemExit(7)
         return list(reader)
 
