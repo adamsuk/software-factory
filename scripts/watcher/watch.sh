@@ -32,10 +32,10 @@
 # sleep and the 08:00-22:00 Europe/London window, and runs only collect_issues
 # and step_build. It still honours PAUSE and re-reads DAY_CAP and WEEK_CAP
 # from the budget file and the ledger. Its LOOP_CAP is 1 build per cycle.
-# LANE=main skips step_build while watch-build.lock is held (flock -n) and
-# otherwise matches the single watcher. step_build re-reads issue labels
+# LANE=main also runs step_build every cycle. step_build re-reads issue labels
 # under state/build-claim.lock and sets factory:building before starting, so
-# the lanes do not take the same issue. Ledger appends, needs-scott writes,
+# the lanes do not take the same issue. watch.new.sh is a symlink to this file
+# (#520): both lanes run the same code and differ only in LANE. Ledger appends, needs-scott writes,
 # and the cr-requests.log rewrite take state/append.lock. Per-cycle caches
 # are state/cycle.<lane>.<pid>.<random>.
 # notify_event TYPE TEXT appends one line to state/events-pending.txt under
