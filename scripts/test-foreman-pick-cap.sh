@@ -72,3 +72,25 @@ grep -Fq 'The cap counts unique `(Target repo, issue_repo, issue)` triples, not 
 # shellcheck disable=SC2016  # literal backticked text, not expansion
 grep -Fq 'Branch-only entries take `issue_repo` from the work order' <<< "$pickflat" || fail "branch-only cap entries do not take issue_repo from the work order"
 echo "ok: cap counts unique (Target repo, issue_repo, issue) triples"
+
+# The watcher's run caps are provider-neutral (#389). Run the jq expressions
+# the watcher uses against budgets with the new, old and both names.
+for w in watch.sh watch.new.sh; do
+  src="$here/watcher/$w"
+  for span in week day; do
+    expr=$(grep -E "^  (WEEK|DAY)_CAP=" "$src" | grep "_per_${span}" | sed -E "s/.*jq -r '([^']+)'.*/\1/")
+    [[ -n "$expr" ]] || fail "$w has no ${span} cap expression"
+    b=$(mktemp)
+    printf '{"max_build_runs_per_%s":7}' "$span" > "$b"
+    [[ $(jq -r "$expr" "$b") == 7 ]] || fail "$w ignores max_build_runs_per_${span}"
+    printf '{"max_grok_build_runs_per_%s":9}' "$span" > "$b"
+    [[ $(jq -r "$expr" "$b") == 9 ]] || fail "$w drops the max_grok_build_runs_per_${span} fallback"
+    printf '{"max_build_runs_per_%s":7,"max_grok_build_runs_per_%s":9}' "$span" "$span" > "$b"
+    [[ $(jq -r "$expr" "$b") == 7 ]] || fail "$w does not prefer max_build_runs_per_${span}"
+    printf '{}' > "$b"
+    [[ $(jq -r "$expr" "$b") == 0 ]] || fail "$w default is not 0 for ${span}"
+    rm -f "$b"
+  done
+  grep -Fq "issue_or_pr,sessions,api_equiv_usd,result" "$src" || fail "$w ledger header is not provider-neutral"
+done
+echo "ok: neutral budget names read first, old names fall back, ledger header is sessions"
