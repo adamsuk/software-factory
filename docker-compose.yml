@@ -1,0 +1,37 @@
+# Read-only factory dashboard (README.md, "Dashboard").
+#
+#   GH_TOKEN=$(gh auth token) FACTORY_HOME_REPO=owner/repo docker compose up -d --build
+#
+# Then open http://127.0.0.1:8787/. Both variables can live in a git-ignored .env
+# file beside this one instead. Any read-scoped token works; the dashboard only
+# sends GraphQL queries. The token goes in through the environment, so no gh
+# config file is mounted (AGENTS.md section 7).
+services:
+  dashboard:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile
+    image: localhost/factory-dashboard:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8787:8787"  # loopback only: the page lists private issues
+    environment:
+      GH_TOKEN: ${GH_TOKEN:?set GH_TOKEN, e.g. GH_TOKEN=$(gh auth token)}
+      FACTORY_HOME_REPO: ${FACTORY_HOME_REPO:?set FACTORY_HOME_REPO to owner/repo}
+      FACTORY_REPOS: ${FACTORY_REPOS:-}
+      FACTORY_APPROVER_LOGIN: ${FACTORY_APPROVER_LOGIN:-}
+      FACTORY_WORKSPACE: /workspace
+    volumes:
+      # Local build clones, for "Running now". Read-only; only directory names are read.
+      - ${FACTORY_WORKSPACE:-${HOME}/.local/share/software-factory}:/workspace:ro
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /home/dashboard/.config
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    # The host's process table, so build processes running on the host show in
+    # "Running now". It lets the container see every host process's command
+    # line (never their environments); remove it to keep the container's own.
+    pid: host

@@ -3,6 +3,25 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-26 (factory dashboard)
+
+### Added
+
+- `python3 -m dashboard serve` (or `render --out FILE`) is a read-only local view of the factory. It shows your actions with direct links (blocked issues and the comment saying why, `needs-scott`, PASS + green pull requests waiting for approval, `ESCALATE`, failing CI with no fix path, protected builds waiting for the approval marker, `needs-target`). It also shows what is running (building and gate issues, pending checks, local build processes and clones), a pipeline board by `factory:*` label, and label hygiene. It uses one GraphQL query per repository through `gh`, and only the Python standard library. `tests/test_dashboard.py` covers check and verdict rules, actions, hygiene, escaping and link filtering. The `tests` job in `lint.yml` and `test_command` now also run `python3 -m unittest discover tests` (#510).
+- `docker-compose.yml` and `dashboard/Dockerfile` run the dashboard in a read-only container, published on 127.0.0.1:8787, with `GH_TOKEN` passed through the environment. It uses `pid: host` so local build processes show under "Running now". `serve` gains `--host`, which defaults to 127.0.0.1 (#510).
+- Each group in Your actions is sorted by priority: `priority: next` first, then P0–P3, then unprioritised, then by repo and number. Every row shows its repo, its factory stage and its priority. A PR's row takes the stage and priority of the issue it closes (#510).
+- Review and merge in Your actions is split by repo, in name order, with a count per repo. Rows keep their priority order inside each repo (#510).
+- Unblock and Decide are split by repo the same way, so every group in Your actions is (#510).
+- With no `--repo` or `FACTORY_REPOS`, the dashboard reads the same seven enrolled repos as `scripts/triage-ask.sh` (viva-skills, activity-feed and adamsuk were missing), and a test keeps the two lists in step (#510).
+- The pipeline board shows every card in each column; the 40-card cap and its "+N more" line are gone (#510).
+- Board columns scroll on their own past 70% of the window height (at least 320px), with the column heading kept in view, and take keyboard focus so they can be scrolled with the arrow keys (#510).
+- Board columns open and close on click (no script). The done column is now on the board, and done and release start collapsed (#510).
+- Hygiene starts collapsed, with a count of its items in the heading. Which sections and board columns you open or close is remembered in this browser across the auto-refresh (#510).
+- Board columns sit side by side in one row that scrolls sideways when the window is narrow, instead of wrapping under each other; collapsed columns are narrower (#510).
+- The blocked board column sits beside triage at the front, so both are in view without scrolling (#510).
+- Your actions and Open pull requests start collapsed too, with their counts in the heading (#510).
+- Running now starts collapsed too, with a count of running items in the heading (#510).
+
 ## 2026-11-26 (watcher plan call site on the provider seam)
 
 ### Changed

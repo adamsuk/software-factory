@@ -138,6 +138,60 @@ not configured` and exits 0. More detail on the watcher's variables is in
 
 Audits are read-only and never print secret values.
 
+## Dashboard
+
+`python3 -m dashboard serve` runs a read-only factory view at
+<http://127.0.0.1:8787/>. It refreshes every 60 seconds and caches GitHub reads
+for the same time; add `?refresh=1` to the URL to force a fresh read.
+`python3 -m dashboard render --out factory.html` writes the same page as one
+file. It needs Python 3.10 or newer and an authenticated `gh`, and nothing
+else: no packages to install.
+
+The page has four sections:
+
+- **Your actions**, with links to each item:
+  - blocked issues, each linked to the factory's comment saying why;
+  - anything labelled `needs-scott`;
+  - pull requests with an independent-review `PASS` and green required
+    checks on the current head, waiting for your approval;
+  - `ESCALATE` verdicts;
+  - failing-CI pull requests that are out of fix rounds, or are Dependabot's;
+  - protected builds held for the `<!-- factory:approve -->` marker, with a
+    button that copies it;
+  - `needs-target` issues.
+- **Running now**:
+  - issues in `factory:building` and `factory:gate`, with time in that state;
+  - pull requests whose checks are still running;
+  - build processes and build clones on this machine from the last day.
+- **Pipeline**: one column per `factory:*` label, with `priority: next` and
+  P0–P3 first. Each card shows its pull request's checks and review state.
+- **Hygiene**: issues stale for more than 3 days in building, gate or review;
+  issues with more than one `factory:*` label; issues with none.
+
+Repositories come from `--repo` (repeatable), then `FACTORY_REPOS`. Without
+either, it reads `FACTORY_HOME_REPO` (or this checkout's origin) and the
+factory's enrolled repositories (the `DEFAULT_REPOS` list in
+`scripts/triage-ask.sh`), plus any other `Target repo:` repositories their open
+issues name. It sends one GraphQL query
+per repository, never a mutation, and never writes to GitHub. Issue and pull
+request text is escaped, and only links to github.com are rendered. Tests:
+`python3 -m unittest discover tests`.
+
+To run it in a container instead, use `docker-compose.yml` (image built from
+`dashboard/Dockerfile`):
+
+```bash
+GH_TOKEN=$(gh auth token) FACTORY_HOME_REPO=owner/repo docker compose up -d --build
+```
+
+The token is passed in through the environment, so no gh config is mounted. The
+two variables can also go in a git-ignored `.env` file. The port is published
+on 127.0.0.1 only. The container is read-only and drops all capabilities. Build
+clones are mounted read-only from `FACTORY_WORKSPACE`. The container uses
+`pid: host`, so build processes on the host show under "Running now". That lets
+it see every host process's command line, though not its environment. Remove
+the line to keep the container's own process table.
+
 ## Working from the board
 
 Your GitHub Project board is the place to work. To set one up, create a GitHub
