@@ -200,10 +200,10 @@ def render(v: View, refresh: int | None = None) -> str:
 {meta}<title>Factory dashboard</title><style>{CSS}</style></head><body>
 <header><h1>Software factory</h1><span class="meta">{esc(", ".join(v.repos))} · updated {esc(v.now.strftime("%Y-%m-%d %H:%M UTC"))}{" · refreshes every " + str(int(refresh)) + "s" if refresh else ""}</span>{errs}</header>
 <main>
-<section><h2>Your actions <span class="badge">{n}</span></h2>{actions}</section>
+<section><details class="fold" data-fold="actions"><summary><h2>Your actions <span class="badge">{n}</span></h2></summary>{actions}</details></section>
 <div class="grid2"><section><h2>Running now</h2>{running}</section><section><details class="fold" data-fold="hygiene"><summary><h2>Hygiene <span class="badge">{n_hyg}</span></h2></summary>{hygiene}</details></section></div>
 <section><h2>Pipeline</h2><div class="board">{cols}</div></section>
-<section><h2>Open pull requests <span class="badge">{len(v.prs)}</span></h2>{prs}</section>
+<section><details class="fold" data-fold="prs"><summary><h2>Open pull requests <span class="badge">{len(v.prs)}</span></h2></summary>{prs}</details></section>
 </main><script>{JS}</script></body></html>"""
 
 

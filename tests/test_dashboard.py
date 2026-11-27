@@ -249,13 +249,17 @@ class RenderTest(unittest.TestCase):
         self.assertIn('http-equiv="refresh" content="30"', html)
         self.assertNotIn("http-equiv", render.render(view()))
 
-    def test_hygiene_starts_collapsed_with_count(self):
+    def test_folded_sections_start_collapsed_with_count(self):
         v = view()
         n = len(v.stale) + len(v.multi) + len(v.unlabelled)
         self.assertGreater(n, 0)
         html = render.render(v)
         self.assertIn('<details class="fold" data-fold="hygiene"><summary><h2>Hygiene '
                       f'<span class="badge">{n}</span></h2></summary>', html)
+        self.assertIn(f'<details class="fold" data-fold="actions"><summary><h2>Your actions '
+                      f'<span class="badge">{len(v.actions)}</span></h2></summary>', html)
+        self.assertIn(f'<details class="fold" data-fold="prs"><summary><h2>Open pull requests '
+                      f'<span class="badge">{len(v.prs)}</span></h2></summary>', html)
         # Open or closed state survives the auto-refresh, per browser.
         self.assertIn("localStorage.setItem(k,d.open?'1':'0')", html)
 
