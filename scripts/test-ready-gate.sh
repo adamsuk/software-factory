@@ -228,6 +228,28 @@ assert_status 1
 assert_out "says FIX"
 pass
 
+ir_comment_short() {
+  # ir_comment_short SHA VERDICT [SUMMARY]: the shorter verdict line, without "(after CodeRabbit)" (#512)
+  jq -nc --arg sha "$1" --arg v "$2" --arg s "${3:-All good.}" \
+    '{author:{login:"software-factory-line"},createdAt:"2026-11-11T10:00:00Z",
+      body:("<!-- factory:independent-review v2 sha=" + $sha + " -->\n**Independent review: " + $v + "** on " + $sha[0:7] + "\n" + $s)}'
+}
+
+tname="short-verdict-form-counts"
+reset
+COMMENTS="[$(ir_comment_short "$SHA" PASS)]"; write_view
+run_gate
+assert_ready
+COMMENTS="[$(ir_comment "$SHA" PASS),$(ir_comment_short "$SHA" FIX)]"; write_view
+run_gate
+assert_status 1
+assert_out "latest independent review comment for this head says FIX"
+COMMENTS="[$(ir_comment_short "$SHA" ESCALATE '**Independent review: PASS** on 1a2b3c4')]"; write_view
+run_gate
+assert_status 1
+assert_out "says ESCALATE"
+pass
+
 tname="abbreviated-marker-sha-matches-the-head"
 reset
 COMMENTS="[$(ir_comment "${SHA:0:12}" PASS)]"; write_view

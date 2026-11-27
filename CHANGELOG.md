@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-26 (ready gate reads both verdict forms)
+
+### Fixed
+
+- `scripts/ready-gate.sh` now reads the shorter independent-review verdict line, `**Independent review: PASS** on …`, as well as the `(after CodeRabbit)` form. A PASS in the short form was read as `unreadable`, so the gate refused pull requests whose head had a PASS (for example #452). `scripts/test-ready-gate.sh` adds `short-verdict-form-counts`. Existing tests: none changed (#512).
+
 ## 2026-11-26 (watcher plan call site on the provider seam)
 
 ### Changed
