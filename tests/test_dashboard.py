@@ -57,6 +57,11 @@ class QueryTest(unittest.TestCase):
         # Long columns scroll inside themselves, with the heading kept in view.
         self.assertRegex(html, r"\.col\{[^}]*max-height:max\(320px,70vh\);overflow-y:auto")
         self.assertRegex(html, r"\.col summary\{[^}]*position:sticky;top:0")
+        # All columns sit in one row that scrolls sideways, never wrapping under each other.
+        self.assertRegex(html, r"\.board\{display:flex;[^}]*overflow-x:auto")
+        self.assertNotRegex(html, r"\.board\{[^}]*flex-wrap:wrap")
+        # The page column can shrink, so the board scrolls inside itself, not the page.
+        self.assertRegex(html, r"main\{[^}]*grid-template-columns:minmax\(0,1fr\)")
         self.assertIn('<details class="col" data-fold="col-triage" tabindex="0" aria-label="triage" open>', html)
         # Finished work starts collapsed; done is now on the board too.
         self.assertIn('<details class="col" data-fold="col-release" tabindex="0" aria-label="release">', html)

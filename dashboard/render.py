@@ -94,7 +94,7 @@ CSS = """
 --accent:#8ea6ff;--ok:#69db7c;--okbg:#1b3324;--warn:#ffb46b;--warnbg:#3a2a17;--bad:#ff8787;--badbg:#3d1d1f;--waitbg:#232a3b}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,sans-serif}
 header{display:flex;flex-wrap:wrap;gap:12px;align-items:baseline;padding:16px 20px;border-bottom:1px solid var(--line);background:var(--panel)}
-header h1{font-size:18px;margin:0}header .meta{color:var(--muted);font-size:12px}main{padding:16px 20px;display:grid;gap:18px}
+header h1{font-size:18px;margin:0}header .meta{color:var(--muted);font-size:12px}main{padding:16px 20px;display:grid;grid-template-columns:minmax(0,1fr);gap:18px}
 section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
 h2{font-size:15px;margin:0 0 10px;display:flex;gap:8px;align-items:center}h3{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:12px 0 6px}
 .badge{background:var(--accent);color:#fff;border-radius:999px;padding:0 8px;font-size:12px}
@@ -106,7 +106,7 @@ a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}a.k
 .chip{display:inline-block;border-radius:4px;padding:0 6px;font-size:11px;background:var(--line);color:var(--muted)}
 .chip.ok{background:var(--okbg);color:var(--ok)}.chip.bad{background:var(--badbg);color:var(--bad)}.chip.warn{background:var(--warnbg);color:var(--warn)}
 .chip.wait{background:var(--waitbg);color:var(--accent)}.chip.accent{background:var(--accent);color:#fff}
-.board{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;align-items:start}.col{background:var(--bg);border-radius:8px;padding:0 8px 8px;min-height:60px;max-height:max(320px,70vh);overflow-y:auto;overscroll-behavior:contain}
+.board{display:flex;gap:10px;align-items:flex-start;overflow-x:auto;padding-bottom:6px}.board>.col{flex:1 0 190px}.board>.col:not([open]){flex:0 0 120px}.col{background:var(--bg);border-radius:8px;padding:0 8px 8px;min-height:60px;max-height:max(320px,70vh);overflow-y:auto;overscroll-behavior:contain}
 .fold>summary{list-style:none;cursor:pointer}.fold>summary::-webkit-details-marker{display:none}.fold>summary h2::before{content:"\\25BE";color:var(--muted)}.fold:not([open])>summary h2{margin:0}.fold:not([open])>summary h2::before{content:"\\25B8"}.col:not([open]){min-height:0}.col summary{list-style:none;cursor:pointer;position:sticky;top:0;background:var(--bg);z-index:1}.col summary::-webkit-details-marker{display:none}.col h3{margin:0 0 6px;padding:8px 0 4px;display:flex;justify-content:space-between;gap:6px}.col h3 span:first-child::before{content:"\\25BE  ";color:var(--muted)}.col:not([open]) h3{margin:0}.col:not([open]) h3 span:first-child::before{content:"\\25B8  "}.card{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 8px;margin-bottom:6px}
 .card .title{font-size:13px;overflow-wrap:anywhere}.card .sub{margin-top:4px;font-size:12px}.age{color:var(--muted);font-size:11px}
 table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:5px 6px;border-top:1px solid var(--line);font-size:13px;vertical-align:top}
