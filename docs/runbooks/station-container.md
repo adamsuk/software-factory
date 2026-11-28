@@ -162,7 +162,10 @@ none of it.
 | The provider's own credential and `GH_TOKEN`, forwarded by name | Every other environment variable, other providers' credentials included |
 
 `GH_TOKEN` has to be in the environment, or `FACTORY_GH_APP_ID` and its two
-companions set so `station-run.sh` mints an installation token. The watcher
+companions set so `station-run.sh` mints an installation token. It must be a
+GitHub App installation token (`ghs_...`): `station-run.sh` exits 9 on any other
+`GH_TOKEN`, such as a personal access token or a `gh auth token` login, so a
+station never posts as a person (#210). The watcher
 forwards no GitHub token: it does the GitHub writes itself.
 
 The container runs as the calling user, with all capabilities dropped. It must
@@ -181,7 +184,8 @@ bearer token`. A run with a valid token has not been done yet.
 The watcher's Grok calls go through the same container (#428). They get no
 GitHub token, except the foreman, dependabot-triage and plan jobs, whose
 prompts call `gh`: those get `GH_TOKEN` by name, and only when the App is
-configured, so it is the bot's one-hour installation token. The foreman also
+configured and `GH_TOKEN` is an installation token (`ghs_...`), so it is the
+bot's one-hour installation token and never a person's (#210). The foreman also
 gets the orders directory read-write, where it writes the work order.
 
 Checked on 2026-11-15 with a real Grok on a subscription login: a job ran in

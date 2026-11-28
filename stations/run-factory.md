@@ -64,7 +64,8 @@ container that has no host `gh` login: it writes to GitHub with `GH_TOKEN`
 only. Export the factory bot's installation token as `GH_TOKEN`, or set
 `FACTORY_GH_APP_ID` and its two companions so `scripts/station-run.sh` mints
 one. Then a station's comments, labels and pull requests are the bot's, not
-yours. Approving and merging stay with a person (see
+yours. Any other token (your own `ghp_`, `github_pat_` or `gh auth token`
+login) is refused with exit 9 (#210). Approving and merging stay with a person (see
 `stations/run-factory-quirks.md` → "The identity wrinkle").
 
 ### The station container (required)
