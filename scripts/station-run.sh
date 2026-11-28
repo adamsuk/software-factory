@@ -451,6 +451,12 @@ build_station_container() {
   fi
   [[ -n ${GH_TOKEN:-} ]] \
     || die 9 "cannot start a container: GH_TOKEN is not set (export a short-lived installation token, or set FACTORY_GH_APP_ID so one is minted)"
+  # Stations write to GitHub only as the factory bot (#210). A GitHub App
+  # installation token starts ghs_; a person's token (ghp_, github_pat_, or a
+  # gh login's gho_) would make every station comment, label and PR the
+  # maintainer's own, and would let the station act with their full access.
+  [[ $GH_TOKEN == ghs_* ]] \
+    || die 9 "cannot start a container: GH_TOKEN is not a GitHub App installation token (ghs_...); stations post only as the factory bot (#210). Set FACTORY_GH_APP_ID so one is minted, or export the bot's installation token"
   # The plain settings the station scripts read, and the GitHub token.
   station_container_command "$provider" "$workdir" \
     "GH_REPO FACTORY_MODEL FACTORY_HOME_REPO FACTORY_REPOS FACTORY_LOGIN FACTORY_APPROVER_LOGIN FACTORY_BLOCKED_OWNERS FACTORY_CRITERIA_RESOLVE FACTORY_TRIAGE_APPLY GH_TOKEN" \

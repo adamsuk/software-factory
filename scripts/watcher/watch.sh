@@ -1668,14 +1668,16 @@ run_grok() {
   # The three kinds whose prompts tell grok to call gh get GH_TOKEN, and only
   # when the App is configured, so it is the bot's one-hour installation token
   # and never an operator's own login. Every other kind runs with it cleared.
+  # Only an installation token (ghs_) is ever forwarded (#210): a GH_TOKEN the
+  # host exported itself is a person's token even when the App is configured.
   # The plan prompt files issues with gh whichever provider runs it (#404), so
   # plan gets the token for every provider; the other two stay grok-only.
   case $kind in
     foreman|dependabot-triage)
-      [[ $provider != grok || -z ${FACTORY_GH_APP_ID:-} || -z ${GH_TOKEN:-} ]] || grok_gh_token=1
+      [[ $provider != grok || -z ${FACTORY_GH_APP_ID:-} || ${GH_TOKEN:-} != ghs_* ]] || grok_gh_token=1
       ;;
     plan)
-      [[ -z ${FACTORY_GH_APP_ID:-} || -z ${GH_TOKEN:-} ]] || grok_gh_token=1
+      [[ -z ${FACTORY_GH_APP_ID:-} || ${GH_TOKEN:-} != ghs_* ]] || grok_gh_token=1
       ;;
   esac
   if [[ $provider == grok && ${FACTORY_GROK_ON_HOST:-} == host-is-a-disposable-sandbox ]]; then

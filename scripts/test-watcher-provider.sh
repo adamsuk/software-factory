@@ -240,7 +240,7 @@ done
 # Plan call site (#404). It is a write-access run in a home-repo clone, so the
 # adapter is the one in cwd and the role is foreman, not intake.
 for lane in watch watch.new; do
-  w=$(GROK_TEST_GH_TOKEN=test-gh-token GROK_TEST_APP_ID=1 run_kind_case "$lane" claudecode plan "cc-plan" no)
+  w=$(GROK_TEST_GH_TOKEN=ghs_test-gh-token GROK_TEST_APP_ID=1 run_kind_case "$lane" claudecode plan "cc-plan" no)
   [[ -s $w/calls/claude.calls ]] || fail "$lane: plan under claudecode did not run the adapter ($(tail -3 "$w/out.log" 2>/dev/null))"
   [[ ! -e $w/calls/grok.calls ]] || fail "$lane: grok ran for plan under claudecode"
   grep -Fq 'You are the foreman station' "$w/calls/claude.stdin" || fail "$lane: plan did not use the foreman role"
@@ -249,11 +249,11 @@ for lane in watch watch.new; do
   grep -Fq -- "--volume $w/target:$w/target " "$w/calls/runtime.log" || fail "$lane: plan did not mount the clone"
   grep -Fq -- '--env GH_TOKEN' "$w/calls/runtime.log" || fail "$lane: plan under claudecode did not get the bot token by name"
   if grep -Fq test-gh-token "$w/calls/runtime.log"; then fail "$lane: the token value is on the runtime argv"; fi
-  w=$(GROK_TEST_GH_TOKEN=test-gh-token run_kind_case "$lane" claudecode plan "cc-plan-noapp" no)
+  w=$(GROK_TEST_GH_TOKEN=ghs_test-gh-token run_kind_case "$lane" claudecode plan "cc-plan-noapp" no)
   if grep -Fq -- 'GH_TOKEN' "$w/calls/runtime.log"; then fail "$lane: a token that is not the App's reached the plan provider"; fi
   echo "ok: $lane plan runs the claudecode adapter as foreman, with no grok on PATH"
   for p in "" grok; do
-    w=$(GROK_TEST_GH_TOKEN=test-gh-token GROK_TEST_APP_ID=1 run_kind_case "$lane" "$p" plan "gplan-${p:-unset}" yes)
+    w=$(GROK_TEST_GH_TOKEN=ghs_test-gh-token GROK_TEST_APP_ID=1 run_kind_case "$lane" "$p" plan "gplan-${p:-unset}" yes)
     [[ -s $w/calls/grok.calls ]] || fail "$lane: plan with FACTORY_PROVIDER='${p}' did not call grok"
     [[ ! -e $w/calls/claude.calls ]] || fail "$lane: claude ran for plan with FACTORY_PROVIDER='${p}'"
     expect="--prompt-file PROMPT --output-format json --max-turns 25 --always-approve --cwd $w/target --json-schema {\"type\":\"object\",\"required\":[\"verdict\"]}"
@@ -267,23 +267,36 @@ done
 # whose prompts call gh, and only when the App is configured, so the token is
 # the bot's installation token and never the operator's own login.
 for lane in watch watch.new; do
-  w=$(GROK_TEST_GH_TOKEN=test-gh-token GROK_TEST_APP_ID=1 run_kind_case "$lane" grok dependabot-triage "tok-dep" yes)
+  w=$(GROK_TEST_GH_TOKEN=ghs_test-gh-token GROK_TEST_APP_ID=1 run_kind_case "$lane" grok dependabot-triage "tok-dep" yes)
   [[ -s $w/calls/grok.calls ]] || fail "$lane: dependabot-triage did not run grok ($(tail -3 "$w/out.log" 2>/dev/null))"
   grep -Fq -- '--env GH_TOKEN' "$w/calls/runtime.log" || fail "$lane: dependabot-triage did not get the bot token by name"
   if grep -Fq test-gh-token "$w/calls/runtime.log"; then fail "$lane: the token value is on the runtime argv"; fi
-  w=$(GROK_TEST_GH_TOKEN=test-gh-token GROK_TEST_APP_ID=1 run_kind_case "$lane" grok review "tok-rev" yes)
+  w=$(GROK_TEST_GH_TOKEN=ghs_test-gh-token GROK_TEST_APP_ID=1 run_kind_case "$lane" grok review "tok-rev" yes)
   [[ -s $w/calls/grok.calls ]] || fail "$lane: review did not run grok"
   if grep -Fq -- 'GH_TOKEN' "$w/calls/runtime.log"; then fail "$lane: a review run was given a GitHub token"; fi
-  w=$(GROK_TEST_GH_TOKEN=test-gh-token run_kind_case "$lane" grok dependabot-triage "tok-noapp" yes)
+  w=$(GROK_TEST_GH_TOKEN=ghs_test-gh-token run_kind_case "$lane" grok dependabot-triage "tok-noapp" yes)
   [[ -s $w/calls/grok.calls ]] || fail "$lane: dependabot-triage without the App did not run grok"
   if grep -Fq -- 'GH_TOKEN' "$w/calls/runtime.log"; then fail "$lane: a token that is not the App's was handed to grok"; fi
   echo "ok: $lane gives grok the bot token only for the gh-calling kinds, and only with the App configured"
 done
 
+# #210: with the App configured, a GH_TOKEN that is not an installation token
+# (the operator's own ghp_ / github_pat_ / gho_ login) is never forwarded.
+for lane in watch watch.new; do
+  for tok in ghp_person-sentinel github_pat_person-sentinel gho_person-sentinel; do
+    w=$(GROK_TEST_GH_TOKEN=$tok GROK_TEST_APP_ID=1 run_kind_case "$lane" grok dependabot-triage "person-dep-${tok%%_*}" yes)
+    [[ -s $w/calls/grok.calls ]] || fail "$lane: dependabot-triage with a person's token did not run grok"
+    if grep -Fq -- 'GH_TOKEN' "$w/calls/runtime.log"; then fail "$lane: a person's token ($tok) was handed to grok"; fi
+    w=$(GROK_TEST_GH_TOKEN=$tok GROK_TEST_APP_ID=1 run_kind_case "$lane" claudecode plan "person-plan-${tok%%_*}" no)
+    if grep -Fq -- 'GH_TOKEN' "$w/calls/runtime.log"; then fail "$lane: a person's token ($tok) reached the plan provider"; fi
+  done
+  echo "ok: $lane never forwards a person's GitHub token, even with the App configured (#210)"
+done
+
 # FACTORY_GROK_ON_HOST (#440): the one explicit way to start grok outside the
 # container, for a watcher host that is itself a sandbox.
 for lane in watch watch.new; do
-  w=$(GROK_TEST_ON_HOST=host-is-a-disposable-sandbox GROK_TEST_GH_TOKEN=test-gh-token GROK_TEST_APP_ID=1 \
+  w=$(GROK_TEST_ON_HOST=host-is-a-disposable-sandbox GROK_TEST_GH_TOKEN=ghs_test-gh-token GROK_TEST_APP_ID=1 \
     FACTORY_NO_IMAGE=1 run_kind_case "$lane" grok review "host-rev" yes)
   [[ -s $w/calls/grok.calls ]] || fail "$lane: grok did not run on the host with the phrase set ($(tail -3 "$w/out.log" 2>/dev/null))"
   [[ ! -s $w/calls/runtime.log ]] || fail "$lane: the container runtime was used although the host mode is set"
@@ -302,12 +315,12 @@ for lane in watch watch.new; do
   left=$(find "$w/watch/state" -maxdepth 1 -name 'grok-host.*' | wc -l)
   [[ $left -eq 0 ]] || fail "$lane: the empty gh config directory was left behind"
 
-  w=$(GROK_TEST_ON_HOST=host-is-a-disposable-sandbox GROK_TEST_GH_TOKEN=test-gh-token GROK_TEST_APP_ID=1 \
+  w=$(GROK_TEST_ON_HOST=host-is-a-disposable-sandbox GROK_TEST_GH_TOKEN=ghs_test-gh-token GROK_TEST_APP_ID=1 \
     FACTORY_NO_IMAGE=1 run_kind_case "$lane" grok dependabot-triage "host-dep" yes)
   read -r genv < "$w/calls/grok.env"
   [[ " $genv " == *" GH_TOKEN "* ]] || fail "$lane: dependabot-triage on the host did not get the bot token: [$genv]"
   [[ " $genv " != *" FACTORY_GH_APP_"* ]] || fail "$lane: the App settings reached grok on the host: [$genv]"
-  w=$(GROK_TEST_ON_HOST=host-is-a-disposable-sandbox GROK_TEST_GH_TOKEN=test-gh-token \
+  w=$(GROK_TEST_ON_HOST=host-is-a-disposable-sandbox GROK_TEST_GH_TOKEN=ghs_test-gh-token \
     FACTORY_NO_IMAGE=1 run_kind_case "$lane" grok dependabot-triage "host-dep-noapp" yes)
   read -r genv < "$w/calls/grok.env"
   [[ " $genv " != *" GH_TOKEN "* ]] || fail "$lane: a token that is not the App's reached grok on the host: [$genv]"

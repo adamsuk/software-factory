@@ -3,6 +3,12 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-28 (stations never post with a person's GitHub token)
+
+### Security
+
+- `scripts/station-run.sh` exits 9 before starting a container when `GH_TOKEN` is not a GitHub App installation token (`ghs_...`). Before, it forwarded any `GH_TOKEN` the caller exported, so a station run with the maintainer's own token posted every comment, label and PR as the maintainer, with their full access. The watcher (`scripts/watcher/watch.sh`, `watch.new.sh`) forwards `GH_TOKEN` to the foreman, dependabot-triage and plan jobs only when it is an installation token, even with the App configured. New cases in `scripts/test-station-run.sh` and `scripts/test-watcher-provider.sh`; the existing fixtures' fake token now has the `ghs_` prefix, and no existing assertion changed (#210).
+
 ## 2026-11-26 (watcher plan call site on the provider seam)
 
 ### Changed

@@ -28,7 +28,7 @@ export FACTORY_CONTAINER_RUNTIME="$BIN/podman" FACTORY_CONTAINER_IMAGE=factory-s
   FACTORY_CONTAINER_NETWORK=factory-egress-test FAKE_RUNTIME_LOG="$RUNTIME_LOG" \
   FAKE_RUNTIME_PASS="FAKE_OUT FIXTURE FAKE_SANDBOX"
 # Stand-ins, never real credentials: station-run refuses to start without them.
-export GH_TOKEN=test-gh-token OPENCODE_API_KEY=test-opencode-key
+export GH_TOKEN=ghs_test-gh-token OPENCODE_API_KEY=test-opencode-key
 unset FACTORY_CONTAINER_PROXY FACTORY_GH_APP_ID FACTORY_GH_APP_INSTALLATION_ID FACTORY_GH_APP_KEY_FILE \
   CLAUDE_CODE_OAUTH_TOKEN XAI_API_KEY OPENROUTER_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY GH_REPO
 
@@ -481,6 +481,16 @@ pass
 tname="no provider credential or no GitHub token is exit 9"
 expect_9 "no provider credential" OPENCODE_API_KEY=
 expect_9 "no GitHub token" GH_TOKEN=
+pass
+
+tname="a person's GitHub token is exit 9: stations post only as the factory bot (#210)"
+for tok in ghp_personal-sentinel github_pat_personal-sentinel gho_personal-sentinel personal-sentinel; do
+  expect_9 "GH_TOKEN=${tok%%personal-sentinel}..." GH_TOKEN="$tok"
+  out=$(env GH_TOKEN="$tok" PATH="$BIN:$PATH" FACTORY_PROVIDER=opencode FAKE_OUT="$OUT" \
+    bash "$root_dir/scripts/station-run.sh" reviewer /dev/null 2>&1) || true
+  [[ "$out" == *"not a GitHub App installation token"* ]] || fail "$tok: no reason given: $out"
+  [[ "$out" != *personal-sentinel* ]] || fail "$tok: the token value was printed"
+done
 pass
 
 tname="--dry-run needs no container"
