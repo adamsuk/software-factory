@@ -3,6 +3,18 @@
 All notable changes to this repo are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 2026-11-28 (independent review and open findings, #451)
+
+### Fixed
+
+- The watcher (`scripts/watcher/watch.sh`, `watch.new.sh`) posts an independent-review disposition as a pull-request comment when a current-head COMMENTED or CHANGES_REQUESTED review has no thread id. A finding that already has a thread or comment id still gets the thread reply, and an identical disposition comment is not posted twice (#451).
+- The watcher (`scripts/watcher/watch.sh`, `watch.new.sh`) keeps every `gh api --paginate` page of pull comments and reviews. A non-array page, or `reviewThreads.pageInfo.hasNextPage`, is a failed read. A current-head COMMENTED or CHANGES_REQUESTED review is split into its actionable findings before the 240-character cut, and each posted line keeps that finding's disposition. Open findings are deduped by thread or comment id. The disposition reply does not print the response body. A finding on a protected path is escalated. A dry run does not rewrite the saved verdict (#451).
+- The watcher (`scripts/watcher/watch.sh`, `watch.new.sh`) counts review-comment fix rounds and failing-CI fix rounds apart. Review-comment repairs (`REVIEW_COMMENT_FIX_ROUNDS`, mode=review, `step_cr_fix_comment`) stop at 5. Failing-CI repairs (`CI_FIX_ROUNDS`, mode=ci, `report_ci_failure`, `cifix-*`) stop at 3. A fourth CI repair does not run, and a fourth review-comment repair is not stopped early. AGENTS.md section 4 keeps the builder cap of 3; section 10 and `agents/roles/reviewer.md` state both caps (#451).
+- An empty COMMENTED review from `software-factory-line[bot]` (a thread-reply wrapper) no longer blocks an independent-review PASS. A human review, or another bot's COMMENTED or CHANGES_REQUESTED review with a real body, still blocks (#451).
+- Clearing a guard-only independent-review rewrite restores the model's verdict and the model's own fix list. A model FIX stays FIX when that list is empty (#451).
+- The watcher (`scripts/watcher/watch.sh`, `watch.new.sh`) no longer keeps an independent-review PASS while the current head has an unresolved, not-outdated CodeRabbit review thread, an unresolved CodeRabbit comment, or a CodeRabbit review in COMMENTED or CHANGES_REQUESTED. A model PASS that only files the finding under dismissed is rewritten to FIX when the finding is a small in-scope change, and to ESCALATE when a person must act. The posted comment lists each outstanding finding as addressed, dismissed with a reason, or escalated. Outdated threads, and threads only on earlier commits, do not by themselves change PASS, and the outdated-review dismiss path still runs after a valid PASS. `agents/roles/reviewer.md` states the rule. New `scripts/test-ir-open-coderabbit.sh` (#451).
+- The same gate counts every reviewer, not only CodeRabbit: an unresolved, not-outdated review thread, an unresolved review comment, or a COMMENTED or CHANGES_REQUESTED review on the current head blocks PASS whoever left it. After the disposition (addressed, dismissed with a reason, or escalated), the watcher replies on that unresolved thread and does not post a second identical reply. Outdated threads, earlier commits, resolved threads, and APPROVED reviews still do not rewrite PASS (#451).
+
 ## 2026-11-26 (watcher plan call site on the provider seam)
 
 ### Changed
