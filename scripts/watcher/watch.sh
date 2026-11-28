@@ -427,8 +427,8 @@ refresh_clock() {
 
 refresh_counts() {
   refresh_clock
-  WEEK_CAP=$(jq -r '.max_grok_build_runs_per_week // 0' "$BUDGET" 2>/dev/null || echo 0)
-  DAY_CAP=$(jq -r '.max_grok_build_runs_per_day // 0' "$BUDGET" 2>/dev/null || echo 0)
+  WEEK_CAP=$(jq -r '.max_build_runs_per_week // .max_grok_build_runs_per_week // 0' "$BUDGET" 2>/dev/null || echo 0)
+  DAY_CAP=$(jq -r '.max_build_runs_per_day // .max_grok_build_runs_per_day // 0' "$BUDGET" 2>/dev/null || echo 0)
   LOOP_CAP=$(jq -r '.max_runs_per_loop // 1' "$BUDGET" 2>/dev/null || echo 1)
   CR_HOUR_CAP=$(jq -r '.max_coderabbit_requests_per_hour // 8' "$BUDGET" 2>/dev/null || echo 8)
   [[ $WEEK_CAP =~ ^[0-9]+$ ]] || WEEK_CAP=0
@@ -567,7 +567,7 @@ ledger_append() {
       return 1
     }
     if [[ ! -f $LEDGER ]]; then
-      printf '%s\n' 'date_utc,kind,repo,issue_or_pr,grok_sessions,api_equiv_usd,result' > "$LEDGER"
+      printf '%s\n' 'date_utc,kind,repo,issue_or_pr,sessions,api_equiv_usd,result' > "$LEDGER"
     fi
     printf '%s\n' "$line" >> "$LEDGER"
   } 8>>"${STATE}/append.lock" || {
@@ -1699,10 +1699,14 @@ run_grok() {
   case $kind in
     triage) provider=${FACTORY_PROVIDER:-grok} ;;
     review|dependabot-triage) provider=${FACTORY_PROVIDER:-grok}; role=reviewer ;;
+    # plan (#404): write access to a fresh home-repo clone, so, like triage, the
+    # adapter is in cwd. The role is foreman, the planning station that writes
+    # (stations/README.md, "Which roles may write"); intake is read-only.
+    plan) provider=${FACTORY_PROVIDER:-grok}; role=foreman ;;
   esac
   if [[ $provider != grok ]]; then
     adapter="${adapter_root}/adapters/${provider}/run.sh"
-    if [[ ! -f $adapter && $kind != triage ]]; then
+    if [[ ! -f $adapter && $kind != triage && $kind != plan ]]; then
       adapter_root=$(ensure_work_clone "$HOME_REPO" 2>/dev/null) || adapter_root=""
       adapter="${adapter_root}/adapters/${provider}/run.sh"
     fi
@@ -1725,13 +1729,16 @@ run_grok() {
   # The three kinds whose prompts tell grok to call gh get GH_TOKEN, and only
   # when the App is configured, so it is the bot's one-hour installation token
   # and never an operator's own login. Every other kind runs with it cleared.
-  if [[ $provider == grok ]]; then
-    case $kind in
-      foreman|dependabot-triage|plan)
-        [[ -z ${FACTORY_GH_APP_ID:-} || -z ${GH_TOKEN:-} ]] || grok_gh_token=1
-        ;;
-    esac
-  fi
+  # The plan prompt files issues with gh whichever provider runs it (#404), so
+  # plan gets the token for every provider; the other two stay grok-only.
+  case $kind in
+    foreman|dependabot-triage)
+      [[ $provider != grok || -z ${FACTORY_GH_APP_ID:-} || -z ${GH_TOKEN:-} ]] || grok_gh_token=1
+      ;;
+    plan)
+      [[ -z ${FACTORY_GH_APP_ID:-} || -z ${GH_TOKEN:-} ]] || grok_gh_token=1
+      ;;
+  esac
   if [[ $provider == grok && ${FACTORY_GROK_ON_HOST:-} == host-is-a-disposable-sandbox ]]; then
     # The one way to start grok outside the station container (#440): for a
     # watcher host that is itself a disposable sandbox with its own egress
@@ -1852,7 +1859,9 @@ run_grok() {
       rm -f "$prompt_file"
       return 1
     fi
-    grok_cmd=(bash "$in_container" --provider "$provider" --workdir "$cwd" --forward FACTORY_MODEL
+    local -a gh_fwd=()
+    (( ! grok_gh_token )) || gh_fwd=(--forward GH_TOKEN)
+    grok_cmd=(bash "$in_container" --provider "$provider" --workdir "$cwd" --forward FACTORY_MODEL ${gh_fwd[@]+"${gh_fwd[@]}"}
       --ro "$adapter_root" --ro "$prompt_file" --
       bash "$adapter" --role "$role" --prompt "$prompt_file" --workdir "$cwd" --repo "$repo" --issue "$ref")
   fi

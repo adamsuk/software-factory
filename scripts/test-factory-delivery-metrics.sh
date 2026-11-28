@@ -201,6 +201,7 @@ default_repo=acme/software-factory
 default_since=2026-10-20
 default_until=2026-10-27
 ledger_header='date_utc,kind,repo,issue_or_pr,grok_sessions,api_equiv_usd,result'
+ledger_header_neutral='date_utc,kind,repo,issue_or_pr,sessions,api_equiv_usd,result'
 
 prepare() {
   : > "$log"
@@ -568,6 +569,50 @@ with open(sys.argv[1], "w", encoding="utf-8") as handle:
 PY
 cat > "$ledger" << EOF
 ${ledger_header}
+2020-01-01T00:00:00Z,build,acme/software-factory,30,1,1.00,ok
+2026-10-21T00:00:00Z,fix,acme/software-factory,30,1,0.50,ok
+2026-10-21T00:00:00Z,fix,other/repo,31,1,9.99,ok
+2026-10-21T00:00:00Z,build,acme/software-factory,31,1,1.00,ok
+2026-10-21T00:00:00Z,build,acme/software-factory,32,1,,blank
+2026-10-21T00:00:00Z,build,acme/software-factory,32,1,n/a,blank
+2026-10-21T00:00:00Z,build,other/repo,30,1,9.99,ignored
+EOF
+run_default
+assert_status 0
+assert_empty "$stderr_file" stderr
+write_report 0/3 0.7 n/a no 1.25
+assert_same "$stdout_file" "$expected_file" stdout
+if grep -F -q '99' "$stdout_file"; then
+  fail "cost came from a pull request body"
+fi
+assert_no_writes
+
+tname="rework-and-cost-sessions-header"
+prepare
+python3 - "$prs_json" << 'PY'
+import json
+import sys
+
+def pr(number, head):
+    return {
+        "number": number,
+        "headRefName": head,
+        "mergedAt": "2026-10-21T00:00:00Z",
+        "title": "feat: change",
+        "body": "total_cost_usd: 99\nno api_equiv_usd line",
+    }
+
+prs = [
+    pr(30, "factory/30-cost"),
+    pr(31, "factory/31-cost"),
+    pr(32, "factory/32-nocost"),
+]
+with open(sys.argv[1], "w", encoding="utf-8") as handle:
+    json.dump(prs, handle)
+    handle.write("\n")
+PY
+cat > "$ledger" << EOF
+${ledger_header_neutral}
 2020-01-01T00:00:00Z,build,acme/software-factory,30,1,1.00,ok
 2026-10-21T00:00:00Z,fix,acme/software-factory,30,1,0.50,ok
 2026-10-21T00:00:00Z,fix,other/repo,31,1,9.99,ok
